@@ -1,0 +1,37 @@
+#include "object.h"
+#include <string.h>
+
+/* Placeholder storage until the real control-block struct layout is
+ * recovered from the 0x0602a970-ish region. */
+static unsigned char s_object_channel_table[17][12];
+static unsigned short s_channel_table[8][8];
+
+void Obj_SetTransformParam(int mode, int param_a, int param_b)
+{
+    (void)mode; (void)param_a; (void)param_b;
+    /* TODO: port FUN_0602a8c4 once the control-block struct is mapped. */
+}
+
+void Obj_SetReadyFlag(void)
+{
+    /* TODO: port FUN_0602a8a8 (trivial flag set). */
+}
+
+void Obj_ConsumeFlagAndStore(int value)
+{
+    (void)value;
+    /* TODO: port FUN_0602a894. */
+}
+
+void Obj_InitLinkedLists(void)
+{
+    /* TODO: port FUN_06006f56 (sentinel-node list init). */
+}
+
+void Reset_ObjectAndChannelTables(void)
+{
+    memset(s_object_channel_table, 0, sizeof(s_object_channel_table));
+    for (int i = 0; i < 8; i++)
+        for (int j = 0; j < 8; j++)
+            s_channel_table[i][j] = 0xffff;
+}
