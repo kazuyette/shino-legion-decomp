@@ -195,9 +195,60 @@ decompilation:
 
 ## Status (2026-08-04)
 
-529 functions total in A.BIN per Ghidra's auto-analysis. ~18 identified and renamed so
+529 functions total in A.BIN per Ghidra's auto-analysis. ~20 identified and renamed so
 far (this file + the boot table + the two clusters above). Remaining scope is large;
-tracked as ongoing tasks rather than attempted in one pass. Good next targets: anything
-called from `Boot_And_MainLoop`'s per-channel loop that we haven't opened yet, and the
-large unexplored block around 0x06035000-0x06039000 (function density suggests this is
-game logic, not more library/driver code).
+tracked as ongoing tasks rather than attempted in one pass.
+
+**Correction**: the block around 0x06035000-0x06039000 is NOT game logic — checked three
+functions there (`FUN_06035102`, `FUN_060351ac`, `FUN_06035138`) and they're CD-ROM/file
+driver code (busy-wait loops on status bits, classic CDC-style polling). Don't prioritize
+that range for "game logic" hunting.
+
+**Better lead found: search by string, not by address.** `list_strings` turned up
+game-specific text instead of library boilerplate:
+
+- `SHINOBI.PPB` / `DIRECTOR.PPB` (0x0600edcc/0600edd8) — custom data files with a
+  game-specific `.PPB` extension (not seen in the ISO listing under those exact names —
+  likely embedded/packed, or on a subdirectory not yet checked). **`DIRECTOR.PPB` is
+  loaded very early at boot** by `Load_DirectorPPB` (was `FUN_06004eac`) — confirmed via
+  decompile, it's a retry-loop file read call `(1,1,0,0xffffffff,buffer,"DIRECTOR.PPB")`
+  matching a standard Sega file-load signature. Called directly from
+  `Boot_And_MainLoop` and also from `FUN_060042b8` (the function tentatively identified
+  earlier as "pad/SMPC read" — that guess may need revisiting, since it also triggers
+  this file load; could be a more general "boot phase 2" gate rather than pad-specific).
+  `SHINOBI.PPB`'s only reference so far is inside `Load_DirectorPPB`'s own function
+  body area (no separate loader found yet — worth another look).
+- `"Hi! Come come everybody."` / `"Guu... I'm sleepinggguuu..."` (0x0600f2c4/f2e0) —
+  attract-mode/idle flavor text (classic "get bored and taunt the player" pattern).
+  Traced one level up: pointer table entry at `0600ab48` is written by
+  `Idle_InitMessageSystem` (was `FUN_0600aaa4`), which zeroes a cluster of state globals
+  and calls a couple of sub-inits. That in turn is called from `FUN_060096bc` — looks
+  like a mode-table entry function (single global reset + one indirect call, returns 1)
+  — plausibly "on enter idle/attract mode". Not fully confirmed; good place to resume.
+- `` `$ver1.28 94/12/29SATURN(S) master` `` (0x06010326) — a Sega internal library
+  version tag (standard `$ver` convention). Identifies a specific linked library
+  component dated 1994-12-29, version 1.28 — worth a web search against known SGL/BIOS
+  library version histories to pin down exactly which library this is.
+- `"Cpk system is not initialized."` (0x06014444) — confirms Sega's Cinepak (CPK) video
+  library is linked in, matching the `.CPK` files on the disc (opening/ending/demo FMVs).
+
+**Next concrete steps**: (1) find `SHINOBI.PPB`'s loader — checked, it has **zero code
+xrefs** in A.BIN, so it's either loaded data-driven from inside `DIRECTOR.PPB` itself
+(not visible to static analysis of A.BIN) or unused in this build; (2) figure out what
+`.PPB` actually contains; (3) confirm the idle/attract mode table hypothesis by finding
+sibling entries near `FUN_060096bc`.
+
+### Correction: `FUN_060042b8` is not pad/SMPC input — it's the stage reset handler
+
+Re-examined with a clean decompile now that `Snd_CmdStopAll`/`Load_DirectorPPB` show up
+by name in the disassembly (nice side benefit of renaming as we go — xrefs get more
+readable). **Renamed to `Stage_ResetAndLoadDirector`.** It's a 3-way branch on a status
+check (peripheral/CD ready, via `PTR_DAT_06004304`); the "not ready" and "special"
+branches just bail or tail-call elsewhere, but the default path does a full stage
+teardown: disable SCU DMA (writes to `SCU_D1EN` again), mask+write the **VDP2 `TVMD`
+register** (`PTR_VDP2_TVMD_060043cc` — Ghidra auto-labeled this; TVMD = TV Mode, the
+display-resolution/interlace register), call ~7 unidentified reset function pointers,
+`Snd_CmdStopAll()`, then **reload `DIRECTOR.PPB`** and reset a handful of state globals.
+This means `DIRECTOR.PPB` isn't just a one-time boot load — it's **reloaded on every
+stage transition**, which fits "DIRECTOR" being per-stage script/event data rather than
+a one-off global config file. The earlier "pad/SMPC read" guess was wrong; retracting it.
