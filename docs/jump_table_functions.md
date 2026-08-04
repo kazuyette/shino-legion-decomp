@@ -416,3 +416,35 @@ program with base address `0x06040000` (same Saturn SH-2 loader settings) and
 start the same rename/trace workflow there — this is likely where most of the
 actual "Shinobi Legions gameplay" logic will be found, as opposed to `A.BIN`'s
 mostly-SGL-plumbing content.
+
+### `DIRECTOR.PPB` imported into Ghidra (2026-08-05)
+
+Raw Binary import (SH-2 big-endian, base `0x06040000`) worked, but needed a
+manual kickstart: Ghidra's analyzers can't seed themselves on a raw binary with
+no entry symbol, so nothing was disassembled until we manually selected the
+whole range and disassembled it, then ran Auto Analyze. After that: **476
+functions found** (`FUN_06040000` through `FUN_0604a541` and beyond).
+
+**Likely 6-byte file header, found by comparing both `.PPB` files:**
+
+```
+DIRECTOR.PPB:  8002 3ED5 FFFF | 2FE6 4F22 7FDC DE1E ...
+SHINOBI.PPB:   8005 5155 FFFF | 4F22 D416 6041 A00E ...
+                              ^ real SH-2 code starts here (offset +6)
+```
+
+Both files independently show the same shape: 2 header words, then an `FFFF`
+sentinel, then valid code (a real function prologue: `MOV.L Rn,@-R15` /
+`STS.L PR,@-R15`). This broke Ghidra's linear disassembly at exactly
+`FUN_06040000` (decompile shows "bad instruction data" after ~4 bytes) — the
+auto-disassemble pass started at file offset 0 and didn't know to skip the
+header. **Fix needed**: manually `Create Function` at `0x06040006` (offset +6)
+to get a clean decompile of the real entry point.
+
+**Open question**: `Boot_And_MainLoop` calls exactly `0x06040000` (confirmed via
+literal pool xref), not `+6` — so either something else patches the jump-table
+cell to the post-header address after `Load_DirectorPPB` runs (not yet traced),
+or the header bytes are themselves meant to be executed/skipped via a different
+mechanism (e.g. the first header word might actually BE a valid branch
+instruction we haven't decoded correctly). Worth re-checking once the function
+at `+6` is cleanly decompiled and its prologue confirmed.
