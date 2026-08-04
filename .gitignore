@@ -1,0 +1,6 @@
+﻿*.bin
+*.cue
+*.iso
+extracted/
+ghidra_12.1.2_PUBLIC/
+shinolegions/

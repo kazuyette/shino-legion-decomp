@@ -1,0 +1,151 @@
+# The 10 entries of the boot jump table @ 0x06004118
+
+Quick pass over each target (see `docs/entry_point_notes.md` for the table itself).
+Use `tools/sh2dis.py A.BIN <file_offset> <len>` to reproduce/extend any of these.
+
+| addr       | verdict |
+|------------|---------|
+| 0x06004418 | real code — init routine, calls one BIOS/SGL trampoline (`JSR @R13` after loading it via `MOV.L @(d,PC)`) then does register/memory setup. Small, looks like a "wait for ready flag" loop (`BF` back-branch). |
+| 0x06005130 | **BIOS/SGL call trampoline**, see `entry_point_notes.md` — dispatches through a fixed low-RAM vector at 0x06000344, args (R4,R5) vary per call site. This IS the callable "vector" itself, i.e. table entries may just be *thin wrappers*, not the real logic. |
+| 0x0602A8C4 | real code — small dispatcher: loads 3 pointers, then a chain of `BRA`s into a block around 0x602A9xx that looks like a jump-table/switch (repeated `MOV #imm,R0` followed by `BRA` to the same landing spot 0x602A9C6 — classic "set result code, jump to common return" pattern). Likely an event/command dispatcher. |
+| 0x0602A894 | real code — tiny: load a 16-bit flag via a pointer, test it, branch, either clear or return a value. Looks like a "get status flag" accessor. |
+| 0x0602A8A8 | real code — same shape as above, one branch fewer: load a 16-bit flag, `TST`, return 0 or 1 in R3. Looks like a boolean predicate ("is X ready/done"). Sits right before 0x0602A8C4 in the file — these three are a small cluster of related accessor functions. |
+| 0x06029B40 | real code — pushes R8–R14 + PR (`STS.L PR,@-R15`), allocates a 20-byte stack frame, loads a stack arg (`MOV.W @R15,R11`) then does `R11 <<= 14` (`SHLL8`+`SHLL2`×3) and `AND`s it with a mask — classic "shift a small field into its bit position within a hardware register value" idiom. Consistent with building a VDP1/VDP2 register value from a caller-supplied parameter. `sh2dis.py` now decodes the SH-2 shift/rotate class (`SHLL/SHLR/SHAL/SHAR/ROTL/ROTR/DT/STS.L PR`, etc.), added this session. |
+| 0x0602524C | **not code** — 32+ bytes of literal `0x0000`. This is a data pointer (buffer address), not a function pointer, despite living in the "jump table". Likely a workspace/state buffer passed to one of the other init calls. |
+| 0x06005840 | real code — five `JSR` calls through the same function pointer (R14, loaded once from 0x6005944) with descending bitmask args (4, 8, 16, 32) and descending priority args (4, 3, 2, 1), preceded by one `JSR @R3` (different function, arg R5=5). Shape matches "for each of N channels/units: init(mask, priority)" — plausible candidate for SCU DMA channel setup or SGL sprite/queue priority init. |
+| 0x060057F0 | real code — calls a function then writes the 16-bit constants **0x00DF and 0x013F** (223 and 319 — i.e. 224×320 minus one) into two literal-pool slots, then two more `JSR`s and a tail-call (`JMP @R3`). 320×224 is the standard Saturn/NTSC display resolution, so **this is very likely the VDP2 display-resolution init call** — strong anchor point for finding the graphics init sequence. |
+| 0x06005B0A | real code — no function-pointer calls, just writes zero (R4=0) into a struct at offsets 16/32/48/64/80/96/112 through several base registers (R5,R6,R3,R7 each incremented and used as `@Rn`). Looks like zeroing a fixed-size state/control-block struct — an object constructor, not a BIOS call. |
+
+## Working theory
+
+This table is a **subsystem init dispatch table** called once at boot (likely by the
+loop hinted at 0x0600401C region, still needs to be traced): clear-BSS → load R11-R14
+literal pool region (SAME range as this table, worth double-checking they're not the
+same 4 of the 10) → walk the 10 entries, calling each with no/default args. Mix of
+real BIOS trampolines (entry 2), struct zeroing (entry 9), and what's likely VDP2
+resolution setup (entry 8) is consistent with a generic "engine boot: for each
+subsystem, run its init()" table — exactly the shape you'd expect from a Saturn
+game linked against SGL, where `SGL_INIT`-style code sets up VDP1/VDP2/SCU/SCSP one
+at a time.
+
+## Next concrete step
+
+Disassemble 0x06029B40 properly — needs `sh2dis.py` extended with the SH-2 shift/rotate
+instruction class (opcodes `4nXX` where XX ∈ {00,01,08,09,0A,0B,...}: `SHLL`, `SHLR`,
+`SHAL`, `SHAR`, `ROTL`, `ROTR`, `DT`, etc.) since several `.word`s in that function are
+almost certainly shifts, not junk.
+
+## Ghidra MCP now connected (2026-08-04)
+
+GhidraMCP (LaurieWired/GhidraMCP 1.4 plugin + bridge) is wired up and working, giving
+direct `decompile_function_by_address` / `get_current_function` / xref tools instead of
+hand disassembly. Use this from now on for anything beyond a quick spot-check.
+
+Notable gotcha for future setup on this machine: `pip install mcp` now defaults to the
+v2.0.0 SDK (major rewrite, released 2026-07-28) which dropped `mcp.server.fastmcp` —
+`bridge_mcp_ghidra.py` needs the old v1.x API, so the fix was pinning
+`pip install "mcp[cli]<2"` on the specific Python interpreter the MCP config actually
+invokes (there were 3 Pythons on PATH; had to match the one Claude's config launches).
+
+## FUN_06004038 is the real boot+main-loop function
+
+Decompiled via Ghidra (not just disassembly): `FUN_06004038` runs the full init sequence
+(walking well past the 10-entry table above, up to ~0x4194, then writing directly into
+recognized hardware registers — Ghidra auto-labeled `SCU_D1EN` at 0x0600415c, confirming
+SCU DMA channel 1/2 are disabled here as part of SGL-style boot) and then drops into an
+infinite `do { ... } while(true)` — this is the per-VBlank main loop, not a one-shot
+init walker. Inside the loop it re-calls table entries 0 (0x0602A8C4, dispatcher),
+1 (0x0602A894, per-channel flag accessor, called with masks 4/8/0x10/0x20 = 4 channels),
+2 (0x0602A8A8, "commit"/flush, no args) and 3 (0x06029B40, builds a register value from
+a shifted parameter) once per channel, operating on 4 channel-descriptor structs 0x10
+bytes apart at `PTR_DAT_06004288`.
+
+Two more calls happen every frame after the channel processing, straight function calls
+(not through the table):
+
+- **`FUN_06007084`** — re-read via the Ghidra decompiler (much clearer than the hand
+  disassembly). It's a **3-state hardware-request sequencer**, state var at
+  `DAT_0600711c` (renamed from the earlier guess `DAT_0602510c` — that was this same
+  variable, just a different symbol name than first assumed):
+  - **state 0 (idle)**: if a request flag (`DAT_06007128`) is set and no request is
+    already active (`DAT_06007124 == 0`), latch the request — copy the flag into the
+    "active" slot, copy a 4-byte parameter pair from `DAT_0600712c` into `DAT_06007130`,
+    clear the request flag. Pure "accept a new request" transition, no state change yet
+    (state advances via `DAT_0602510c`/next-state byte set elsewhere).
+  - **state 1 (busy-A)**: polls `FUN_06007960(param)` — when it returns nonzero (done),
+    decrements a retry/repeat counter, jumps to the next queued state (a byte stashed
+    at `DAT_06007120`), and fires a completion call `FUN_060077a4(DAT_06007138)`.
+  - **state 2 (busy-B)**: calls a kickoff function `PTR_FUN_06007140()` every time
+    through, then polls `FUN_06007a5e(param)` — same completion pattern as state 1 on
+    success.
+  - Always calls `FUN_0600718a()` first (gate/toggle, see below) and `FUN_060078ec()`
+    last (a shared "tick" call, likely display-list flush based on where else it's used).
+
+  This is the shape of a generic **request → poll-until-done → chain to next state**
+  driver wrapper — used for some one-shot hardware operation that takes multiple frames
+  to complete (issue, then poll each frame until acknowledged). `FUN_06007a5e` is reused
+  by `FUN_0600718a` too (see below), so it's a shared low-level "is operation X done"
+  poll, not specific to this one call site. Not yet pinned to a specific subsystem
+  (screen transition and CD-block command are both still plausible); the VDP1/VDP2
+  angle is slightly favored since `FUN_060078ec` (the closing tick call) is also reached
+  as a tail-call from the boot table's channel-processing context.
+
+  `FUN_0600718a` (the gate, called from the top of `FUN_06007084`): reads a flags word
+  at `DAT_060071b4`. Bit0 = "enabled/requested" (must be set or the whole function is a
+  no-op). If bit2 is also set, it just clears bit2 and exits (one frame's grace/defer).
+  Otherwise it clears bit0 (self-disarming — this only fires once per request) and, if
+  two other conditions are clear (`DAT_06007240 == 0` and `DAT_0600723c == 0`), calls
+  `FUN_060077a4(DAT_06007244)` then polls `FUN_06007a5e(DAT_06007250)` — **and toggles
+  bit1 of the same flags word based on the poll result** (sets it if it was clear,
+  clears it if it was set). Bit1 acting as a flip-flop toggled on successful poll is a
+  strong signature of a **buffer-swap acknowledgement** (e.g. "which VDP1 frame buffer
+  is currently displayed" flag) — this is the best lead so far for what subsystem
+  `FUN_06007084`/`FUN_0600718a` actually drive.
+
+- **`FUN_0600863e`** — confirmed via Ghidra decompile: **the per-frame SCSP (sound)
+  channel scheduler.** Iterates up to 8 channel slots (12 bytes each, in an array at
+  `PTR_DAT_060086e0`/`...d8`/`...dc`), reads a per-slot state field (0/1/2/3) and
+  dispatches: 0 = stop-channel busy-wait, 1 = reset volume (`0x7f,0`), 2 = set
+  volume/pan from slot data, 3 = trigger a new note/sample via `PTR_FUN_0600897c`. Has
+  an early-exit branch to a completely different handler `FUN_06008c08` when a flag at
+  `PTR_PTR_060086e4` is set.
+
+### Sound engine, fully traced (2026-08-04, via Ghidra decompiler)
+
+- **`FUN_06008c08`** (the early-exit alt path): not a CD-DA/PCM switch as guessed — it's
+  a **"stop/find matching channels" command processor**. Mode flag at `*PTR_PTR_06008cb8`:
+  mode 1 scans all 8 channel slots for one whose ID field equals `DAT_06008caa` and calls
+  `PTR_FUN_06008cbc(slot)` on each match (search-by-sound-ID); mode 2 does the same but
+  matches a different field against `DAT_06008cac` via `PTR_FUN_06008cc0(slot)`
+  (search-by-group/priority, probably "stop all sounds in category X"). Always calls
+  `PTR_FUN_06008cb4()` first (unconditional per-call poll/housekeeping). Resets the mode
+  flag to 0 once no more matches are found — so this runs for a few frames after a
+  "stop matching sounds" request until it's fully drained.
+
+- **`FUN_06030a82`** (target of `PTR_FUN_0600897c`, the "trigger new note" call from the
+  state-3 case above): takes 4 byte params (channel/note/volume/pan or similar). Checks
+  queue space via `FUN_060314fe()`; if no room, returns 1 (busy/dropped). If there's
+  room, writes the 4 params into offsets +2..+5 of the queue slot pointed to by
+  `*PTR_DAT_06030b20`, and writes a command-tag constant (`DAT_06030b1e`) into the first
+  2 bytes — classic **producer side of a command queue**, not a direct hardware write.
+
+- **`FUN_060314fe`** (the queue-space check): confirms a genuine **ring buffer**: base
+  pointer `PTR_DAT_06031558`, write cursor `PTR_DAT_0603155c`, entries are **0x10 (16)
+  bytes** each, buffer holds **0x70/0x10 = 7 entries**. Advances the cursor past
+  occupied (non-zero tag) slots up to the 7-entry limit; returns 0 (room available) or 1
+  (full). This is a 7-deep sound-command queue — game code pushes "play"/"stop" commands
+  into it every frame via the functions above.
+
+- **Consumer search, dead end inside A.BIN**: checked Ghidra xrefs to both the ring
+  buffer globals (`06031558`/`0603155c`) and the actual write-target pointer used by the
+  producers (`06030b20`) — the only other reader is `FUN_06030a1a`, which turns out to be
+  a third producer (pushes a no-param command, tag `DAT_06030b1a` — likely "stop"/"pause",
+  vs. `FUN_06030a82`'s "play note" tag `DAT_06030b1e`). **No code in A.BIN drains this
+  queue.** Strong conclusion: the Saturn's SCSP has its own onboard Motorola 68000
+  running a separate sound driver program uploaded into sound RAM — that M68K driver is
+  the actual consumer, and it isn't part of A.BIN at all (different CPU, different
+  binary, probably uploaded via DMA from an `.SND`/`.PCM` file on the disc, or embedded
+  and copied out at boot). To go further here you'd need to: (1) find the DMA/upload
+  code in A.BIN that copies a driver blob to SCSP sound RAM (search for writes to the
+  SCSP sound-RAM address range), and (2) disassemble that blob as M68K, not SH-2 — a
+  different tool entirely. Marking the SH-2-side sound investigation as complete for now.
