@@ -149,3 +149,55 @@ Two more calls happen every frame after the channel processing, straight functio
   code in A.BIN that copies a driver blob to SCSP sound RAM (search for writes to the
   SCSP sound-RAM address range), and (2) disassemble that blob as M68K, not SH-2 — a
   different tool entirely. Marking the SH-2-side sound investigation as complete for now.
+
+## Ghidra project renames (2026-08-04, GhidraMCP direct)
+
+With GhidraMCP connected, functions are now renamed directly in the Ghidra project
+database (`shinolegions/` — gitignored, not in this repo, lives only on the machine
+running Ghidra) rather than just described here. Current renames, all confirmed via
+decompilation:
+
+| old name | new name | why |
+|---|---|---|
+| `FUN_06004038` | `Boot_And_MainLoop` | boot init sequence + the per-VBlank main loop, see above |
+| `FUN_0600863e` | `Snd_ChannelScheduler` | 8-channel SCSP scheduler |
+| `FUN_06008c08` | `Snd_StopMatchingChannels` | stop-by-ID / stop-by-group command processor |
+| `FUN_06030a1a` | `Snd_CmdStopAll` | no-param queue command, tag `DAT_06030b1a` |
+| `FUN_06030a82` | `Snd_CmdPlayNote` | 4-param (ch/note/vol/pan) queue command, tag `DAT_06030b1e` |
+| `FUN_06030b24` | `Snd_CmdSetParamA` | 1-param queue command, tag `DAT_06030bd6` — exact meaning TBD |
+| `FUN_06030b92` | `Snd_CmdSetParamB` | 1-param queue command, tag `DAT_06030c76` — exact meaning TBD |
+| `FUN_06030c08` | `Snd_CmdSetParamC` | 1-param queue command, tag `DAT_06030c7a` — exact meaning TBD |
+| `FUN_06030c80` | `Snd_CmdSetParam3` | 3-param queue command — exact meaning TBD |
+| `FUN_060314fe` | `Snd_QueueHasSpace` | ring-buffer space check shared by all `Snd_Cmd*` producers |
+| `FUN_06031388` | `Snd_LookupSfxDef` | index → (masked word, byte) table lookup, likely SFX definition fetch |
+| `FUN_06009370` | `Sys_MemCopy` | generic byte-copy loop (corrects earlier "enqueue" guess from hand-disassembly — it's just memcpy, used to stage args on the stack before calls) |
+
+### New cluster: object/sprite transform dispatcher (0x0602a900-ish region)
+
+- **`Obj_SetTransformParam`** (was `FUN_0602a8c4`) — dispatcher taking 3 params, branches
+  on a mode value read from `PTR_DAT_0602a970` (seen values: 1, 2, 4, 8, 0x10, 0x20 —
+  bitflag-shaped). Each mode writes the two data params into different offsets of one of
+  three structs (`0602a974`, `0602a988`, `0602a96c` — the first two have fields at
+  +0x44/+0x48, suggesting fairly large ~0x50+ byte control blocks). Modes 1/2 also have
+  extra gating logic and can fire a callback (`PTR_FUN_0602a984`/`PTR_FUN_0602aa30`).
+  Working theory: generic "set field N of object/sprite M" — matches the shape of an
+  SGL-style transform setter (position/rotation/scale channels selected by mode bit).
+- **`Obj_SetReadyFlag`** (was `FUN_0602a8a8`) — trivial: if flag at `0602a8bc` is 0, set
+  it to 1.
+- **`Obj_ConsumeFlagAndStore`** (was `FUN_0602a894`) — takes a param; if the same flag is
+  1, clears it to 0; unconditionally stores the param into `0602a8c0`. Shape suggests a
+  producer/consumer handshake with `Obj_SetReadyFlag` (one raises, the other
+  acknowledges-and-stores), but the two aren't called from the same place we've traced
+  yet — still needs a caller to confirm the pairing.
+- **Next step**: find what writes `PTR_DAT_0602a970` (the mode selector) to see how modes
+  get chosen, and what calls `Obj_SetTransformParam` to see which frame/object data
+  actually flows through it — see task list for continuation plan.
+
+## Status (2026-08-04)
+
+529 functions total in A.BIN per Ghidra's auto-analysis. ~18 identified and renamed so
+far (this file + the boot table + the two clusters above). Remaining scope is large;
+tracked as ongoing tasks rather than attempted in one pass. Good next targets: anything
+called from `Boot_And_MainLoop`'s per-channel loop that we haven't opened yet, and the
+large unexplored block around 0x06035000-0x06039000 (function density suggests this is
+game logic, not more library/driver code).
