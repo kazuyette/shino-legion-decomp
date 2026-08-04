@@ -263,10 +263,42 @@ that `Stage_ResetAndLoadDirector` fires on every stage transition:
 | 0x06005bb4 | *(not renamed)* | trivial: mask one flag, set another to 1 |
 | 0x060048d8 | `Res_CloseIfOpen` | poll-close-then-free a resource handle |
 | 0x0602ccc4 | `Sys_SignalStopAndWaitAck` | signal + busy-wait on two ack flags — possible master/slave SH-2 sync |
-| 0x06008cc4 | `Snd_ResetOnStageChange` | indirect call + clear flag |
+| 0x06008cc4 | `Mode_EnterIdle` | *(corrected below — not sound-related)* |
 | 0x06007bac | `Reset_ObjectAndChannelTables` | zero a 17×12-byte array and set an 8×8-byte array to 0xffff (matches 8 SCSP channels) |
 | 0x06006f56 | `Obj_InitLinkedLists` | init two list-head pointers to a shared sentinel node |
 
 (The other two targets, 0x06004418/`06004e10`, were already identified earlier.)
 
-**Running total: 26 functions renamed out of 529.**
+**Correction**: `0x06008cc4` was first named `Snd_ResetOnStageChange` on the assumption it
+was sound-related (it sits near the sound cluster addresses). Traced further: it just
+calls a fixed function pointer (`PTR_FUN_06008cec`, a literal pool constant, not a
+runtime-changeable mode variable) then clears an unrelated 16-bit flag. That pointer
+target is `0x060096bc` — zeroes a global and calls `Idle_InitMessageSystem` — matching
+the earlier "mode-table entry" hypothesis for idle/attract mode from `FUN_060096bc`.
+Renamed: `0x06008cc4` → **`Mode_EnterIdle`**, `0x060096bc` → **`Idle_ModeTableEntry`**.
+So `Stage_ResetAndLoadDirector` resetting to idle mode on every stage transition is a bit
+odd — worth revisiting whether it's really called on *every* transition or only specific
+ones (e.g. death/game-over → back to attract mode), since the earlier read was "every
+stage teardown does this unconditionally."
+
+**Running total: 27 functions renamed out of 529.**
+
+### `Idle_InitMessageSystem`'s sub-inits, resolved — new "message system" cluster
+
+Traced the 5 calls inside `Idle_InitMessageSystem` (2 direct, 3 indirect via
+literal-pool pointers):
+
+| target | renamed to | what it does |
+|---|---|---|
+| 0x0600c700 | `Msg_ResetState` | mask a flag byte to state 2, zero a dword + a word |
+| 0x0600d2d8 | `Msg_InitSlotPool` | inits two parallel arrays (32-slot + dynamic-count) with index-chain + capacity marker (0x1f) — looks like a free-list/slot allocator, plausibly the attract-mode text message pool |
+| 0x0600d010 | `Sys_StrCopy` | strcpy: byte-by-byte with null check, aligned fast path via a separate pointer — generic runtime helper, not message-specific despite being called here |
+| 0x0600aa38 | `Idle_ClearMsgState` | zeroes 3 globals |
+| 0x0600aa8e | `Idle_NoOpHook` | empty function body (just `return`) — likely an unused extension point |
+
+Fits the "attract-mode message/taunt system" hypothesis from the `"Hi! Come come
+everybody."` string cluster — `Msg_InitSlotPool` shape (32 slots, index chains)
+matches a rotating-message queue. Next: find what writes into the slots
+`Msg_InitSlotPool` sets up, to confirm and locate the actual message strings/table.
+
+**Running total: 32 functions renamed out of 529.**
