@@ -302,3 +302,52 @@ matches a rotating-message queue. Next: find what writes into the slots
 `Msg_InitSlotPool` sets up, to confirm and locate the actual message strings/table.
 
 **Running total: 32 functions renamed out of 529.**
+
+Checked `Sys_StrCopy`'s other callers: also used by `FUN_060356b8`, the ISO9660
+directory-entry parser in the CD driver cluster (already deprioritized — confirms
+`Sys_StrCopy` is a generic runtime helper, not part of the message system).
+`Msg_InitSlotPool`'s slot arrays have no other static xrefs (likely indexed via
+register-relative addressing Ghidra doesn't resolve statically) — dead end for now.
+
+### Big find: the real per-frame main loop body, decoded
+
+`Boot_And_MainLoop`'s `do { ... } while(true)` loop — the actual per-VBlank game
+loop — is now fully visible in the decompile. Per iteration:
+
+1. `Sys_SignalStopAndWaitAck()`
+2. `Stage_ResetAndLoadDirector()`
+3. Four still-unnamed calls: `FUN_06004290`, `FUN_06004294`, `FUN_06004298(1)`,
+   `FUN_0600429c` — not yet traced, good next targets.
+4. A self-referential store+call at `060042a0` (stores its own function pointer
+   into a global then immediately calls it — odd pattern, maybe a "first frame
+   only" self-disabling init, worth a closer look) then `FUN_060042a8`.
+5. **The object-processing block, 4x repeated for "slots" identified by mode bits
+   4/8/0x10/0x20** (same mode constants as `Obj_SetTransformParam`'s dispatch):
+   - `Gfx_PackSpriteAttrByMode(mode, data_ptr)` — was `FUN_06029b40`, confirmed:
+     mode-dispatched (1/2/4/8/0x10/0x20) bitfield packer building what looks like
+     VDP1 command-table-shaped words (color mode, flip, size fields packed with
+     shifts/masks matching VDP1's `CMDPMOD` bit layout) — this is very likely SGL's
+     internal sprite/texture attribute setter, not top-level game logic.
+   - `Obj_ConsumeFlagAndStore(mode)` — called with the same mode constant right
+     before `Obj_SetTransformParam`, strongly suggesting **this is what feeds the
+     mode selector `Obj_SetTransformParam` reads** (previous notes had the selector
+     at `PTR_DAT_0602a970`; `Obj_ConsumeFlagAndStore` stores its param at `0602a8c0`
+     — need to re-check whether these are actually the same cell before concluding,
+     addresses looked different on first read).
+   - `Obj_SetTransformParam(data_a, data_b, 0)` — confirms it's a 3-arg call, args
+     come from a struct array (`PTR_DAT_06004288`, offsets 0/0x14/0x24/0x34 across
+     the 4 slots) rather than a literal mode parameter.
+   - For slots 1-2 (mode 4, 8) only: `FUN_060042ac(extra_c, extra_d)` — extra step
+     slots 3-4 (mode 0x10, 0x20) skip, suggesting slots 1-2 are a different/more
+     complex object type than 3-4 (maybe player + weapon vs. two simpler layers).
+   - `Obj_SetReadyFlag()` closes out each slot.
+6. `FUN_060042b0()`, then `Snd_ChannelScheduler()` at the very end.
+
+**Working theory**: 4 fixed "slots" get updated every frame — plausibly the
+player sprite, a linked sub-object (weapon/shadow?), and two simpler layers
+(background parallax? UI?). Matches a Saturn action game's typical fixed sprite
+budget for hand-authored (non-dynamic-list) objects. Next steps: identify
+`FUN_06004290/94/98/9c/a8/ac/b0` (7 more per-frame calls) and confirm the
+`Obj_ConsumeFlagAndStore` → `Obj_SetTransformParam` mode-cell link.
+
+**Running total: 33 functions renamed out of 529.**
