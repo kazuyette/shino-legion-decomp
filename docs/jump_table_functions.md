@@ -351,3 +351,38 @@ budget for hand-authored (non-dynamic-list) objects. Next steps: identify
 `Obj_ConsumeFlagAndStore` → `Obj_SetTransformParam` mode-cell link.
 
 **Running total: 33 functions renamed out of 529.**
+
+### Major find: stage code is likely a dynamically-loaded overlay at 0x06040000
+
+Resolved the remaining per-frame calls from `Boot_And_MainLoop`:
+
+| target | renamed to / verdict |
+|---|---|
+| 0x0600446a | `Evt_ProcessQueue` — iterates a counted array of 0x20-byte entries, dispatches on a type field (1/2/3) to 3 handler functions, resets count to 0 after. Generic command/event queue processor. |
+| 0x06004e1c | `Evt_ProcessSingleCommand` — same shape but single-slot (type check ==1, one handler call, clear flag). |
+| 0x060288a8 | *(not renamed — SGL-internals territory, see below)* |
+| 0x06005f4c | *(not renamed)* builds 4 fixed-size records and submits each to a different function pointer — possibly HUD/window registration, too speculative to name yet. |
+| **0x06040000** | **no static code here** — Ghidra decompiles it as `halt_baddata()`. |
+
+**The `060042a0` call is the important one**: `Boot_And_MainLoop` stores the literal
+constant `0x06040000` into a fixed RAM cell (`*0x060145fc = 0x06040000`) and then
+*calls through it*, every single frame. 0x06040000 is exactly the byte right after
+A.BIN's declared max size (`0x06004000 + 0x3C000 = 0x06040000`) — i.e., free work
+RAM immediately following the loaded executable, with no static code there.
+
+**Working hypothesis**: stage-specific logic isn't in A.BIN at all — it's loaded
+at runtime into this RAM region and executed from there. This would explain both
+open mysteries at once: why `DIRECTOR.PPB` gets reloaded on every single stage
+transition (`Stage_ResetAndLoadDirector`), and why `SHINOBI.PPB` has zero code
+xrefs in A.BIN (it's not called *from* A.BIN — it likely *is* the code that runs
+*after* being loaded). Need to confirm the actual load address `Load_DirectorPPB`
+writes to matches `0x06040000` (not yet checked), then dump `DIRECTOR.PPB`/
+`SHINOBI.PPB` from the disc and disassemble as raw SH-2 code as a next session's
+priority — this could be a bigger unlock than any single function rename so far.
+
+**Also noted**: `0x0602894c` and `0x0602ab1c` (the other two slot-processing
+helpers near `Gfx_PackSpriteAttrByMode`) build VDP1-command-table-shaped entries
+(command-type tags 4/10, `0x20`-byte records) into count-tracked arrays — this
+whole `0x06028000-0x0602c000` region looks like **SGL library internals** (the
+3D/2D command-list builder), same as the CD driver at `0x06035000` — deprioritize
+for "game logic" hunting, same reasoning as before.
