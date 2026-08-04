@@ -448,3 +448,16 @@ or the header bytes are themselves meant to be executed/skipped via a different
 mechanism (e.g. the first header word might actually BE a valid branch
 instruction we haven't decoded correctly). Worth re-checking once the function
 at `+6` is cleanly decompiled and its prologue confirmed.
+
+**Confirmed**: created the function manually at `0x06040006` — clean decompile,
+matches the hand-disassembled shape exactly. **Renamed to `Director_EntryDispatch`.**
+Reads a state value via a PC-relative pointer (`@0x6040088`), then branches
+across 8 cases (0-7) to different handler blocks (`0x06040018`, `0x06040020`,
+`0x06040040`, `0x06040084`, `0x0604004a`, `0x06040050`, `0x06040056`,
+`0x0604005c`) — a genuine per-frame state-machine dispatcher for the director
+script. The `+0` vs `+6` question is still open (not yet re-checked), but doesn't
+block further work — this is clearly the real entry logic either way.
+
+**Running total for DIRECTOR.PPB: 1 function renamed out of 476** (separate
+counter from A.BIN's 529 — two different programs in the same Ghidra project
+now).
