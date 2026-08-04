@@ -386,3 +386,33 @@ helpers near `Gfx_PackSpriteAttrByMode`) build VDP1-command-table-shaped entries
 whole `0x06028000-0x0602c000` region looks like **SGL library internals** (the
 3D/2D command-list builder), same as the CD driver at `0x06035000` — deprioritize
 for "game logic" hunting, same reasoning as before.
+
+### CONFIRMED: `DIRECTOR.PPB` is a dynamically-loaded SH-2 code overlay
+
+Checked `Load_DirectorPPB`'s actual file-read call: buffer arg resolves to literal
+`0x06040000` — **exactly** the address `Boot_And_MainLoop` jumps into every frame.
+Extracted `DIRECTOR.PPB` (248400 bytes) and `SHINOBI.PPB` (492976 bytes) directly
+from `extracted/track1.iso` via `pycdlib` (both are top-level files on the disc,
+listed as `DIRECTOR.PPB;1` / `SHINOBI.PPB;1` in `docs/file_listing.txt`) and
+disassembled the first 128 bytes of `DIRECTOR.PPB` at base `0x06040000` with
+`tools/sh2dis.py`:
+
+- Starts with a textbook function prologue: `STS.L PR,@-R15` / `ADD #-36,R15`
+  (push return address, allocate a 36-byte stack frame).
+- Immediately followed by a state-read + branch-table dispatch: loads a value via
+  `R14` (PC-relative pointer), then a chain of `CMP/EQ`+`BT` pairs branching to
+  different handlers — the classic shape of a **stage/director script state
+  machine** (read current state, dispatch to per-state handler).
+
+This is **not garbage/data** — it's confirmed executable SH-2 code, matching the
+hypothesis exactly. `DIRECTOR.PPB` (and presumably `SHINOBI.PPB`, same mechanism)
+are runtime-loaded overlays containing the actual stage/game logic, which is why
+none of it was findable by grepping A.BIN — **it was never there**.
+
+**This changes the shape of the whole project**: `A.BIN` alone is the boot
+loader + hardware/SGL plumbing; the real gameplay code lives in these `.PPB`
+overlays. Next session priority: load `DIRECTOR.PPB` into Ghidra as a second
+program with base address `0x06040000` (same Saturn SH-2 loader settings) and
+start the same rename/trace workflow there — this is likely where most of the
+actual "Shinobi Legions gameplay" logic will be found, as opposed to `A.BIN`'s
+mostly-SGL-plumbing content.
