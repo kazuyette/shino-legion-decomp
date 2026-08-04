@@ -252,3 +252,21 @@ display-resolution/interlace register), call ~7 unidentified reset function poin
 This means `DIRECTOR.PPB` isn't just a one-time boot load — it's **reloaded on every
 stage transition**, which fits "DIRECTOR" being per-stage script/event data rather than
 a one-off global config file. The earlier "pad/SMPC read" guess was wrong; retracting it.
+
+### The ~7 reset callbacks from `Stage_ResetAndLoadDirector`, resolved
+
+Followed the 7 unidentified function-pointer calls (xrefs from 0x060043c0-0x060043ec)
+that `Stage_ResetAndLoadDirector` fires on every stage transition:
+
+| target | renamed to | what it does |
+|---|---|---|
+| 0x06005bb4 | *(not renamed)* | trivial: mask one flag, set another to 1 |
+| 0x060048d8 | `Res_CloseIfOpen` | poll-close-then-free a resource handle |
+| 0x0602ccc4 | `Sys_SignalStopAndWaitAck` | signal + busy-wait on two ack flags — possible master/slave SH-2 sync |
+| 0x06008cc4 | `Snd_ResetOnStageChange` | indirect call + clear flag |
+| 0x06007bac | `Reset_ObjectAndChannelTables` | zero a 17×12-byte array and set an 8×8-byte array to 0xffff (matches 8 SCSP channels) |
+| 0x06006f56 | `Obj_InitLinkedLists` | init two list-head pointers to a shared sentinel node |
+
+(The other two targets, 0x06004418/`06004e10`, were already identified earlier.)
+
+**Running total: 26 functions renamed out of 529.**
