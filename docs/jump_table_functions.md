@@ -1191,6 +1191,36 @@ independent tools agreeing rules out a script bug on our side — the value
 genuinely is `0x52680604` in the file, and it genuinely isn't a valid
 address to call through, by any tool's reckoning.
 
+### Back to A.BIN sweep: confirms/extends the CD-ROM-driver verdict, one real find
+
+Sampled two fresh ranges. `0x06036000-0x06036c00` matches the existing
+"CD-ROM/file driver, not game logic" verdict exactly — generic
+buffer-position/limit state machine with a type-indexed function-pointer
+dispatch table, same shape as a stream/codec abstraction. Not renaming
+these (low value, matches an already-documented pattern, no new
+information).
+
+`0x06039600-0x0603a300` turned out to be the same CD-ROM territory too —
+most sampled functions (`0x06039674`, `0x06039a64`, `0x06039c1a`,
+`0x06039e32`) build a small fixed-size buffer starting with a distinct
+"command code" byte (`0x61`, `0x75`, `0x11`, `0x44`) then hand it to a
+function pointer — textbook Saturn CD-block command-packet constructors
+(one function per CDC command opcode). Consistent with the existing
+verdict, not renaming individually (many near-identical trivial wrappers,
+low value).
+
+One real find in the same range, though:
+
+- **`Scu_ConfigureDmaChannel`** (was `FUN_0603a15c`) — writes directly into
+  `SCU_D0R`/`SCU_D0W`/`SCU_D0C` (Ghidra already had these SCU DMA register
+  names), indexed by a channel number (`param_2 * 0x20`, matching the
+  32-byte stride between DMA channel register blocks). High confidence —
+  this is genuine SCU DMA channel configuration, sitting in the middle of
+  otherwise-CD-driver code (makes sense: CD reads commonly DMA straight
+  into work RAM).
+
+**Running total: 99 functions renamed out of 529 in A.BIN.**
+
 Checked the one remaining live hypothesis: does `Res_FixupPointers` (A.BIN's
 confirmed relocation-fixup routine) get called anywhere in the
 `DIRECTOR.PPB` load path, the way it's used for streaming-audio headers?
