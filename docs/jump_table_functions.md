@@ -947,3 +947,36 @@ functions are so repetitive).
   needed for the PC port anyway (SDL2 handles blending/layers directly).
 
 **Running total: 98 functions renamed out of 529 in A.BIN.**
+
+### Sampled 0x06031400-0x06031ba4 — real code, too complex to name safely yet
+
+Switched away from VDP2 registers to the sound-adjacent 0x06031400 block
+(near `Snd_LookupSfxDef`), hoping for more PC-portable material. Found
+something different and bigger instead:
+
+- `0x06031794`/`0x06031830` — a matched pair of range-wrapping functions
+  (multi-branch bounds check, subtract-and-negate on overflow). Called
+  together on the same value from the function below, always as a pair —
+  plausible sine/cosine-table-style companions (angle or coordinate
+  wrapping without hardware divide — SH-2 has no integer divider), but no
+  table reference was confirmed, so not naming them yet.
+- `0x06031ba4` — a genuinely large (~200 line) function containing repeated
+  `a*d - b*c` / `a*c + b*d` patterns (2D rotation/cross-product math) across
+  three coordinate pairs, followed by per-element loops that call a
+  comparison callback and write pass/fail results into a short array —
+  reads like a **visibility/clipping test over a rotated bounding volume**
+  (screen-space cull for polygon or sprite commands). Architecturally
+  interesting (would explain how the game decides what's on/off screen) but
+  far too dense to safely assign real names to its pieces in one pass.
+- `0x060315f8`/`0x06031588` — index-based (not pointer-based) linked-list
+  operations using `-1` as a sentinel, similar in spirit to `Msg_InitSlotPool`
+  but on a different table. Plausible object/particle slot allocator, not
+  confirmed.
+
+**Not renaming any of these this round** — real code, but confidently
+naming would mean guessing at semantics we haven't verified. Flagging as a
+candidate for a future *dedicated* session (worth using more budget on,
+given the "visibility test" function looks architecturally significant),
+rather than folding it into a quick sweep pass.
+
+Total unchanged: **98 functions renamed out of 529 in A.BIN.**
