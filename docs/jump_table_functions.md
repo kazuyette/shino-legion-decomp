@@ -1106,3 +1106,39 @@ runs; (2) once resolved, chase state 1's indexed call table; (3) consider
 sampling `SHINOBI.PPB` with the same raw `sh2dis.py` approach in parallel,
 since it's the file A.BIN never references directly and may be where the
 real per-frame game logic (including input) actually lives.
+
+### SHINOBI.PPB sampled too — same shallow-dispatcher architecture
+
+Ran the same `sh2dis.py` approach cold against `extracted/SHINOBI.PPB`
+(same 6-byte-header shape, same base `0x06040000` assumption). Found an
+entry dispatcher at `0x06040006` structurally identical in spirit to
+`Director_EntryDispatch` — an 8-way `CMP/EQ`+`BT` chain over a state value
+— and **the same pattern holds**: states 2, 3, 4, and 5 all branch to the
+exact same shared landing spot, states 0 and 1 alias into other states'
+tails the same way state 0 did in `DIRECTOR.PPB`, and only one or two
+states carry a real `JSR` through a pool-loaded function pointer. Cross-file
+confirmation that **this "mostly-empty 8-state per-frame dispatcher" is a
+deliberate, repeated pattern** in both overlays, not a one-off.
+
+**Correction to the pool-value pessimism above**: on reflection, values
+like `0x000B6EF6` aren't actually implausible — the Saturn's Low Work RAM
+(LWRAM) region is a full 1MB (`0x00000000`-`0x000FFFFF`), and `0x000B6EF6`
+falls comfortably inside it. `SHINOBI.PPB`'s analogous state-pointer pool
+slot resolves to `0x00000602` — a *very* plausible fixed low-RAM address
+for a shared state variable both overlays read (would make sense: A.BIN or
+whichever overlay is active writes the "current director/game state" to one
+fixed low-RAM cell). Retracting the "implausible address" framing — the
+real blocker is just that `list_segments` on the raw-binary-imported
+`DIRECTOR.PPB`/`SHINOBI.PPB` Ghidra programs only defines the `0x06040000+`
+range, not `0x00000000+` LWRAM, so nothing here can be double-checked
+against Ghidra directly. A LWRAM segment would need to be added manually
+(or cross-referenced against A.BIN's own memory map, which does span low
+addresses) to confirm reads/writes to `0x602` and similar cells.
+
+**Where this leaves things**: both overlay files share one fixed low-RAM
+state cell and a near-empty dispatcher built around it. The real gameplay
+logic (state 1's `JSR` targets in both files) is still unresolved, but now
+better understood — this is a solid stopping point for a session; picking
+this back up should start with adding a low-RAM segment/overlay in Ghidra
+(or just tracing low addresses like `0x602` through A.BIN, which already
+has the full memory map) to see who else touches that state cell.
