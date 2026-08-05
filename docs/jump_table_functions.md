@@ -1098,6 +1098,70 @@ resolving the pool-value mystery first. Input handling is very likely
 elsewhere entirely — either a different, not-yet-found dispatcher in
 `DIRECTOR.PPB`, or in `SHINOBI.PPB` (not yet touched at all).
 
+### Promising new lead in SHINOBI.PPB: a scattered-value dispatcher (message/event codes?)
+
+Scanned `SHINOBI.PPB` for function prologues (`4F22` = `STS.L PR,@-R15`)
+directly via byte search — found 40+ candidate function starts beyond the
+entry dispatcher already sampled, all real code (unlike blind bulk
+disassembly, this only flags addresses that begin with a genuine prologue
+byte pattern, which is a much better hit rate).
+
+Spot-checked one (`0x06040868`) and it's a different animal from
+`Director_EntryDispatch`: reads the *same* shared state-pointer cell used
+by the entry dispatcher (`@0x60408DC`, `EXTU.W`-extended), then tests it
+against a chain of `CMP/EQ #imm,R0` / `BT` pairs — but this time the
+immediates are **scattered, non-sequential values** (`0x15`, `0x2C`,
+`0x4A`, `0x3E`, ...) instead of `0,1,2,3...`. That shape — testing a value
+against a set of specific constants rather than counting up from zero — is
+much more consistent with **message/event-code handling** (e.g. "if this
+is message type 0x15, do X") than a simple linear state machine. This is a
+meaningfully different, and more promising, lead than the entry dispatcher.
+
+**Blocked on tooling, not analysis**: getting a clean Ghidra decompile of
+this (rather than continuing hand-disassembly) requires importing
+`SHINOBI.PPB` into Ghidra as a second raw-binary program, the same way
+`DIRECTOR.PPB` was set up (base `0x06040000`, SH-2 big-endian) — not yet
+done. Flagging as the natural next step before going further by hand.
+
+### SHINOBI.PPB imported into Ghidra — same wall, now confirmed by a second independent tool
+
+Imported `SHINOBI.PPB` as a raw binary (SH-2 big-endian, base `0x06040000`).
+Bulk "select-all + disassemble + Auto Analyze" reproduced the exact same
+failure mode as `DIRECTOR.PPB`: the entry dispatcher at `0x06040006` isn't
+even recognized (function list starts at `0x060402bd`), and boundaries
+past that point are cascaded/misaligned versus the true ones found by the
+clean prologue-byte scan.
+
+Targeted approach instead: manually cleared/disassembled/created a function
+right at `0x06040868` (the scattered-value dispatcher). This time it
+worked — Ghidra now shows a real function there, confirming the same
+struct-pointer reads seen by hand (`iRam060408d4`, `puRam060408cc`,
+matching the raw `sh2dis.py` trace exactly) — **but it still hits "bad
+instruction" at the same point the manual read got stuck** (right around
+the `EXTU.W`/`AND`/`TST` sequence before the `CMP/EQ` chain).
+
+**This is the important result**: two independent, differently-built tools
+(a from-scratch minimal Python disassembler, and Ghidra's mature SH-2
+module) now agree, on multiple separate functions across both `.PPB`
+files, that something breaks at consistent, structurally-similar points —
+always shortly after a state-cell read, near the same kind of `FFFF`/odd
+filler words. That's strong evidence this isn't a tooling bug in either
+disassembler; it's a genuine property of how these files were built —
+almost certainly either an SGL-toolchain-specific instruction/relocation
+encoding neither tool models, or literal relocation placeholder bytes that
+are only valid after a patch step we haven't located.
+
+**Conclusion for this thread**: we've extracted real, solid, structural
+knowledge (both dispatchers' shapes, the shared state cell, `Scu_*`/CD-FS
+characterization of A.BIN, and now cross-tool confirmation of exactly where
+and how the `.PPB` files resist static analysis) — but fully cracking the
+literal-pool/relocation format is blocked on information we don't have
+(Sega/SGL toolchain documentation for this overlay format), not on more
+manual effort. Recommending this thread stay parked (task #14) until either
+that documentation surfaces or a different technique presents itself,
+rather than continuing to spend sessions on byte-level trial and error that
+keeps landing on the same wall.
+
 **Next steps for a future session**: (1) resolve the pool-value mystery —
 check whether `SHINOBI.PPB` has an analogous slot at the same relative
 offset with a *different* value (would support relocation) or whether
