@@ -521,3 +521,32 @@ object vs. something else) — next step would be finding callers of
 `Fx_UpdateInterpEvent` beyond the main loop to see what feeds it its targets.
 
 **Running total: 38 functions renamed out of 529 in A.BIN.**
+
+### Note: several "who writes this" dead ends may point to DIRECTOR.PPB
+
+Checked whether anything in A.BIN writes `Fx_UpdateInterpEvent`'s trigger cell
+(`0x06007128`) — no writers found, same dead end as `Obj_SetTransformParam`'s
+mode selector and `Msg_InitSlotPool`'s slot arrays. Now that we know
+`DIRECTOR.PPB` is a separate dynamically-loaded overlay (see above), this
+pattern makes sense: these cells are plausibly written *from DIRECTOR.PPB*,
+invisible to static analysis of A.BIN alone. Worth remembering once
+`DIRECTOR.PPB` analysis is usable again — don't re-chase these dead ends
+purely within A.BIN.
+
+### Evt_ProcessQueue's command handlers: resource file loader cluster
+
+Traced the 3 type handlers (1/2/3) dispatched from `Evt_ProcessQueue`:
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x060047a8 | `Res_LoadFileByName` | cached file loader — compares a 14-char filename against the currently-loaded one, returns immediately on cache hit; otherwise closes the current file (`Res_CloseIfOpen`), opens the new one, kicks off a read (retry loops around low-level open/seek calls) |
+| 0x06004528 | `Res_PumpAsyncRead` | chunked async read state pump (2 states: issue read / check completion) — called repeatedly in a loop until it returns 0 (done). This is the actual byte-by-byte streaming reader. |
+| 0x060046c4 | `Evt_CmdLoadAndPump` | type-1 command: calls `Res_LoadFileByName`, then loops `Res_PumpAsyncRead` to completion synchronously; on a genuinely new file (not cache hit) also resets sound + object/channel tables — same "new content loaded" reset pattern as `Stage_ResetAndLoadDirector` |
+| 0x0600475c | `Evt_CmdLoadAsync` | type-3 command: same load + reset logic as above, but does NOT pump the read loop — true async, caller must pump separately |
+
+This is the same CD file-loading idiom seen in `Load_DirectorPPB`, generalized
+to load arbitrary named resources through a command queue instead of a direct
+call — likely how stage-specific assets other than `DIRECTOR.PPB` itself (CG
+files, sound banks, etc.) get streamed in.
+
+**Running total: 42 functions renamed out of 529 in A.BIN.**
