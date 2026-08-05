@@ -581,3 +581,27 @@ two different priority axes, refresh definitions, and free-or-evict allocation,
 matching a standard voice-stealing audio mixer architecture.
 
 **Running total: 48 functions renamed out of 529 in A.BIN.**
+
+### New cluster: ring-buffer streaming subsystem (0x0600a000-0x0600b800)
+
+Sampled functions in the previously-unexplored range between the message
+system and the SGL-internals block. Found a distinct streaming/ring-buffer
+subsystem, separate from `Res_LoadFileByName`'s simpler cached-file loader:
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x0600ab68 | `Sys_RaiseIrqLevel` | manipulates the SH-2 status register's interrupt mask bits and increments a nesting counter — classic "enter critical section, return previous level" idiom. Likely the atomic wrapper called repeatedly by `Fx_SetFlagBits7`. |
+| 0x0600adcc | `RingBuf_GetContiguousRead` | computes how many contiguous bytes are currently readable from a ring buffer before wraparound, returns a status code + pointer/length via out-params |
+| 0x0600ae44 | `RingBuf_AdvanceRead` | advances the ring buffer's read position by N bytes, handling wraparound (mirrors `RingBuf_GetContiguousRead`) |
+| 0x0600b336 | `Res_FixupPointers` | converts 4 fixed base-relative offsets plus an array of offsets (via a callback) into absolute pointers — a resource "relocation fixup" pass, the kind you'd run once after loading a blob with internal relative offsets |
+| 0x0600a0b0 | `Stream_PumpRingBuffer` | pulls a contiguous chunk via `RingBuf_GetContiguousRead`, and once enough data has accumulated (threshold check), stashes the buffer struct pointer globally, calls a processing callback, then advances the read pointer — the "consume and process" half of the streaming pipeline |
+
+**Working theory**: this is a general streaming-data pipeline (ring buffer +
+periodic processing callback + pointer fixup for loaded blobs), likely used
+for something bigger than `Res_LoadFileByName` handles — a good candidate for
+CD-audio/FMV streaming or level/stage data too large to load in one shot.
+Distinct from the `Snd_Cmd*` ring buffer (that one's a fixed 7×16-byte command
+queue; this one has variable-length reads and wraparound math). Worth revisiting
+to find what `Stream_PumpRingBuffer`'s processing callback actually does.
+
+**Running total: 53 functions renamed out of 529 in A.BIN.**
