@@ -23,9 +23,47 @@ void Obj_ConsumeFlagAndStore(int value)
     /* TODO: port FUN_0602a894. */
 }
 
+static ObjListNode s_active_list_sentinel;
+static ObjListNode s_free_list_sentinel;
+
+void ObjList_InitSentinel(ObjListNode *sentinel)
+{
+    sentinel->next = sentinel;
+    sentinel->prev = sentinel;
+}
+
+void ObjList_PushBack(ObjListNode *sentinel, ObjListNode *node)
+{
+    node->prev = sentinel->prev;
+    node->next = sentinel;
+    sentinel->prev->next = node;
+    sentinel->prev = node;
+}
+
+void ObjList_Remove(ObjListNode *node)
+{
+    node->prev->next = node->next;
+    node->next->prev = node->prev;
+    node->next = node;
+    node->prev = node;
+}
+
 void Obj_InitLinkedLists(void)
 {
-    /* TODO: port FUN_06006f56 (sentinel-node list init). */
+    /* FUN_06006f56: init two list-head pointers to a shared sentinel node
+     * (active-object list and free-object list). */
+    ObjList_InitSentinel(&s_active_list_sentinel);
+    ObjList_InitSentinel(&s_free_list_sentinel);
+}
+
+ObjListNode *Obj_GetActiveListHead(void)
+{
+    return &s_active_list_sentinel;
+}
+
+ObjListNode *Obj_GetFreeListHead(void)
+{
+    return &s_free_list_sentinel;
 }
 
 void Reset_ObjectAndChannelTables(void)

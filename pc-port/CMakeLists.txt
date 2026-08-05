@@ -14,6 +14,7 @@ add_executable(shinobi_legions_pc
     src/object.c
     src/mode.c
     src/resource.c
+    src/stream.c
 )
 
 target_include_directories(shinobi_legions_pc PRIVATE src ${SDL2_INCLUDE_DIRS})

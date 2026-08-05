@@ -32,12 +32,25 @@ rendering or real game logic is implemented yet.
 
 ## Layout
 
-- `src/boot.*` — boot sequence and stage reset, mirrors `Boot_And_MainLoop` /
-  `Stage_ResetAndLoadDirector` in A.BIN.
-- `src/sound.*` — sound command queue (`Snd_Cmd*`), stubbed with console logs.
-- `src/object.*` — object/channel table resets and the transform dispatcher.
+- `src/boot.*` — boot sequence and per-frame loop, mirrors `Boot_And_MainLoop` /
+  `Stage_ResetAndLoadDirector` in A.BIN. `Boot_RunFrame` now runs the real
+  4-slot object update + sound scheduler sequence traced from the main loop.
+- `src/sound.*` — real 7-entry command queue feeding an 8-channel
+  voice-stealing scheduler (`Snd_ChannelScheduler`, `Snd_FindFreeOrEvictChannel`,
+  `Snd_StopMatchingChannels`), matching the traced allocator in A.BIN.
+- `src/object.*` — object/channel table resets, the transform dispatcher
+  (still stubbed pending the control-block struct), and a real sentinel-based
+  doubly linked list for `Obj_InitLinkedLists`.
 - `src/mode.*` — idle/attract mode entry.
-- `src/resource.*` — file loading (`DIRECTOR.PPB`) and handle cleanup.
+- `src/resource.*` — `DIRECTOR.PPB` loading, handle cleanup, and a real
+  `Res_LoadFileByName` with an 8-slot in-memory cache (round-robin eviction)
+  matching the traced resource-loader behavior.
+- `src/stream.*` — new: ring buffer (`RingBuf_*`) + streaming audio engine
+  (`Stream_InitFromCallback`/`Stream_Update`/`Stream_BeginPlayback`) wired to
+  a real SDL2 audio device callback with underrun-to-silence handling. Takes
+  a PCM fill callback instead of parsing the original track-table header,
+  since that format lives in data we can't read yet (DIRECTOR.PPB). Not wired
+  into `main.c`/`Boot_Init` yet — needs a real PCM source first.
 - `src/sys.*` — generic helpers (memcpy, the master/slave sync stub).
 
 Each function is named to match its Ghidra counterpart — cross-reference
@@ -45,7 +58,10 @@ Each function is named to match its Ghidra counterpart — cross-reference
 
 ## Status
 
-Compiles and runs a stub main loop (verified in CI-less sandbox build,
-2026-08-04). No rendering, no real game logic yet — next step is porting the
-actual traced behavior in, function by function, as more of A.BIN gets
+Compiles and runs (verified in CI-less sandbox build, 2026-08-05) with five
+subsystems now doing real work instead of stub logging: object linked lists,
+the sound scheduler, the per-frame boot loop, the streaming audio ring
+buffer/SDL backend, and cached file loading. Still no rendering and no real
+per-slot object data (blocked on DIRECTOR.PPB being readable) — next step is
+porting more traced behavior in as more of A.BIN/DIRECTOR.PPB gets
 identified.
