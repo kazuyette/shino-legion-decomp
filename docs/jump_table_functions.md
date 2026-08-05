@@ -605,3 +605,43 @@ queue; this one has variable-length reads and wraparound math). Worth revisiting
 to find what `Stream_PumpRingBuffer`'s processing callback actually does.
 
 **Running total: 53 functions renamed out of 529 in A.BIN.**
+
+Also confirmed: the `0x0600e000-0x06028000` gap (no functions found there at
+all) is expected, not a Ghidra miss — this whole region is where the earlier
+string-search finds live (`SHINOBI.PPB`/`DIRECTOR.PPB` names, the SGL version
+string, the CPK string, attract-mode text at `0x0600edcc`-`0x06014444`+) — it's
+data, not code.
+
+### Streaming subsystem lifecycle, more of it identified
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x0600b414 | `Stream_InitFromHeader` | validates a magic-number header, parses a track/entry table (stride 0x10, count at header+0x3c), computes ring-buffer sizing/offsets, calls `Res_FixupPointers`, sets state to 3 (initialized). Error paths call a logging function with distinct error-code constants for each failure. Shape strongly suggests a **streaming audio format parser** (multi-track header, buffer sizing) — possible BGM/CD-audio streaming, separate from the SCSP sound-effect queue. |
+| 0x0600b716 | `Stream_SetCallback` | stores a callback pointer into the stream struct (+0x68), then re-runs `Res_FixupPointers` |
+| 0x0600b076 | `Stream_PumpUntilIdle` | busy-loop calling a pump callback while a stream-state flag is non-zero |
+| 0x0600b0bc | `Stream_Close` | waits for idle (`Stream_PumpUntilIdle`), runs a finalize callback if state was 4, sets state to 5 (closed) |
+
+**Running total: 57 functions renamed out of 529 in A.BIN.**
+
+### Streaming subsystem: full picture emerges — likely BGM/CD-audio streaming engine
+
+Followed the callers of `Stream_InitFromHeader`/`Stream_Close` upward and found
+the top-level driver:
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x0600c4f4 | `Stream_Update` | the master per-tick state machine (states 0-5): re-inits on state 2, walks the track table processing entries, pumps until idle and fills any gap, checks buffer fill level against a threshold, handles underrun, and transitions to a linked next stream (`Stream_LinkNext`) when the current one finishes — **this is the top-level "advance the audio stream by one tick" entry point** |
+| 0x0600b780 | `Stream_LinkNext` | compares two stream headers for format compatibility (sample layout, channel count, etc.); if compatible, copies playback state from the finishing stream into the next one and marks it ready (state 4) — enables **gapless/seamless track transitions** |
+| 0x0600c0f4 | `Stream_FillSilence` | fills the output buffer with silence (splits by channel using a byte flag at header+0x25, mono vs. stereo) — buffer-underrun fallback |
+| 0x0600b984 | `Stream_HandleUnderrun` | records a high-water-mark stat and resets write-position state after an underrun is detected |
+
+**Conclusion**: this whole cluster (`Stream_InitFromHeader`, `Stream_Update`,
+`Stream_LinkNext`, `Stream_Close`, `Stream_FillSilence`, `Stream_HandleUnderrun`,
+plus the `RingBuf_*` helpers) is a complete streaming audio engine — most
+likely CD-audio or ADPCM BGM streaming with gapless track-to-track transitions,
+underrun/silence handling, and buffer-fill telemetry. Entirely separate from
+the SCSP sound-effect command queue (`Snd_Cmd*`/`Snd_ChannelScheduler`) traced
+earlier — Shinobi Legions has (at least) two independent audio pipelines: one
+for short sound effects (fixed 8-channel scheduler) and one for streamed music.
+
+**Running total: 61 functions renamed out of 529 in A.BIN.**
