@@ -27,6 +27,14 @@ int main(int argc, char **argv)
     Render_Init(window);
     Boot_Init();
 
+    /* Drift-free ~60fps pacing (Saturn's real vblank rate is ~59.94Hz NTSC;
+     * 60 is close enough for a debug loop and avoids importing NTSC/PAL
+     * timing details we haven't traced). SDL_Delay(16) alone drifts over
+     * time since 16ms != 1000/60ms exactly -- this measures actual elapsed
+     * time each frame and only sleeps off the remainder. */
+    const Uint32 frame_ms = 1000 / 60;
+    Uint32 next_frame = SDL_GetTicks();
+
     int running = 1;
     SDL_Event ev;
     while (running) {
@@ -41,7 +49,15 @@ int main(int argc, char **argv)
         Render_DrawFrame();
         Render_Present();
 
-        SDL_Delay(16); /* ~60fps placeholder */
+        next_frame += frame_ms;
+        Uint32 now = SDL_GetTicks();
+        if (next_frame > now) {
+            SDL_Delay(next_frame - now);
+        } else {
+            /* Running behind (e.g. window drag stalled us) -- resync
+             * instead of trying to burn through a backlog of frames. */
+            next_frame = now;
+        }
     }
 
     Boot_Shutdown();

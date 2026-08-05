@@ -1567,6 +1567,41 @@ None of these needed new Ghidra renames (all three already had confirmed
 names from earlier sessions) — just decompiling/disassembling at the
 address the pc-port TODOs already pointed to.
 
+## Chased the M68K SCSP-driver-blob lead — no find, but a real attempt
+
+Earlier notes flagged a concrete path for `Snd_CmdSetParamA/B/C/Param3`'s
+"exact meaning TBD": find where A.BIN copies a driver blob into SCSP sound
+RAM (`68000_Work_RAM`, `0x05a00000-0x05affffe` / cache mirror
+`0x25a00000`), then disassemble that blob as M68K instead of SH-2. Tried
+it: checked every caller of `Sys_MemCopy` (generic byte copy) and
+`Scu_ConfigureDmaChannel` (the one confirmed SCU DMA config function) for
+anything targeting that address range. All `Sys_MemCopy` callers are
+inside already-characterized sound-scheduler/sort code or the CD-driver
+tail; both `Scu_ConfigureDmaChannel` callers are inside the CD-driver
+range too (consistent with "CD reads DMA into work RAM", nothing SCSP-
+related). **No driver-upload call site found** with this search. Doesn't
+rule it out — could use a DMA path we haven't named yet, or live in a
+part of A.BIN not yet swept — but a reasonable-effort search came up
+empty. `Snd_CmdSetParamA/B/C/Param3`'s exact semantics remain unrecovered
+and are still safely no-op'd in the pc-port scheduler.
+
+## pc-port: drift-free frame pacing
+
+`main.c`'s loop used a blind `SDL_Delay(16)`, which drifts over time
+(16ms/frame != 1000/60ms exactly). Replaced with a standard
+measure-elapsed-then-sleep-remainder loop, with a resync path if a frame
+runs long (e.g. window drag stalls) instead of trying to burn through a
+backlog. Not a decompile finding — just an engineering cleanup while
+other pc-port avenues are blocked on `.PPB`.
+
+**pc-port status check**: after this pass, the concretely portable finds
+from A.BIN are exhausted — everything else with an unresolved `TODO` in
+`pc-port/src/` (per-slot object data, real pad mapping, real
+sprite/tile rendering, real music, SCSP command semantics) is blocked on
+either `DIRECTOR.PPB`/`SHINOBI.PPB` (the pool-pointer wall) or the M68K
+driver blob (not located). Next useful pc-port work needs one of those
+two unblocked first.
+
 ## Real Saturn BIOS dump obtained — illegal-instruction-trap hypothesis now DEAD
 
 User supplied `saturn_bios.bin` (524288 bytes, presumably self-dumped from

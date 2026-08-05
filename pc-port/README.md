@@ -27,6 +27,9 @@ e.g. `assets/DIRECTOR.PPB`).
 ./build/shinobi_legions_pc
 ```
 
+The loop runs a drift-free ~60fps (measures elapsed time and sleeps off
+the remainder, rather than a blind `SDL_Delay(16)`).
+
 Expect a window with two small debug markers moving around (driven by the
 traced object-transform data, see `render.*` below) and a 440Hz test tone
 playing — not real graphics or music yet, just proof the plumbing works.
