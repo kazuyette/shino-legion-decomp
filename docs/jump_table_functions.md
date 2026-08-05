@@ -744,3 +744,25 @@ verifying `Stream_CopyTrackSamples`/`Stream_PrepareNextChunk` (flagged lower
 confidence earlier) rather than finding more functions.
 
 **Running total: 79 functions renamed out of 529 in A.BIN.**
+
+### Searched for pad/controller input — not in A.BIN
+
+Checked several likely spots for SMPC pad-reading code:
+
+- The 3 remaining unidentified boot table entries (`0x06005840`, `0x060057f0`,
+  `0x06005b0a`) are real code, but read as VDP1/VDP2/SCU hardware init (the
+  first repeats the `4/8/0x10/0x20` mode constants seen throughout the
+  object/sprite system — likely sprite priority setup, not input).
+- Boot table entry 5 (`0x0602524c`) — checked the raw file bytes directly:
+  **all zero**. This init slot is unused in this build, not a Ghidra miss.
+- No pad/controller-related strings (`list_strings` — same set as before, no
+  new hits) and no imports (raw binary, expected).
+
+**Conclusion**: pad input reading isn't in `A.BIN`. Given the confirmed
+architecture (A.BIN = boot + SGL plumbing, `DIRECTOR.PPB`/`SHINOBI.PPB` =
+actual game logic overlays), input handling is very likely inside
+`DIRECTOR.PPB`. Finding it is blocked on getting a reliable disassembly of
+that file — see the "Paused" note above. This is a concrete reason to
+prioritize unblocking `DIRECTOR.PPB` (targeted function-by-function
+disassembly) in a future session, since it's needed for both game logic *and*
+a playable PC port.
