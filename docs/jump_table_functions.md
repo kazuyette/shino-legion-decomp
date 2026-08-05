@@ -828,3 +828,51 @@ hardware register cluster (Ghidra already had the register names: `FBCR`,
   documentation.
 
 **Running total: 83 functions renamed out of 529 in A.BIN.**
+
+### New cluster: VDP1 command-list builder, 0x06028800-0x06029600
+
+Sampled 8 more functions right after the VDP1 init cluster. This is a
+different, very concrete layer: functions that write fixed 0x20-byte (32
+word... actually 16-word) records into a command-list buffer, each starting
+with a small integer "code" that matches the real VDP1 hardware command
+format (`CMDCTRL`/`COMDT` field) byte-for-byte:
+
+- **`Vdp1_EmitLocalCoordCmd`** (was `FUN_06028b08`) — code `10` (Local
+  Coordinate command), 2 words (X,Y). High confidence — exact match to the
+  documented VDP1 command format.
+- **`Vdp1_EmitSystemClipCmd`** (was `FUN_06028b54`) — code `9` (System
+  Clipping Coordinates), 2 words at the right offsets (XC,YC). High
+  confidence.
+- **`Vdp1_EmitUserClipCmd`** (was `FUN_06028ba8`) — code `8` (User Clipping
+  Coordinates), 4 words (X1,Y1,X2,Y2) at the documented offsets. High
+  confidence.
+- **`Vdp1_EmitPolygonCmd`** (was `FUN_06028d54`) — code `4` (Polygon draw),
+  sets CMDPMOD/CMDCOLR, fills 4 vertices (quad) via a callback, sets the
+  Gouraud table pointer field. High confidence.
+- **`Vdp1_FlushCommandList`** (was `FUN_06028ac4`) — guarded by a "dirty"
+  flag; if set, calls a function pointer (likely the actual VDP1 submit/DMA
+  kick) and advances the write cursor by one slot (`0x20` bytes, matching
+  the command size above). Medium confidence — the callback itself wasn't
+  traced.
+- **`Vdp1_InitBackgroundQuad`** (was `FUN_0602894c`) — builds a persistent
+  full-screen quad (local-coord + polygon commands back to back) once, then
+  on later calls just patches one field. Reads like initializing a
+  border/background polygon. Medium-high confidence.
+- **`Vdp1_LoadTextureEntry`** (was `FUN_060288a8`) — copies a texture/pattern
+  record (address + 2 attribute words) from an indexed table into active
+  state, advances a "current char address" cursor by `0x20`. Medium
+  confidence — matches the shape of SGL's texture-table lookup but the
+  struct fields aren't independently confirmed.
+- **Left unnamed**: `0x060293ec` — takes 3 char params, toggles several
+  attribute-flag bits (0x10/0x20/0x80/0xc0) from small enums, and calls a
+  function pointer with 0/1 only when a "current frame" value changes
+  (looks like a double-buffer flip trigger). Too speculative to name with
+  confidence — real code, VDP1/SGL attribute-combiner territory, not
+  chasing further right now.
+- **Verdict for the PC port**: none of this is portable as data-format — a
+  PC renderer builds its own draw calls — but the `Emit*Cmd` functions are
+  useful as a spec: they confirm the exact hardware polygon/clip/coordinate
+  command layout, which is handy if we ever want to interpret command lists
+  recorded from the original game for reference.
+
+**Running total: 90 functions renamed out of 529 in A.BIN.**
