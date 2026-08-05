@@ -550,3 +550,13 @@ call — likely how stage-specific assets other than `DIRECTOR.PPB` itself (CG
 files, sound banks, etc.) get streamed in.
 
 **Running total: 42 functions renamed out of 529 in A.BIN.**
+
+Two small helpers used by `Res_LoadFileByName`:
+
+- `0x06004930` → `Res_GetFileSize` — seeks (retry loop) then reads file info,
+  computes size accounting for the 2048-byte CD-ROM sector granularity, with
+  an override if a size field is explicitly set (not `-1`).
+- `0x0600498a` → `Res_CopyFilename12` — simple bounded string copy, max 12
+  chars, null-terminated.
+
+**Running total: 44 functions renamed out of 529 in A.BIN.**
