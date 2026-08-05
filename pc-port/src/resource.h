@@ -1,7 +1,17 @@
 #ifndef RESOURCE_H
 #define RESOURCE_H
 
-/* FUN_060048d8 — poll-close-then-free a resource handle. */
+/* FUN_060048d8 — confirmed: if a resource handle is open (non-null pointer
+ * + nonzero type flag) AND its type is 2 or 3 (async CD-streaming reads),
+ * retry-call a drain/finish function until it stops returning negative
+ * (i.e. block until any in-flight async CD read completes), then call the
+ * real close callback and zero the handle + type fields. Intentionally
+ * NOT ported as a stateful close: this pc-port's file loading
+ * (Load_DirectorPPB / Res_LoadFileByName) is synchronous fopen/fread/fclose
+ * within a single call, so there is no persistent open handle or in-flight
+ * async read to drain -- the entire mechanism this function exists for
+ * doesn't apply here. Kept as a no-op with this reasoning documented
+ * rather than faking handle state that nothing else uses. */
 void Res_CloseIfOpen(void);
 
 /* FUN_06004eac — retry-loop file read: (1,1,0,0xffffffff,buffer,name).

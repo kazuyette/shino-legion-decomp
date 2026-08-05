@@ -60,12 +60,29 @@ void Snd_CmdSetParamB(int value) { Snd_PushCommand(SND_CMD_SET_PARAM_B, value, 0
 void Snd_CmdSetParamC(int value) { Snd_PushCommand(SND_CMD_SET_PARAM_C, value, 0, 0, 0); }
 void Snd_CmdSetParam3(int a, int b, int c) { Snd_PushCommand(SND_CMD_SET_PARAM3, a, b, c, 0); }
 
+static const uint16_t *s_sfx_table = NULL;
+static int s_sfx_table_count = 0;
+static uint16_t s_sfx_table_mask = 0xffff;
+
+void Snd_SetSfxTable(const uint16_t *table, int count, uint16_t mask)
+{
+    s_sfx_table = table;
+    s_sfx_table_count = count;
+    s_sfx_table_mask = mask;
+}
+
 void Snd_LookupSfxDef(int index, uint16_t *out_masked_word, uint8_t *out_byte)
 {
-    (void)index;
-    /* TODO: port FUN_06031388 once the SFX definition table is dumped. */
-    if (out_masked_word) *out_masked_word = 0;
-    if (out_byte) *out_byte = 0;
+    /* Confirmed algorithm from FUN_06031388's disassembly: entry =
+     * table[index]; masked_word = entry & mask; byte = low 8 bits of the
+     * SAME entry, unmasked. With no table loaded (real SFX data not
+     * extracted yet), every lookup correctly reports "not found" (0/0). */
+    uint16_t entry = 0;
+    if (s_sfx_table && index >= 0 && index < s_sfx_table_count) {
+        entry = s_sfx_table[index];
+    }
+    if (out_masked_word) *out_masked_word = entry & s_sfx_table_mask;
+    if (out_byte) *out_byte = (uint8_t)(entry & 0xff);
 }
 
 /* --- 8-channel voice-stealing scheduler --- */

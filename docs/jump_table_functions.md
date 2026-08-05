@@ -1534,6 +1534,39 @@ lack of effort, and further progress likely needs a different technique
 looks like self-relocation/init code we haven't identified yet) rather than
 more manual byte-staring at this exact spot.
 
+## Three pc-port TODOs closed: Idle_InitMessageSystem, Res_CloseIfOpen, Snd_LookupSfxDef
+
+Targeted decompiles of the three functions the pc-port's `TODO` comments
+pointed at:
+
+- **`Idle_InitMessageSystem`** (`0x0600aaa4`) — resets a 5-field state
+  block to exact constants `0,0,0,1,0`, then calls
+  `Msg_ResetState`/`Msg_InitSlotPool`/`Idle_NoOpHook`/`Idle_ClearMsgState`/
+  `Sys_StrCopy` through function-pointer literals (already named from
+  earlier work, not re-traced here). Ported the state reset — the only
+  part with an observable effect on this side.
+- **`Res_CloseIfOpen`** (`0x060048d8`) — turns out to already be a named,
+  understood function (not actually unidentified, the pc-port `TODO` was
+  stale): poll-drain an in-flight async CD read (types 2/3 only), then
+  close and zero the handle. Confirmed **architecturally moot** for this
+  port — `Load_DirectorPPB`/`Res_LoadFileByName` are synchronous
+  fopen/fread/fclose within one call, so there's no persistent handle or
+  async read to drain. Left as a documented no-op rather than faking
+  handle state nothing else uses.
+- **`Snd_LookupSfxDef`** (`0x06031388`) — disassembly (not just decompile)
+  confirms the algorithm: `entry = sfx_table[index]`;
+  `masked_word = entry & mask`; `byte = low_8_bits(entry)` (same entry,
+  unmasked). Called from `Snd_RefreshChannelDefs` (every channel, every
+  scheduler pass) and `Snd_ChannelScheduler`'s state-3 path to test
+  "does this id resolve to a real definition." Ported the algorithm with
+  a `Snd_SetSfxTable()` hook for when the real table gets extracted from
+  the disc; with no table loaded it correctly reports "not found" for
+  every lookup, same as the previous stub's behavior.
+
+None of these needed new Ghidra renames (all three already had confirmed
+names from earlier sessions) — just decompiling/disassembling at the
+address the pc-port TODOs already pointed to.
+
 ## Real Saturn BIOS dump obtained — illegal-instruction-trap hypothesis now DEAD
 
 User supplied `saturn_bios.bin` (524288 bytes, presumably self-dumped from

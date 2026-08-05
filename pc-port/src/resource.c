@@ -5,7 +5,9 @@
 
 void Res_CloseIfOpen(void)
 {
-    /* TODO: port FUN_060048d8 once the resource-handle struct is known. */
+    /* Confirmed no-op for this port -- see resource.h for why (the async
+     * CD-handle-drain mechanism this guards doesn't exist in a synchronous
+     * fopen/fread/fclose model). */
 }
 
 int Load_DirectorPPB(const char *disc_root, void *out_buffer, unsigned int buffer_size)
