@@ -1272,6 +1272,36 @@ own boot code install an illegal-instruction exception handler anywhere
 continuing the pointer-value archaeology — it might explain *all* the
 disassembly trouble at once rather than one pool value at a time.
 
+**Checked A.BIN, then checked the SH-2 ISA itself — the trap hypothesis
+weakens.** `list_strings` on A.BIN found no VBR/exception-handler-related
+text (expected — that plumbing likely lives in the shared Saturn BIOS,
+which isn't part of A.BIN and isn't something we can inspect here). Did
+turn up a genuinely nice find though: a library version string,
+`` `$ver1.28 94/12/29SATURN(S) master ``, plus two leftover debug/test
+strings (`"Hi! Come come everybody."`, `"Guu... I'm sleepinggguuu..."`) —
+noted for flavor, not directly useful here.
+
+More importantly: SH-2 has a **dedicated, documented trap instruction**,
+`TRAPA #imm8`, encoded as `1100 0011 iiii iiii` (fixed top byte `0xC3`).
+That's the real, spec-compliant way SH-2 code issues a software
+interrupt/syscall — a game wouldn't need to abuse undefined `0xF`-prefixed
+opcode space for that when a proper instruction already exists for it.
+**This weakens (doesn't fully kill) the illegal-instruction-trap
+hypothesis** — worth keeping in mind, but shouldn't be treated as
+confirmed.
+
+**Session wrap for this thread**: across this session we've tested,
+individually, a script bug, `Res_FixupPointers` relocation, an LWRAM
+address range, Boot-ROM exclusion, base+offset addressing, an
+`ALUCARD.PRG`-style header table, alignment sensitivity, and now an
+illegal-instruction-trap mechanism — none confirmed, several actively
+ruled out. What stands regardless: both dispatchers' control-flow shapes
+are solid and independently cross-checked, the disassembly trouble is
+provably a real file-format property (not a tool bug), and we now know
+`0xF`-prefixed words specifically (not just "corruption" generally) are
+the recurring failure signature worth recognizing on sight. Genuinely
+parking this now — it's earned a rest, not for lack of trying.
+
 **Next steps for a future session**: (1) resolve the pool-value mystery —
 check whether `SHINOBI.PPB` has an analogous slot at the same relative
 offset with a *different* value (would support relocation) or whether
