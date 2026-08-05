@@ -526,12 +526,15 @@ object vs. something else) — next step would be finding callers of
 
 Checked whether anything in A.BIN writes `Fx_UpdateInterpEvent`'s trigger cell
 (`0x06007128`) — no writers found, same dead end as `Obj_SetTransformParam`'s
-mode selector and `Msg_InitSlotPool`'s slot arrays. Now that we know
-`DIRECTOR.PPB` is a separate dynamically-loaded overlay (see above), this
-pattern makes sense: these cells are plausibly written *from DIRECTOR.PPB*,
-invisible to static analysis of A.BIN alone. Worth remembering once
-`DIRECTOR.PPB` analysis is usable again — don't re-chase these dead ends
-purely within A.BIN.
+mode selector and `Msg_InitSlotPool`'s slot arrays. Tested the "written from DIRECTOR.PPB" hypothesis directly: byte-searched
+both `DIRECTOR.PPB` and `SHINOBI.PPB` for the raw 32-bit address values of
+`0x0602a970`, `0x0602a8c0`, `0x06007128`, and `0x060273e4` (as they'd appear
+in a literal pool if referenced by a `MOV.L @(d,PC),Rn`). **Zero matches in
+either file.** So the overlays don't reference these cells via a direct
+literal address — either the write is computed (base+offset arithmetic,
+invisible to a raw byte search) or the real writer is somewhere else
+entirely. Hypothesis not confirmed; don't assume DIRECTOR.PPB explains these
+dead ends without more evidence.
 
 ### Evt_ProcessQueue's command handlers: resource file loader cluster
 
@@ -560,3 +563,21 @@ Two small helpers used by `Res_LoadFileByName`:
   chars, null-terminated.
 
 **Running total: 44 functions renamed out of 529 in A.BIN.**
+
+### Sound channel scheduler internals (closes out task #1, the sound cluster)
+
+Traced the helper functions called from `Snd_ChannelScheduler`:
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x060089d4 | `Snd_QuickSortByPriority` | recursive quicksort on the channel array, sorting by a 16-bit priority field at offset +2 |
+| 0x06008af0 | `Snd_QuickSortByField10` | same quicksort shape, sorting by a byte field at offset +10 (different priority axis — possibly volume vs. age) |
+| 0x06007c14 | `Snd_RefreshChannelDefs` | loops all 8 channels, refreshes each via `Snd_LookupSfxDef`, marks channel unused (`0xffff`) if its definition is empty |
+| 0x06007c84 | `Snd_FindFreeOrEvictChannel` | classic voice-allocator: scans for a free channel slot (marker `-1`); if none free, finds an insertion point by priority and returns it OR'd with an eviction flag |
+
+This closes out the sound scheduler cluster — `Snd_ChannelScheduler` (8-channel
+SCSP scheduler) now has essentially all its supporting cast identified: sort by
+two different priority axes, refresh definitions, and free-or-evict allocation,
+matching a standard voice-stealing audio mixer architecture.
+
+**Running total: 48 functions renamed out of 529 in A.BIN.**
