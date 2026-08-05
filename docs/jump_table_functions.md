@@ -720,3 +720,27 @@ by flag" operation suggests streams can be tagged into groups (e.g. all BGM
 tracks vs. all ambient loops) and paused/resynced together.
 
 **Running total: 77 functions renamed out of 529 in A.BIN.**
+
+Two more, closing out the streaming cluster's lifecycle functions:
+
+- `0x0600b748` → `Stream_SetVolume` — sets a field at +0x2c (moderate
+  confidence it's volume/pan), and if the stream is currently playing (state
+  4), immediately applies it via a callback with sentinel args.
+- `0x0600b0e6` → `Stream_StopAndReset` — pumps until idle, does mono/stereo
+  buffer-boundary padding (same +0x25 format-flag check seen throughout),
+  then sets state back to 1 (idle) — stop-and-recycle rather than a full
+  `Stream_Close`.
+
+Checked for the slot pool's allocator (who sets the bitmask
+`Stream_GetSlotIfActive` reads) — no writer found in A.BIN, same dead-end
+pattern as other cross-cutting state. Not chasing further for now.
+
+**The streaming subsystem is now comprehensively mapped**: init from header,
+per-tick update, track prefetch/copy, playback start/stop/close, volume,
+group resync, silence fallback, underrun handling, and the 32-slot pool —
+roughly 25 functions across `Stream_*`/`RingBuf_*`/`Sys_*` (timer). Good
+stopping point for this cluster; future work here should focus on precisely
+verifying `Stream_CopyTrackSamples`/`Stream_PrepareNextChunk` (flagged lower
+confidence earlier) rather than finding more functions.
+
+**Running total: 79 functions renamed out of 529 in A.BIN.**
