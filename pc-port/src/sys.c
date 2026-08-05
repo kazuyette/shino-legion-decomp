@@ -7,6 +7,14 @@ void Sys_MemCopy(void *dst, const void *src, size_t len)
     memcpy(dst, src, len);
 }
 
+void Sys_MemCopyWords(void *dst, const void *src, size_t len_bytes)
+{
+    /* Matches the traced behavior of FUN_0602adc8: copies len_bytes/2
+     * 16-bit words. memcpy(dst, src, len_bytes) is behaviorally equivalent
+     * here since every traced call site passes an even length. */
+    memcpy(dst, src, len_bytes);
+}
+
 void Sys_SignalStopAndWaitAck(void)
 {
     /* TODO: on real hardware this coordinates master/slave SH-2 execution.

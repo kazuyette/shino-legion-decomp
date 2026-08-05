@@ -42,9 +42,11 @@ is still unknown (blocked on `DIRECTOR.PPB`, see docs).
 - `src/sound.*` — real 7-entry command queue feeding an 8-channel
   voice-stealing scheduler (`Snd_ChannelScheduler`, `Snd_FindFreeOrEvictChannel`,
   `Snd_StopMatchingChannels`), matching the traced allocator in A.BIN.
-- `src/object.*` — object/channel table resets, the transform dispatcher
-  (still stubbed pending the control-block struct), and a real sentinel-based
-  doubly linked list for `Obj_InitLinkedLists`.
+- `src/object.*` — object/channel table resets, the mode-4/8/0x10/0x20
+  transform dispatcher, a confirmed second per-slot data channel
+  (`Obj_SetTransformParamSecondary`, mode 4 only — the other modes and its
+  clamp pre-pass weren't traced), and a real sentinel-based doubly linked
+  list for `Obj_InitLinkedLists`.
 - `src/mode.*` — idle/attract mode entry.
 - `src/resource.*` — `DIRECTOR.PPB` loading, handle cleanup, and a real
   `Res_LoadFileByName` with an 8-slot in-memory cache (round-robin eviction)
@@ -68,7 +70,9 @@ is still unknown (blocked on `DIRECTOR.PPB`, see docs).
   in A.BIN and is presumed to live in `DIRECTOR.PPB`/`SHINOBI.PPB`, blocked
   on the disassembly wall documented in `docs/jump_table_functions.md`.
   Exists so the plumbing is ready the moment the real mapping is known.
-- `src/sys.*` — generic helpers (memcpy, the master/slave sync stub).
+- `src/sys.*` — generic helpers: `Sys_MemCopy` (byte copy), `Sys_MemCopyWords`
+  (confirmed word-oriented copy used by the VDP1/VDP2 dirty-region flush
+  functions), the master/slave sync stub.
 
 Each function is named to match its Ghidra counterpart — cross-reference
 `docs/jump_table_functions.md` for what's confirmed vs. still guessed.

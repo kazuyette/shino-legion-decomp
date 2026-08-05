@@ -16,6 +16,20 @@ void Obj_SetReadyFlag(void);
 void Obj_ConsumeFlagAndStore(int value);
 int  Obj_GetLastMode(void);
 
+/* Obj_SetTransformParamSecondary (0x0602ab1c) -- structural twin of
+ * Obj_SetTransformParam found during the VDP2 sweep. Confirmed: mode 4
+ * writes into the SAME control block as the primary dispatcher, at offsets
+ * +0x4c/+0x50 -- exactly 8 bytes past the primary's mode-4 offsets
+ * (+0x44/+0x48), i.e. it lands in what this port modeled as padding
+ * (_pad0). Reads like a second data channel per object slot (velocity/
+ * rotation next to position) but that's a guess -- only the offset is
+ * confirmed. Modes 1/2/8/0x10/0x20 for this secondary dispatcher were NOT
+ * traced (the doc only confirms mode 4's offset pair) and are not ported,
+ * same caution as the primary's modes 1/2. The "min/max-clamp pre-pass via
+ * two callbacks" mentioned in the decompile is also not ported -- the
+ * clamp bounds were never traced, so inventing them would be a guess. */
+void Obj_SetTransformParamSecondary(int mode, int param_a, int param_b);
+
 /* Raw layout of the shared control block written by modes 4/8/0x10/0x20,
  * offsets match the decompile exactly (0x00/0x04, 0x10/0x14 as full 32-bit
  * writes; 0x20/0x22, 0x24/0x26 as the high 16 bits only -- SGL fixed-point
@@ -23,7 +37,10 @@ int  Obj_GetLastMode(void);
  * future rendering code. */
 typedef struct {
     int32_t slot0_a, slot0_b; /* mode 4  -> offsets 0x00, 0x04 */
-    unsigned char _pad0[8];   /* 0x08-0x0f, unused by this dispatcher */
+    int32_t secondary_a, secondary_b; /* Obj_SetTransformParamSecondary mode 4
+                                        * -> offsets 0x08, 0x0c (confirmed:
+                                        * +0x4c/+0x50 absolute, 8 bytes past
+                                        * the primary's mode-4 offsets) */
     int32_t slot1_a, slot1_b; /* mode 8  -> offsets 0x10, 0x14 */
     unsigned char _pad1[8];   /* 0x18-0x1f, unused by this dispatcher */
     int16_t slot2_a, slot2_b; /* mode 0x10 -> offsets 0x20, 0x22 (hi16 of params) */

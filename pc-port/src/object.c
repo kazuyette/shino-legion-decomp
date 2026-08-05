@@ -33,6 +33,20 @@ void Obj_SetTransformParam(int mode, int param_a, int param_b)
     }
 }
 
+void Obj_SetTransformParamSecondary(int mode, int param_a, int param_b)
+{
+    switch (mode) {
+        case 4:
+            s_transform_block.secondary_a = param_a;
+            s_transform_block.secondary_b = param_b;
+            break;
+        default:
+            /* Modes 1/2/8/0x10/0x20 and the min/max-clamp pre-pass weren't
+             * traced for this dispatcher -- not ported (see object.h). */
+            break;
+    }
+}
+
 const ObjTransformBlock *Obj_GetTransformBlock(void)
 {
     return &s_transform_block;
