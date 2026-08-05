@@ -1045,10 +1045,64 @@ which decodes correctly). Not resolved — flagging for next session, since
 if it's relocation, that changes how we should read literal pools
 file-wide.
 
-**Next steps for a future session**: (1) decode cases 1/2/4/5/6/7's handler
-bodies with `sh2ds.py`, starting from case 1's `JSR`; (2) chase the
-`0x000B6EF6` mystery — check if `SHINOBI.PPB` has an analogous pool slot at
-the same relative offset with a different value (would confirm relocation);
-(3) once a few real handlers are mapped, create/rename the corresponding
-functions in Ghidra so GhidraMCP's higher-level tools (xrefs, decompile)
-become usable for them.
+### The dispatcher is almost entirely empty — only state 1 does real work
+
+Decoded all 6 remaining handler bodies. Surprising, well-evidenced result:
+
+- **States 4, 5, and 6 are single-instruction stubs**, each just
+  `BRA 0x604005E` — which itself is `BRA 0x6040082`, landing back on the
+  chain's *own* `CMP/EQ #7,R0` test. Since the original state (4, 5, or 6)
+  never equals 7, that test always fails and falls straight through to the
+  epilogue. Three states, zero effect.
+- **State 7**'s target (`0x604005C`) is a lone `ADD #1,R2` (bumping a
+  register nobody reads afterward) then falling into the same `BRA
+  0x6040082` tail described above. Effectively also a no-op.
+- **State 2**'s target (`0x6040040`) is a `NOP` followed by `BRA
+  0x604005C` — i.e. it jumps straight into state 7's do-nothing tail.
+  Also effectively empty. (The `MOV.L`/`JSR` pair sitting just before it at
+  `0x604003C-0x603E` is dead code from this dispatcher's point of view —
+  nothing branches to it — so either it's an unrelated function Ghidra's
+  function-boundary confusion glued on here, or it's reachable some other
+  way we haven't traced.)
+- Combined with the already-confirmed state 0 (aliases into state 6, which
+  is now *also* confirmed empty) and state 3 (direct-to-epilogue): **states
+  0, 2, 3, 4, 5, 6, and 7 are all no-ops.** Only **state 1** does anything.
+- **State 1** (`0x6040020`) is the one real path: a direct `JSR` through a
+  function pointer loaded from a literal-pool slot, followed by an
+  *indexed* function-pointer call — load an index value, multiply by 4,
+  add to a base, dereference, `JSR`. This is a genuine "call
+  handler-for-current-index" pattern, architecturally the kind of thing a
+  per-object-type or per-input-state dispatch would look like.
+
+**Blocked on**: the literal-pool values these calls depend on (e.g. the
+pool slot at `0x6040088` used earlier, and the ones at `0x6040090`/
+`0x6040094` for state 1) decode to implausible addresses when read as
+big-endian 32-bit values straight off disc (`0x000B6EF6`, `0x52680604`,
+`0xA6CC0602` — none fall in any real Saturn memory region). Two competing
+explanations, neither confirmed: (a) these are relocation placeholders
+patched at load time — plausible, since `Res_FixupPointers` in A.BIN is a
+confirmed real "fix up embedded relative offsets into absolute pointers"
+routine (though used there for the *streaming audio* format, not overlay
+loading) — but no such fixup call was found in `Stage_ResetAndLoadDirector`'s
+traced sequence before it jumps into `DIRECTOR.PPB`, which argues against
+this unless the overlay self-relocates internally; or (b) there's still an
+alignment/boundary mistake specific to this region that hasn't been caught.
+The unresolved "`+0` vs `+6` entry point" question from earlier (does
+execution really start at the 6-byte header, or right after it?) is
+probably related and could be the same root cause.
+
+**Bottom line for this session**: `Director_EntryDispatch` itself is mostly
+a dead end for finding gameplay/input logic — 7 of 8 states do nothing.
+State 1's indexed call is the one lead worth chasing, but it's gated on
+resolving the pool-value mystery first. Input handling is very likely
+elsewhere entirely — either a different, not-yet-found dispatcher in
+`DIRECTOR.PPB`, or in `SHINOBI.PPB` (not yet touched at all).
+
+**Next steps for a future session**: (1) resolve the pool-value mystery —
+check whether `SHINOBI.PPB` has an analogous slot at the same relative
+offset with a *different* value (would support relocation) or whether
+there's separate self-relocating init code before `Director_EntryDispatch`
+runs; (2) once resolved, chase state 1's indexed call table; (3) consider
+sampling `SHINOBI.PPB` with the same raw `sh2dis.py` approach in parallel,
+since it's the file A.BIN never references directly and may be where the
+real per-frame game logic (including input) actually lives.
