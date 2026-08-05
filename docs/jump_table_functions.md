@@ -680,3 +680,23 @@ Left `0x0600af40` (a similar trivial one-field accessor) unnamed — couldn't
 pin down what field it exposes without more digging, didn't want to guess.
 
 **Running total: 70 functions renamed out of 529 in A.BIN.**
+
+### New cluster: hardware timer / elapsed-time queries (0x0600c700-0x0600c900)
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x0600c720 | `Sys_ReadRolloverCounter` | reads a 16-bit counter that can roll over, advances a base pointer by a fixed delta on wraparound |
+| 0x0600c768 | `Sys_CaptureTimestamp` | atomic wrapper (raises IRQ level like `Sys_RaiseIrqLevel`) that captures `Sys_ReadRolloverCounter`'s value into a struct field |
+| 0x0600c7ac | `Sys_GetElapsedTime` | reads the counter again and subtracts the captured timestamp — straightforward "time since capture" |
+| 0x0600c8a6 | `Sys_QueryTimerState` | state-dispatched (states -1/0/1/2/3/4/5) elapsed-time query in different units; references `PTR_VDP2_TVSTAT` (the VDP2 TV status register, i.e. reads the hardware VBlank bit) confirming this is tied to real display timing, not just a software tick. Lower confidence — genuinely complex, multiple unit-conversion branches not individually verified. |
+
+Left `0x0600c7f6` unnamed — related (calls `Sys_GetElapsedTime`, same state-check
+shape) but its exact purpose wasn't clear enough to name with confidence.
+
+**Working theory**: this is a general hardware-timer utility used for
+frame-rate-independent timing, plausibly what feeds `Fx_StepInterpolate3Axis`'s
+step calculations (interpolation speed independent of frame rate would need
+exactly this kind of elapsed-time query). Not confirmed via a direct call
+chain yet — worth checking if `Fx_*` functions call into this cluster.
+
+**Running total: 74 functions renamed out of 529 in A.BIN.**
