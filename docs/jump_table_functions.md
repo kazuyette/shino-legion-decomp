@@ -793,3 +793,38 @@ that file — see the "Paused" note above. This is a concrete reason to
 prioritize unblocking `DIRECTOR.PPB` (targeted function-by-function
 disassembly) in a future session, since it's needed for both game logic *and*
 a playable PC port.
+
+### New cluster: VDP1 (sprite/polygon engine) init, 0x06028000-0x06028800
+
+Systematic sweep resumed. Sampled 8 functions in this block — confirmed VDP1
+hardware register cluster (Ghidra already had the register names: `FBCR`,
+`PTMR`, `EWDR`, `EWLR`, `EWRR`, `TVMR`):
+
+- **`Vdp1_Init`** (was `FUN_060280ac`) — the orchestrator: calls the other
+  three below in sequence, then writes `FBCR`/`PTMR`/`EWDR`/`EWLR`/`EWRR`
+  directly. High confidence — this is VDP1 startup.
+- **`Vdp1_SetDisplayMode`** (was `FUN_06028178`) — writes `TVMR`, looks up a
+  4-entry table by an index param (0-7, resolution/timing presets), sets a
+  couple of derived flags. High confidence.
+- **`Vdp1_SetEraseWindow`** (was `FUN_06028258`) — direct writer for the
+  `EWDR`/`EWLR`/`EWRR` erase-window registers from x1/y1/x2/y2 + a
+  fill-color param, with resolution-dependent bit shifts. High confidence.
+- **`Vdp1_EraseFrameBuffer`** (was `FUN_06028570`) — thin wrapper: calls
+  `Vdp1_SetEraseWindow` (through a function pointer, confirmed by matching
+  the exact `(color,0,0,W-1,H-1)` call shape) with full-screen bounds. High
+  confidence.
+- **Left unnamed (real code, purpose genuinely unclear, not guessing)**:
+  `0x0602834c` (trivial 2-way flag setter feeding VDP1 config — maybe
+  interlace/double-density toggle), `0x06028368` (large orchestrator that
+  computes several offsets into what looks like a display-list/workspace
+  struct and calls `0x06028792` + `Vdp1_EraseFrameBuffer` — plausibly a
+  "begin frame" setup, but the struct layout isn't pinned down), `0x06028528`
+  (trivial register-set + callback), `0x06028792` (loops zeroing N 10-byte
+  entries in an array, then conditionally relinks a list head — looks like a
+  free-list reset for sprite/command entries).
+- **Verdict for the PC port**: this whole cluster is VDP1-hardware-specific
+  (framebuffer/erase-window register writes) — not portable as-is. On PC,
+  frame clearing is just `SDL_RenderClear`; no action needed here beyond
+  documentation.
+
+**Running total: 83 functions renamed out of 529 in A.BIN.**
