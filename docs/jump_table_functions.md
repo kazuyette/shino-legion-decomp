@@ -980,3 +980,75 @@ given the "visibility test" function looks architecturally significant),
 rather than folding it into a quick sweep pass.
 
 Total unchanged: **98 functions renamed out of 529 in A.BIN.**
+
+## Back to DIRECTOR.PPB: the unblock (2026-08-05)
+
+Resumed the targeted approach per plan. Instead of fighting Ghidra's broken
+auto-disassembly (still ~10-15% clean, unchanged), used `tools/sh2dis.py`
+directly against `extracted/DIRECTOR.PPB` with `--base 0x06040000` to
+hand-decode raw bytes, bypassing Ghidra's function-boundary heuristics
+entirely. **This works reliably** — every instruction decoded this way
+matches Ghidra's own (previously confirmed) disassembly of
+`Director_EntryDispatch` byte-for-byte. This is the way forward for this
+file: decode with the script, confirm structure by hand, only then create
+functions/rename in Ghidra.
+
+### `Director_EntryDispatch`'s real structure, fully decoded
+
+Ghidra's decompiler garbles this into nonsense (`while (*psVar2 = in_r2, ...)`,
+already known from earlier). The raw disassembly shows it's **not** a
+computed jump table — it's a linear chain of 8 `CMP/EQ #n,R0` / `BT` pairs
+(one per state value 0-7), which is why the decompiler chokes on it (SH-2
+decompilers generally handle computed jump tables better than long branch
+chains with a shared fall-through tail):
+
+```
+06040062: CMP/EQ #0,R0   06040064: BT 0x6040018   (case 0)
+06040066: CMP/EQ #1,R0   06040068: BT 0x6040020   (case 1)
+0604006C: CMP/EQ #2,R0   0604006E: BT 0x6040040   (case 2)
+06040070: CMP/EQ #3,R0   06040072: BT 0x6040084   (case 3)
+06040074: CMP/EQ #4,R0   06040076: BT 0x604004A   (case 4)
+06040078: CMP/EQ #5,R0   0604007A: BT 0x6040050   (case 5)
+0604007C: CMP/EQ #6,R0   0604007E: BT 0x6040056   (case 6)
+06040080: CMP/EQ #7,R0   06040082: BT 0x604005C   (case 7)
+06040084: ADD #36,R15 / LDS.L @R15+,PR / RTS       (epilogue)
+```
+
+Two concrete, confirmed findings:
+
+- **State 3 is a true no-op.** Its `BT` target (`0x6040084`) is the
+  function's own epilogue — state 3 does nothing but return. A real "idle,
+  nothing to do this frame" case.
+- **State 0 aliases into state 6's test, not its own handler.** State 0's
+  target (`0x6040018`) is just `BRA 0x604007E; NOP` — and `0x604007E` is
+  literally the mid-chain `BT 0x6040056` instruction for case 6. Jumping
+  straight to a bare `BT` re-uses whatever T-flag was left by the *previous*
+  `CMP/EQ` (state 0's own, which was true), so this branch is always taken,
+  landing on **case 6's handler** every time. This confirms and explains the
+  earlier "trivial thunk" finding from the previous session — it's not a
+  handler at all, it's state 0 quietly reusing state 6's logic. Real, but
+  probably not meaningful to port distinctly (state 0 == state 6 in effect).
+
+Cases 1, 2, 4, 5, 6, 7 have real handler bodies starting at their `BT`
+targets — not yet decoded (case 1 opens with a `JSR` through a literal-pool
+function pointer at `0x6040090`, worth resuming here next).
+
+**Open question, possibly explains the bulk-disassembly failures**: the
+literal pool value at `0x06040088` (loaded into R14 as "the state variable's
+address") is raw bytes `00 0B 6E F6` — not a plausible RAM address in any
+Saturn memory region. Either this is a placeholder patched by a relocation
+step at overlay-load time (would explain why blind disassembly chokes on
+so many literal-pool-adjacent regions — relocatable slots aren't valid
+addresses/instructions until patched), or the file-offset-to-VA mapping
+has a wrinkle we haven't found yet for pool data specifically (vs. code,
+which decodes correctly). Not resolved — flagging for next session, since
+if it's relocation, that changes how we should read literal pools
+file-wide.
+
+**Next steps for a future session**: (1) decode cases 1/2/4/5/6/7's handler
+bodies with `sh2ds.py`, starting from case 1's `JSR`; (2) chase the
+`0x000B6EF6` mystery — check if `SHINOBI.PPB` has an analogous pool slot at
+the same relative offset with a different value (would confirm relocation);
+(3) once a few real handlers are mapped, create/rename the corresponding
+functions in Ghidra so GhidraMCP's higher-level tools (xrefs, decompile)
+become usable for them.
