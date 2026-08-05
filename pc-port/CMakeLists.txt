@@ -15,10 +15,16 @@ add_executable(shinobi_legions_pc
     src/mode.c
     src/resource.c
     src/stream.c
+    src/render.c
 )
+
+find_library(MATH_LIBRARY m)
 
 target_include_directories(shinobi_legions_pc PRIVATE src ${SDL2_INCLUDE_DIRS})
 target_link_libraries(shinobi_legions_pc PRIVATE ${SDL2_LIBRARIES})
+if(MATH_LIBRARY)
+    target_link_libraries(shinobi_legions_pc PRIVATE ${MATH_LIBRARY})
+endif()
 
 if(MSVC)
     target_compile_options(shinobi_legions_pc PRIVATE /W3)

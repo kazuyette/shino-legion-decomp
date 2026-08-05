@@ -4,9 +4,38 @@
 #include "mode.h"
 #include "resource.h"
 #include "sys.h"
+#include "stream.h"
 #include <stdio.h>
+#include <math.h>
 
 static unsigned char s_director_buffer[256 * 1024];
+
+/* --- Streaming audio wiring ---
+ * We don't have real PPB audio/track data yet (blocked on DIRECTOR.PPB
+ * being readable -- see docs), so this feeds Stream_Update a synthesized
+ * 440Hz test tone through the exact same ring-buffer/SDL2 path the real
+ * streaming engine (docs: Stream_InitFromHeader/Stream_Update/RingBuf_*)
+ * would use. Proves the port of that subsystem actually works end-to-end;
+ * swap TestToneFillCallback for a real decoder once track data is available. */
+static AudioStream s_music_stream;
+static double s_tone_phase = 0.0;
+
+static int TestToneFillCallback(void *userdata, int16_t *dst, int num_samples)
+{
+    (void)userdata;
+    const double freq = 440.0;
+    const double sample_rate = 44100.0;
+    for (int i = 0; i < num_samples; i++) {
+        int16_t sample = (int16_t)(3000.0 * sin(s_tone_phase));
+        dst[i * 2 + 0] = sample; /* left */
+        dst[i * 2 + 1] = sample; /* right */
+        s_tone_phase += 2.0 * 3.14159265358979323846 * freq / sample_rate;
+        if (s_tone_phase > 2.0 * 3.14159265358979323846) {
+            s_tone_phase -= 2.0 * 3.14159265358979323846;
+        }
+    }
+    return num_samples;
+}
 
 void Boot_Init(void)
 {
@@ -15,6 +44,17 @@ void Boot_Init(void)
     Reset_ObjectAndChannelTables();
     /* "assets" is the extracted disc file tree, see README for layout. */
     Load_DirectorPPB("assets", s_director_buffer, sizeof(s_director_buffer));
+
+    Stream_InitFromCallback(&s_music_stream, TestToneFillCallback, NULL, 2);
+    Stream_BeginPlayback(&s_music_stream);
+    if (!Stream_OpenAudioDevice(&s_music_stream, 44100)) {
+        fprintf(stderr, "[boot] audio device failed to open, continuing without sound\n");
+    }
+}
+
+void Boot_Shutdown(void)
+{
+    Stream_CloseAudioDevice();
 }
 
 /* The 4 fixed object "slots" processed every frame in the real main loop,
@@ -44,6 +84,7 @@ void Boot_RunFrame(void)
     }
 
     Snd_ChannelScheduler();
+    Stream_Update(&s_music_stream);
 }
 
 void Stage_ResetAndLoadDirector(void)

@@ -45,12 +45,19 @@ rendering or real game logic is implemented yet.
 - `src/resource.*` — `DIRECTOR.PPB` loading, handle cleanup, and a real
   `Res_LoadFileByName` with an 8-slot in-memory cache (round-robin eviction)
   matching the traced resource-loader behavior.
-- `src/stream.*` — new: ring buffer (`RingBuf_*`) + streaming audio engine
+- `src/stream.*` — ring buffer (`RingBuf_*`) + streaming audio engine
   (`Stream_InitFromCallback`/`Stream_Update`/`Stream_BeginPlayback`) wired to
   a real SDL2 audio device callback with underrun-to-silence handling. Takes
   a PCM fill callback instead of parsing the original track-table header,
-  since that format lives in data we can't read yet (DIRECTOR.PPB). Not wired
-  into `main.c`/`Boot_Init` yet — needs a real PCM source first.
+  since that format lives in data we can't read yet (DIRECTOR.PPB). Now wired
+  into `Boot_Init`/`Boot_RunFrame`, feeding a synthesized 440Hz test tone
+  through the real ring-buffer path — proves the plumbing works end-to-end;
+  swap the callback for a real decoder once track data is readable.
+- `src/render.*` — new: minimal SDL2 renderer. Clears the screen each frame
+  (stand-in for `Vdp1_EraseFrameBuffer`) and draws two debug markers from
+  `Obj_GetTransformBlock()`'s mode-4/mode-8 slots, so movement in the traced
+  object-transform data is visible on screen. Not real sprite rendering —
+  we don't have sprite/tile data yet — just a data-flow sanity check.
 - `src/sys.*` — generic helpers (memcpy, the master/slave sync stub).
 
 Each function is named to match its Ghidra counterpart — cross-reference

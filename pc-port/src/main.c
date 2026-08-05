@@ -1,12 +1,13 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include "boot.h"
+#include "render.h"
 
 int main(int argc, char **argv)
 {
     (void)argc; (void)argv;
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
@@ -22,6 +23,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    Render_Init(window);
     Boot_Init();
 
     int running = 1;
@@ -33,9 +35,15 @@ int main(int argc, char **argv)
 
         Boot_RunFrame();
 
-        SDL_Delay(16); /* ~60fps placeholder, no rendering yet */
+        Render_Clear();
+        Render_DrawFrame();
+        Render_Present();
+
+        SDL_Delay(16); /* ~60fps placeholder */
     }
 
+    Boot_Shutdown();
+    Render_Shutdown();
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;

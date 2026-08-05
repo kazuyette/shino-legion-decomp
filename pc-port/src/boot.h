@@ -7,6 +7,9 @@
 void Boot_Init(void);
 void Boot_RunFrame(void);
 
+/* Closes the audio device opened by Boot_Init. Call once before SDL_Quit. */
+void Boot_Shutdown(void);
+
 /* FUN_060042b8 — stage teardown: disable DMA, reset VDP2 TVMD, run the
  * 7 reset callbacks, stop sound, reload DIRECTOR.PPB. */
 void Stage_ResetAndLoadDirector(void);
