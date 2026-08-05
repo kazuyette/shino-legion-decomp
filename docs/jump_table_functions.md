@@ -1142,3 +1142,40 @@ better understood — this is a solid stopping point for a session; picking
 this back up should start with adding a low-RAM segment/overlay in Ghidra
 (or just tracing low addresses like `0x602` through A.BIN, which already
 has the full memory map) to see who else touches that state cell.
+
+### Traced the state cell in A.BIN — retracting the LWRAM theory, settling on base+offset
+
+Checked A.BIN's own memory map (`list_segments`, full Saturn map — this
+program has all of it, unlike the raw-imported `.PPB` files): the address
+`0x00000602` falls inside **`Boot_ROM` (`0x00000000-0x000FFFFE`)**, not
+work RAM as guessed above — retracting that. Boot ROM is read-only, so a
+value the dispatcher needs to *read as mutable per-frame state* can't
+actually live there as a bare absolute address. `get_xrefs_to(0x06040602)`
+in A.BIN (the base+offset interpretation) returned nothing either, but
+that's expected — A.BIN wouldn't reference an address *inside* an overlay
+it hasn't loaded yet by literal.
+
+Also checked `Boot_And_MainLoop`'s actual call into the overlay entry point
+(`(*(code*)0x06040000)()`, called bare, no arguments in R4/R5) — so the
+overlay does **not** receive its own load base as a parameter, which eliminates one clean way this could resolve itself at runtime.
+
+**Working conclusion** (logical, not yet directly confirmed): since the
+literal absolute value can't be right (lands in read-only ROM), and no
+relocation-fixup call was found in the load path, the most sensible reading
+left is that these pool "addresses" are meant to be added to the overlay's
+own fixed load base (`0x06040000`) by convention — i.e. `0x06040000 +
+0x602 = 0x06040602` (squarely in `Work_RAM_High`, writable) — baked in by
+whatever tool built the `.PPB` file, on the assumption it always loads at
+that exact fixed address (no runtime relocation needed since the load
+address never varies). Checked a couple of Saturn memory-map references
+online (retroreversing.com, Yabause wiki) — they confirm the *generic*
+memory regions (Boot ROM at 0x0, Work RAM High at 0x06000000+) but don't
+document a specific low-ROM "peripheral status" address, so that avenue
+didn't pan out either.
+
+**Not chasing further right now** — this has gone deep for one session.
+The concrete, load-bearing result stands regardless of which pool-address
+theory is right: **`Director_EntryDispatch` and its `SHINOBI.PPB`
+counterpart are both mostly-empty dispatchers with exactly one real path
+(state 1) gated behind an indexed function-pointer call.** That's the
+actual next target, not the address theory.
