@@ -1203,6 +1203,75 @@ sizes/structure against `ALUCARD.PRG`'s known-good 96-byte layout, or look
 for a length/size field near the start of the header that would tell us
 where code actually begins.
 
+**Tested and NOT confirmed**: dumped `DIRECTOR.PPB`'s first 256 bytes as
+4-byte-aligned big-endian words and checked every one against the
+`0x06000000-0x07ffffff` (Work RAM High) range, the way `ALUCARD.PRG`'s
+header reads cleanly as a table of absolute addresses. **Zero hits** —
+`DIRECTOR.PPB` does not have an `ALUCARD.PRG`-style leading pointer table.
+Different game, different publisher, evidently a different overlay
+convention. The "6-byte header, code at +6" reading stays the
+best-supported one (independently re-confirmed: the very first `STS.L
+PR,@-R15` byte pattern found by a fresh scan is at `0x06040008`, exactly
+where `Director_EntryDispatch`'s second instruction should be).
+
+**One more data point, inconclusive**: re-checked the case-1 pool value
+with non-4-byte-aligned offsets out of curiosity — reading from
+`0x6040090-2` instead of the "correct" (instruction-computed, 4-aligned)
+`0x6040090` happens to produce a plausible-looking `0x06025268` instead of
+garbage. But SH-2's `MOV.L @(disp,PC)` addressing mode is defined to always
+target a 4-byte-aligned effective address, so an unaligned "lucky" read
+isn't a legitimate fix — more likely coincidence than signal, but noted in
+case a pattern emerges later.
+
+**Parking this specific pointer mystery.** At this point we've tested and
+ruled out: a script bug (Ghidra agrees byte-for-byte), `Res_FixupPointers`
+relocation, the LWRAM-range theory, the Boot-ROM-exclusion logic, a
+base+offset reading, an `ALUCARD.PRG`-style header table, and alignment
+sensitivity. What we've solidly gained instead: both dispatchers' full
+control-flow shape, the shared state cell, confirmation the disassembly
+trouble is a genuine file-format property (not a tooling bug, cross-checked
+against two disassemblers and a sibling decompilation project). Further
+progress on the pointer itself most likely needs either different
+information (real toolchain docs) or a lucky find, not more manual
+byte-staring — future sessions should default to cataloguing *other*
+self-contained functions in these files (via the prologue-byte-scan +
+targeted Ghidra function creation technique, which works reliably) rather
+than re-attacking this one value.
+
+### Actually — a new, better-supported hypothesis surfaces immediately
+
+Tried the "catalogue a fresh function" pivot right away: targeted-created
+`0x06040266` in Ghidra. It breaks on the **very first instruction after the
+prologue** — `STS.L PR,@-R15` decodes clean, then the next word (`FE7F`) is
+"bad instruction" to both Ghidra and `sh2dis.py`. `0xFE7F` has top nibble
+`0xF` — the same "reserved" opcode space (`0xF000-0xFFFF`) as the `FFFF`
+anomalies seen repeatedly throughout both dispatchers. This is now the
+**third independent location** (two dispatcher tails plus this fresh,
+unrelated function) where a clean, valid instruction is immediately
+followed by an `0xF`-prefixed word that neither disassembler can decode —
+too consistent to be coincidental misalignment.
+
+Base SH-2 (the Saturn's SH7604, no FPU) leaves the entire `0xF000-0xFFFF`
+opcode space undefined/reserved. **New hypothesis**: these aren't garbage
+or misalignment at all — they may be **deliberate illegal-instruction traps**
+used as a fast software-interrupt/syscall mechanism (a known real-world
+pattern on other platforms, e.g. calling into BIOS/SGL runtime code, or
+Master/Slave SH-2 cross-communication, via an intentionally-illegal opcode
+that the exception handler recognizes and dispatches on). This would
+explain why dispatcher branches sometimes land *directly* on one of these
+words (a real jump target, not skippable padding) and why two independently
+different disassemblers agree it's not valid inline code — because it
+isn't meant to be interpreted as a normal instruction at all, on either
+tool's terms.
+
+**Not confirmed, but the most promising lead yet** — worth checking next
+time: (1) do these `0xF`xxx values follow any pattern (fixed set of
+values, or do the low bits look like an operand/index)? (2) does A.BIN's
+own boot code install an illegal-instruction exception handler anywhere
+(would be a strong confirming signal)? Recommending this angle over
+continuing the pointer-value archaeology — it might explain *all* the
+disassembly trouble at once rather than one pool value at a time.
+
 **Next steps for a future session**: (1) resolve the pool-value mystery —
 check whether `SHINOBI.PPB` has an analogous slot at the same relative
 offset with a *different* value (would support relocation) or whether
