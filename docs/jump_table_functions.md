@@ -1221,6 +1221,41 @@ One real find in the same range, though:
 
 **Running total: 99 functions renamed out of 529 in A.BIN.**
 
+### Sweep conclusion: the rest of A.BIN's tail is CD-ROM/filesystem driver boilerplate
+
+Sampled a third range, `0x06032800-0x06034e00`, to see if the CD-driver
+verdict held or if this was a one-off. It holds, and clearly: small
+command-buffer builders (same "opcode byte + call through function
+pointer" shape as the `0x06039600` cluster), a consistent nested-struct
+access pattern at `param_1+0x10` / `+0x6c` (looks like a file/device
+handle's cached position or config sub-record), a seek-like function with
+POSIX-errno-style negative return codes (`-11`, `-14`), and a
+cached-position read/seek dispatcher. All generic filesystem/CD-block
+driver plumbing, same family as everything from `0x06035000` onward.
+
+**Conclusion for the sweep**: the stretch from roughly `0x06032800` through
+`0x0603a28c` — the large majority of A.BIN's remaining unnamed functions —
+is one continuous CD-ROM/filesystem driver library (not hand-written game
+code, likely a Sega-provided or licensed CD-FS component). Three
+independent samples across this range (this session and earlier) all
+landed on the same pattern with zero exceptions. **Deprioritizing this
+entire range from the sweep** — further sampling here is very unlikely to
+turn up gameplay logic, and it's not useful for the PC port either (the
+port already does plain `fopen`/`fread`, no need to replicate Saturn's CD
+block driver). Combined with the earlier-confirmed VDP1/VDP2/SGL-internals
+clusters (`0x06028000-0x0602c000` roughly) and the sound/streaming/object
+clusters already fully mapped, **A.BIN's overall shape is now well
+understood**: boot + hardware plumbing + a large licensed CD-FS driver,
+with no gameplay logic — consistent with the project's core architectural
+finding that gameplay lives in `DIRECTOR.PPB`/`SHINOBI.PPB`, not `A.BIN`.
+Remaining unswept pockets are small (a few hundred bytes here and there
+between confirmed clusters); worth a final targeted pass someday but not
+high-value.
+
+**Running total: 99 functions renamed out of 529 in A.BIN** (unchanged —
+this pass was about characterizing territory, not naming individual
+generic wrappers).
+
 Checked the one remaining live hypothesis: does `Res_FixupPointers` (A.BIN's
 confirmed relocation-fixup routine) get called anywhere in the
 `DIRECTOR.PPB` load path, the way it's used for streaming-audio headers?
