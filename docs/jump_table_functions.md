@@ -916,3 +916,34 @@ Continued the sweep past the VDP1 clusters, into 0x06029500-0x0602ae50:
   confirmed).
 
 **Running total: 95 functions renamed out of 529 in A.BIN.**
+
+### VDP2 scroll/priority register cluster, 0x0602ae48-0x0602b344
+
+Continued past `Vdp2_Init` into a dense run of VDP2 register bitfield
+writers (per-scroll-plane setters — VDP2 has 4+ scroll screens, each with
+its own set of character/priority/scroll registers, which is why these
+functions are so repetitive).
+
+- **`Vdp2_FlushDirtyRegions`** (was `FUN_0602ae48`) — checks a dirty-flag
+  byte bit by bit (0x80/0x40/0x20/0x10/8/4), and for each set bit calls
+  `Sys_MemCopyWords` with a fixed size then a callback — structurally
+  identical to `Gfx_FlushDirtyRegions` from the VDP1 cluster, just the VDP2
+  sibling. Medium-high confidence.
+- **`Vdp2_SetPriority`** (was `FUN_0602b254`) — sets two 3-ish-bit priority
+  fields into one register at nibble-aligned offsets (`<<0xc`, `<<8`) —
+  matches the shape of VDP2's paired-plane priority registers (e.g.
+  PRINA/PRINB hold two screens' priorities each). Medium confidence.
+- **`Vdp2_ResetScrollState`** (was `FUN_0602b2a0`) — calls one named helper
+  (`FUN_0602bf6c`) plus 5 function pointers, then zeroes an 8-word array and
+  two more fields. Reads like a scroll-state reset entry point. Medium
+  confidence.
+- **Left unnamed** (real code, genuinely too dense/speculative to map
+  precisely without register-level ground truth): `0x0602af54`,
+  `0x0602afd4`, `0x0602b344` — large bitfield combiners writing 3-8 VDP2
+  registers each via masked shifts, gated by per-plane callback thunks
+  (probably a "wait for safe VDP2 write window" gate repeated per plane).
+  `0x0602b2f2` — trivial one-line bitfield getter, no strong hypothesis for
+  what it reads. Not chasing these further; VDP2 register-level work isn't
+  needed for the PC port anyway (SDL2 handles blending/layers directly).
+
+**Running total: 98 functions renamed out of 529 in A.BIN.**
