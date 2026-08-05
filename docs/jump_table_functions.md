@@ -645,3 +645,38 @@ earlier — Shinobi Legions has (at least) two independent audio pipelines: one
 for short sound effects (fixed 8-channel scheduler) and one for streamed music.
 
 **Running total: 61 functions renamed out of 529 in A.BIN.**
+
+Two more from `Stream_Update`'s track-processing branch — much denser, lower
+confidence than the rest of this cluster (heavy bitfield/offset arithmetic,
+didn't fully verify every branch):
+
+- `0x0600bcba` → `Stream_CopyTrackSamples` — copies/deinterleaves audio sample
+  data for one track entry into the ring buffer (mono vs. stereo split via the
+  same +0x25 format flag byte, handles wraparound).
+- `0x0600c292` → `Stream_PrepareNextChunk` — advances to the next track-table
+  entry and kicks off decoding for it (sets up a decode-state block, calls what
+  looks like a decoder-init with format/pointer args).
+
+Treat these two names as working hypotheses, not confirmed — the exact
+bit-level behavior wasn't fully traced. Good candidates to revisit if the
+streaming engine needs to be precisely reimplemented later.
+
+**Running total: 63 functions renamed out of 529 in A.BIN.**
+
+More streaming-cluster helpers, verified via xref-checked shapes (higher
+confidence than the previous two):
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x0600c222 | `Stream_CanPrefetchNext` | look-ahead feasibility check: is there a next track-table entry, is it not an end-marker (`-1`), does a flag bit clear, is there buffer space — used by `Stream_PrepareNextChunk` before eagerly advancing |
+| 0x0600aed8 | `RingBuf_AdvanceWrite` | write-side mirror of `RingBuf_AdvanceRead` — advances the write position with wraparound, same status-code shape |
+| 0x0600ae84 | `RingBuf_ClearWrapTail` | if a write would cross the buffer's wrap boundary, zero-fills the overflow region past the end |
+| 0x0600af0e | `RingBuf_AdvanceWriteDeferred` | conditionally calls `RingBuf_AdvanceWrite` or just accumulates a pending byte count, depending on a flag |
+| 0x0600af48 | `Stream_MarkNeedsInit` | sets stream state to 2 (needs re-init) — this is what `Stream_LinkNext` calls to prep the next stream before `Stream_Update` picks it up |
+| 0x0600af38 | `Stream_GetHeaderPtr` | trivial accessor: returns `struct + 0x34`, the header sub-struct pointer used constantly throughout this cluster |
+| 0x0600af32 | `Stream_GetBufferBase` | trivial accessor: returns the struct's first field, used as a base address added to other offsets elsewhere — reasonably confident but not 100% |
+
+Left `0x0600af40` (a similar trivial one-field accessor) unnamed — couldn't
+pin down what field it exposes without more digging, didn't want to guess.
+
+**Running total: 70 functions renamed out of 529 in A.BIN.**
