@@ -30,10 +30,12 @@ conclude that" but not required reading to get oriented.**
   relocation, LWRAM addressing, Boot-ROM exclusion, base+offset addressing,
   an `ALUCARD.PRG`-style header table cross-checked against the
   `sotn-decomp` Saturn port, alignment sensitivity, and an
-  illegal-instruction-trap mechanism) — all ruled out or inconclusive. Real
-  root cause needs either Sega/SGL toolchain documentation we don't have,
-  or a lucky find. **A real Saturn BIOS dump may help** (would resolve
-  exception-vector questions directly) — pending, see bottom of log.
+  illegal-instruction-trap mechanism) — all ruled out. A genuine
+  user-supplied Saturn BIOS dump confirmed the illegal-instruction-trap
+  hypothesis dead (real handler is a bare infinite self-loop, not a
+  dispatcher — see bottom of log). Real root cause needs either Sega/SGL
+  toolchain documentation we don't have, or a self-relocation routine in
+  the `.PPB` files we haven't located yet.
 - **The working technique for making progress in `.PPB` files anyway**:
   scan for `STS.L PR,@-R15` (`0x4F22`) byte patterns to find genuine
   function starts, then in Ghidra: select that address range → Clear Code
@@ -1531,3 +1533,71 @@ lack of effort, and further progress likely needs a different technique
 (e.g. checking if any *other* address in either `.PPB` file's early bytes
 looks like self-relocation/init code we haven't identified yet) rather than
 more manual byte-staring at this exact spot.
+
+## Real Saturn BIOS dump obtained — illegal-instruction-trap hypothesis now DEAD
+
+User supplied `saturn_bios.bin` (524288 bytes, presumably self-dumped from
+their own console — declined an offered third-party "BIOS pack" download
+for copyright reasons, only using a user-supplied file). Verified genuine
+before trusting it:
+
+- `file` misidentifies it as "Targa image data" — a false positive on the
+  first bytes, not meaningful.
+- Byte 0x40020 contains the plaintext string
+  `COPYRIGHT(C) SEGA ENTERPRISES,LTD. 1994 ALL RIGHTS RESERVED` — this is
+  the known, correct Saturn BIOS copyright string.
+- `tools/sh2dis.py` cleanly disassembles real, sensible SH-2 code starting
+  at file offset 0x200 (see below) — no garbage, no decoder failures.
+- Byte-frequency distribution (256/256 values present, no degenerate
+  spikes beyond normal code/data mix) is consistent with real compiled
+  binary, not padding/junk.
+
+**Verdict: genuine BIOS, safe to use for analysis.**
+
+Read the SH-2 exception vector table at offset 0 (VBR=0 on reset, so this
+IS the live vector table at boot):
+
+```
+vector 0 (power-on reset PC): 0x20000200
+vector 1 (power-on reset SP): 0x06002000
+vector 2 (manual reset PC):   0x20000200
+vector 3 (manual reset SP):   0x06002000
+vector 4 (general illegal instruction): 0x20000222
+vector 5 (reserved):                    0x20000226
+vector 6 (slot illegal instruction):    0x20000222   <- SAME as vector 4
+vector 7 (reserved):                    0x20000226
+```
+
+Disassembled the handler at 0x222 (cache-through mirror of file offset
+0x222):
+
+```
+00000222:  AFFE    BRA 0x222      ; branch to self
+00000224:  0009    NOP
+00000226:  002B    RTE
+```
+
+This is a **bare infinite self-loop** — not a dispatcher, not a syscall
+table lookup, nothing that reads the trapping opcode's low bits. A real
+illegal instruction on real hardware just hangs the CPU forever. The 0x226
+`RTE` is vector 5/7's target, unreachable from an actual illegal-instruction
+trap.
+
+**This kills the illegal-instruction-trap-as-syscall hypothesis for good**
+(it was already the weakest of the nine — now directly falsified by the
+real BIOS instead of just "weakened" by ISA reasoning). Whatever the
+`0xF`-prefixed pool-pointer anomaly in `DIRECTOR.PPB`/`SHINOBI.PPB` is, it
+is **not** the game deliberately triggering illegal-instruction traps as a
+lightweight syscall mechanism — that would just freeze a real Saturn.
+
+Also incidentally confirms two independent things: the reset vector
+(`0x20000200`) lands exactly where A.BIN's own boot code was already known
+to run from, and the initial stack pointer (`0x06002000`) matches A.BIN's
+known load address — both sanity checks the BIOS is correctly mapped and
+genuinely mirrors this game's environment.
+
+**Where this leaves the pool-pointer mystery**: down to "needs Sega/SGL
+toolchain documentation" or a self-relocation routine we haven't located
+yet (see previous section). The BIOS didn't resolve it, but it did cleanly
+close off one whole line of investigation with certainty instead of a
+shrug — worth having done.
