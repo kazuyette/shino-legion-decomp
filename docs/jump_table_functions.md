@@ -700,3 +700,23 @@ exactly this kind of elapsed-time query). Not confirmed via a direct call
 chain yet — worth checking if `Fx_*` functions call into this cluster.
 
 **Running total: 74 functions renamed out of 529 in A.BIN.**
+
+### Confirmed: timer cluster is part of the streaming engine, up to 32 concurrent streams
+
+Checked who calls `Sys_CaptureTimestamp` — both callers are streaming-cluster
+functions, confirming the "worth checking" hypothesis from above:
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x0600b61e | `Stream_BeginPlayback` | checks a buffer-fill threshold, then captures a timestamp (`Sys_CaptureTimestamp`) and sets stream state to 4 (ready/playing) — the actual "start" of playback |
+| 0x0600e16a | `Stream_RestampGroup` | iterates up to **32 stream slots** (`Stream_GetSlotIfActive`), and for each active stream (state 4) whose group-flag matches a bitmask parameter, increments a counter and re-captures its timestamp — a batch resync operation across a group of streams |
+| 0x0600b94e | `Stream_GetSlotIfActive` | given a slot index (0-31), checks an allocation bitmask; if set, returns a pointer into a 32-entry array of stream instance pointers, else null |
+
+**Confirmed architecture**: the streaming engine supports up to 32 concurrent
+stream instances (a slot pool with an allocation bitmask, same pattern as
+`Msg_InitSlotPool`'s 32-slot pool, though a separate pool — worth confirming
+they're not literally the same array). `Stream_RestampGroup`'s "resync a group
+by flag" operation suggests streams can be tagged into groups (e.g. all BGM
+tracks vs. all ambient loops) and paused/resynced together.
+
+**Running total: 77 functions renamed out of 529 in A.BIN.**
