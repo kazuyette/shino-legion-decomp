@@ -876,3 +876,43 @@ format (`CMDCTRL`/`COMDT` field) byte-for-byte:
   recorded from the original game for reference.
 
 **Running total: 90 functions renamed out of 529 in A.BIN.**
+
+### Big find: Vdp2_Init, and a second transform-dispatcher twin
+
+Continued the sweep past the VDP1 clusters, into 0x06029500-0x0602ae50:
+
+- **`Vdp2_Init`** (was `FUN_0602a688`) — zeroes a whole family of VDP2 state
+  structs and writes `PTR_VDP2_TVMD_0602a820` directly (Ghidra already had
+  the VDP2 TVMD register name) — confirms this is VDP2 (background/scroll
+  processor) startup, the sibling of the earlier `Vdp1_Init`. Ends by
+  raising the *same* ready-flag as `Obj_SetReadyFlag` (`0602a8bc`) — so VDP2
+  init is itself one of the things that "readies" a frame. High confidence.
+- **`Obj_SetTransformParamSecondary`** (was `FUN_0602ab1c`) — structurally a
+  twin of `Obj_SetTransformParam`: same mode dispatch (1/2/4/8), writes a
+  *different* pair of offsets (`+0x4c`/`+0x50` vs. the original's
+  `+0x44`/`+0x48`) on a related-but-different struct, with an extra
+  min/max-clamp pre-pass via two callbacks before storing. Reads like a
+  second data channel per object slot (maybe velocity/rotation next to
+  position). Medium-high confidence on the "twin dispatcher" shape, low
+  confidence on what the second channel actually represents.
+- **`Sys_MemCopyWords`** (was `FUN_0602adc8`) — confirmed: plain 16-bit-unit
+  copy loop (`param_3` is a byte count, copies `param_3/2` words). Distinct
+  from the existing `Sys_MemCopy` (byte-oriented). High confidence.
+- **`Gfx_FlushDirtyRegions`** (was `FUN_0602ac48`) — calls `Sys_MemCopyWords`
+  ~7 times with fixed sizes against several dirty-flag-guarded regions —
+  looks like flushing several small dirty buffers (palette/CRAM-sized
+  chunks, given the `0x28`/`0x48`/`0x40`/`0x10`/`0x20`-byte sizes) out to
+  their destinations each frame. Medium confidence.
+- **`Gfx_SyncAndFlush`** (was `FUN_0602ad2e`) — small state-dispatcher (1/2)
+  that conditionally does two more `Sys_MemCopyWords` calls then always
+  calls `Gfx_FlushDirtyRegions`. Medium confidence.
+- **Left unnamed** (real code, not confident enough to name): `0x060295a0`
+  and `0x06029af8` (both small "zero a fixed-size struct" resetters —
+  plausible attribute/object record resets, no strong evidence either way),
+  `0x060295c4` (a large ~200-line attribute-flag combiner, clear structural
+  cousin of the unnamed `0x060293ec` from the VDP1 cluster — same family of
+  functions, still too speculative to name precisely), `0x0602a660` (copies
+  8 words into a fixed table offset, likely VDP2-palette-related but not
+  confirmed).
+
+**Running total: 95 functions renamed out of 529 in A.BIN.**
