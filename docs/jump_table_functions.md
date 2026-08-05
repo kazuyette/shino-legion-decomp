@@ -461,3 +461,63 @@ block further work — this is clearly the real entry logic either way.
 **Running total for DIRECTOR.PPB: 1 function renamed out of 476** (separate
 counter from A.BIN's 529 — two different programs in the same Ghidra project
 now).
+
+**Paused (2026-08-05)**: bulk disassembly of `DIRECTOR.PPB` is unreliable —
+sampled ~20 functions spread across the file (before and after fixing the
+6-byte header alignment) and only ~10-15% decompile cleanly; the rest hit
+"bad instruction"/"unimplemented instruction" almost immediately. This isn't
+an alignment fluke fixable by skipping the header — the hand-optimized SH-2
+code likely has literal pools interspersed throughout (same issue A.BIN had,
+but A.BIN got a specialized Saturn ISO loader that handled it; this raw file
+has no such help). `Clear Code Bytes` + re-disassemble did NOT improve the
+ratio. Fixing this properly means going function-by-function from confirmed
+call graph edges (like we did for `Director_EntryDispatch`), not bulk/blind
+disassembly — much slower, deprioritized for now. **Back to `A.BIN`** per
+user direction; resume `DIRECTOR.PPB` later with the targeted approach.
+
+### Back to A.BIN: resolved the remaining per-frame literal pool calls
+
+Read the raw file bytes directly (Python + pycdlib) to resolve the last two
+unresolved `Boot_And_MainLoop` per-frame call targets that GhidraMCP's
+`get_xrefs_from` wasn't returning anything for:
+
+- `0x060042a8` → `0x0602894c` — confirms this is the same "SGL command-list
+  builder" function noted earlier (VDP1-command-table entries, `0x06028000`
+  region), called once per frame before the 4-slot loop. Deprioritized, same
+  as before.
+- `0x060042ac` → `0x0602ab1c` — confirms the other SGL-internals slot helper,
+  called with `(extra_c, extra_d)` for slots 1-2 only, matching what was
+  already documented.
+- `0x060042b0` → **`0x06007084`** — this is the function the user hand-traced
+  extensively earlier in the project (large pasted disassembly dumps,
+  `FUN_06007084`/`FUN_0600718a`) but **no Function object exists at this
+  address in the current Ghidra project** — `list_functions`/`get_xrefs_to`
+  both come up empty for it, despite being a confirmed call target. Likely
+  lost during the panic-disassemble incident or never resurfaced after the
+  `.gitignore`/repo cleanup. **Action needed**: in Ghidra, go to `06007084`
+  in `A.BIN`'s CodeBrowser and check whether it's disassembled; if not, same
+  fix as `DIRECTOR.PPB`'s entry point — `Create Function` there manually.
+
+**Resolved**: GhidraMCP just wasn't connected to the right tool — `track1.iso`
+(the program A.BIN's code actually lives in, via the Saturn ISO loader) wasn't
+open. Once reopened, `FUN_06007084` was already cleanly disassembled (this is
+the function the user hand-traced early in the project). Decompiled the full
+cluster:
+
+| address | renamed to | what it does |
+|---|---|---|
+| 0x06007084 | `Fx_UpdateInterpEvent` | per-frame state dispatcher (states 0/1/2): 0 = pick up a newly-queued request if idle, 1 = drive a 3-axis interpolation to completion, 2 = copy+verify a data block |
+| 0x0600718a | `Fx_ProcessSwapFlags` | bit-flag-driven double-buffer swap: checks/clears flags 1/2/4, copies data (`Sys_MemCopy`) into one of two buffers based on a toggle bit, verifies via `Fx_VerifyFieldsMatch` |
+| 0x06007960 | `Fx_StepInterpolate3Axis` | for 3 parallel fields, steps each toward a target value via a shared callback (accel/decel-style increment), returns true once all 3 have converged (fixed-point, upper 16 bits of each field reaching 0) |
+| 0x06007a5e | `Fx_VerifyFieldsMatch` | calls a shared callback for 3 fields, compares each against an expected value, returns true if all 3 match |
+| 0x060077a4 | `Fx_SetFlagBits7` | updates 7 status bits from a bitmask parameter, one at a time, wrapped in what looks like an atomic disable/enable (interrupt mask?) pair around each bit |
+
+**Working theory**: this cluster is a generic 3-axis interpolation/animation
+engine — `Fx_StepInterpolate3Axis`'s shape (move 3 fields toward a target via
+a callback, done when converged) strongly resembles smooth camera or object
+movement easing, plausibly driven by `DIRECTOR.PPB`'s script data (fits the
+project's "director" framing). Not fully confirmed which axis set (camera vs.
+object vs. something else) — next step would be finding callers of
+`Fx_UpdateInterpEvent` beyond the main loop to see what feeds it its targets.
+
+**Running total: 38 functions renamed out of 529 in A.BIN.**
