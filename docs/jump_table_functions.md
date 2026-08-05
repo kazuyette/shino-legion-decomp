@@ -193,6 +193,33 @@ decompilation:
   get chosen, and what calls `Obj_SetTransformParam` to see which frame/object data
   actually flows through it — see task list for continuation plan.
 
+### Obj_SetTransformParam fully decompiled — struct layout resolved (2026-08-05)
+
+Got the full decompile. Confirms and completes the theory above:
+
+- **Modes 4/8/0x10/0x20** — exactly the 4 modes the real per-frame loop uses
+  (`kObjectSlotModes` in `boot.c`) — write two fields each into **one shared**
+  control block at `PTR_DAT_0602a96c`, no gating, no callback:
+  - mode 4: full 32-bit `param_1`/`param_2` at offsets `+0x00`/`+0x04`
+  - mode 8: full 32-bit `param_1`/`param_2` at offsets `+0x10`/`+0x14`
+  - mode 0x10: **high 16 bits only** of `param_1`/`param_2` at `+0x20`/`+0x22`
+  - mode 0x20: **high 16 bits only** of `param_1`/`param_2` at `+0x24`/`+0x26`
+  - The high-16-only writes for 0x10/0x20 match SGL fixed-point convention
+    (upper word = integer part) — likely angle/scale fields vs. the
+    full-32-bit position fields at mode 4/8.
+- **Modes 1/2** — write into two *separate* control blocks (`0602a974`,
+  `0602a988`) at offsets `+0x44`/`+0x48`, with extra gating logic that can
+  fire a callback through a function pointer (`PTR_FUN_0602a984`/
+  `PTR_FUN_0602aa30`) — looks like a real SGL render/commit call. Not used
+  by the observed 4-slot call site, not investigated further (real SGL
+  hardware call, not portable as-is).
+
+**Ported to pc-port**: `Obj_SetTransformParam`/`Obj_SetReadyFlag`/
+`Obj_ConsumeFlagAndStore` now do the real thing in `pc-port/src/object.c`
+(shared `ObjTransformBlock` struct matching the offsets above, plus the
+ready-flag handshake) instead of stub logging. Modes 1/2 intentionally left
+unhandled (see comment in `object.h`).
+
 ## Status (2026-08-04)
 
 529 functions total in A.BIN per Ghidra's auto-analysis. ~20 identified and renamed so

@@ -1,12 +1,36 @@
 #ifndef OBJECT_H
 #define OBJECT_H
 
-/* Object/sprite transform dispatcher cluster, traced from 0x0602a900-ish
- * in A.BIN (FUN_0602a8c4 and friends). Mode is a bitflag (1,2,4,8,0x10,0x20)
- * selecting which pair of fields gets written on a per-object control block. */
+#include <stdint.h>
+
+/* Object/sprite transform dispatcher, fully decompiled from Obj_SetTransformParam
+ * (0x0602a8c4). Modes 4/8/0x10/0x20 -- the only ones the real per-frame loop
+ * actually uses (see boot.c's kObjectSlotModes) -- write two fields each into
+ * ONE shared control block at fixed offsets, with no side effects; that part
+ * is ported faithfully below. Modes 1/2 write into two SEPARATE control
+ * blocks and conditionally fire a callback through a function pointer
+ * (PTR_FUN_0602a984/0602aa30) -- that looks like a real SGL render/commit
+ * call, isn't used by the observed call site, and is NOT ported. */
 void Obj_SetTransformParam(int mode, int param_a, int param_b);
 void Obj_SetReadyFlag(void);
 void Obj_ConsumeFlagAndStore(int value);
+int  Obj_GetLastMode(void);
+
+/* Raw layout of the shared control block written by modes 4/8/0x10/0x20,
+ * offsets match the decompile exactly (0x00/0x04, 0x10/0x14 as full 32-bit
+ * writes; 0x20/0x22, 0x24/0x26 as the high 16 bits only -- SGL fixed-point
+ * integer part, consistent with angle/scale fields). Exposed for inspection/
+ * future rendering code. */
+typedef struct {
+    int32_t slot0_a, slot0_b; /* mode 4  -> offsets 0x00, 0x04 */
+    unsigned char _pad0[8];   /* 0x08-0x0f, unused by this dispatcher */
+    int32_t slot1_a, slot1_b; /* mode 8  -> offsets 0x10, 0x14 */
+    unsigned char _pad1[8];   /* 0x18-0x1f, unused by this dispatcher */
+    int16_t slot2_a, slot2_b; /* mode 0x10 -> offsets 0x20, 0x22 (hi16 of params) */
+    int16_t slot3_a, slot3_b; /* mode 0x20 -> offsets 0x24, 0x26 (hi16 of params) */
+} ObjTransformBlock;
+
+const ObjTransformBlock *Obj_GetTransformBlock(void);
 
 /* Generic intrusive doubly-linked list node, matching the sentinel-node
  * pattern from FUN_06006f56: an empty list is a node whose next/prev both
