@@ -1162,6 +1162,47 @@ that documentation surfaces or a different technique presents itself,
 rather than continuing to spend sessions on byte-level trial and error that
 keeps landing on the same wall.
 
+### Cross-referenced against sotn-decomp (Saturn port of Symphony of the Night) — found the likely real bug
+
+The user pointed out we're probably not the first to hit this — checked the
+connected `sotn-decomp-repo` folder, which includes a Saturn port target
+(`config/saturn/*.prg.yaml`, `tools/saturn-splitter`, SH-2 disassembly via
+Ghidra+GhidraMCP, documented in their own `docs/DECOMP_LOG.md`). Genuinely
+useful cross-project findings:
+
+- **Their exact technique matches ours** — raw binary import into Ghidra
+  with a manually-set base address equal to the overlay's real load address
+  (`0x060A5000` for `ALUCARD.PRG`, their equivalent of our `.PPB` files) —
+  and for them, **auto-analysis correctly finds functions** afterward. That
+  rules out "raw-binary-import + Ghidra" as inherently unreliable for
+  Saturn overlays in general — it works fine for a same-shaped file in a
+  sibling project.
+- **Their per-overlay header is much bigger than ours**: `ALUCARD.PRG`'s
+  segment config marks offset `0x0-0x5F` (96 bytes) as `data`, with real
+  code only starting at `0x60`. We've been assuming a **6-byte** header for
+  `DIRECTOR.PPB`/`SHINOBI.PPB` based on a 2-header-word + `FFFF`-sentinel
+  pattern that looked plausible but was never independently confirmed
+  against a working reference.
+- Their toolchain is confirmed **GNU `sh-elf-gcc`** (Cygnus port, run under
+  DOS emulation for the original build), not Hitachi's proprietary `SHC` —
+  worth keeping in mind if code-generation patterns ever need comparing,
+  since our disassembly troubles could plausibly be compiler-specific too.
+
+**New working hypothesis, not yet tested**: our 6-byte header guess is very
+likely **wrong/too short** — real code (and the real, valid literal pool)
+probably starts later, and everything we've decoded from `+6` onward
+(including `Director_EntryDispatch` itself) may actually still be sitting
+inside a longer header/data region that *happens* to decode into
+plausible-looking SH-2 instructions for a while before hitting genuine
+garbage. This would cleanly explain every symptom so far: implausible pool
+values, consistent bad-instruction cascades at scattered points, and two
+independent disassemblers agreeing (because they're both correctly
+decoding bytes that just aren't meant to be code). **Next step**: determine
+the real header length for `DIRECTOR.PPB`/`SHINOBI.PPB` — compare file
+sizes/structure against `ALUCARD.PRG`'s known-good 96-byte layout, or look
+for a length/size field near the start of the header that would tell us
+where code actually begins.
+
 **Next steps for a future session**: (1) resolve the pool-value mystery —
 check whether `SHINOBI.PPB` has an analogous slot at the same relative
 offset with a *different* value (would support relocation) or whether
