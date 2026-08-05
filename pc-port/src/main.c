@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "boot.h"
 #include "render.h"
+#include "input.h"
 
 int main(int argc, char **argv)
 {
@@ -33,6 +34,7 @@ int main(int argc, char **argv)
             if (ev.type == SDL_QUIT) running = 0;
         }
 
+        Input_Update();
         Boot_RunFrame();
 
         Render_Clear();

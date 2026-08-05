@@ -1,5 +1,54 @@
 # The 10 entries of the boot jump table @ 0x06004118
 
+**This file is a chronological research log, now long (1000+ lines). Read this
+summary first — it's the current state of the project in one place; the rest
+of the file is the detailed evidence trail behind it, useful for "why did we
+conclude that" but not required reading to get oriented.**
+
+## TL;DR / current status (2026-08-05)
+
+- **A.BIN** (`0x06002000-0x0603a300` roughly) is fully characterized: boot
+  sequence, SGL/hardware plumbing (VDP1 sprite-command-list builder, VDP2
+  scroll/priority registers, sound scheduler, streaming audio engine,
+  object-transform dispatcher, SCU DMA), and a large licensed CD-ROM/
+  filesystem driver (`0x06032800-0x0603a300`, majority of the file, not
+  hand-written game code). **99/529 functions renamed.** No gameplay logic
+  or pad input found here — confirmed architecturally, not just "not found
+  yet". Further sweeping this file is low-value; small unswept pockets
+  remain but are unlikely to contain anything new.
+- **Gameplay logic (including pad input) lives in `DIRECTOR.PPB`/
+  `SHINOBI.PPB`** — runtime-loaded SH-2 overlays, both imported into Ghidra
+  (raw binary, base `0x06040000`). Both files' entry dispatchers are fully
+  decoded by hand (`tools/sh2dis.py`, cross-checked against Ghidra): mostly
+  empty 8-state dispatchers, each with exactly one real path gated behind
+  an indexed function-pointer call.
+- **Blocked**: neither file disassembles reliably in Ghidra or a
+  from-scratch disassembler — both hit the same "bad instruction" points
+  independently, most often right after a valid instruction on a word
+  prefixed `0xF` (undefined opcode space on base SH-2). Nine distinct
+  hypotheses tested this session (script bug, `Res_FixupPointers`
+  relocation, LWRAM addressing, Boot-ROM exclusion, base+offset addressing,
+  an `ALUCARD.PRG`-style header table cross-checked against the
+  `sotn-decomp` Saturn port, alignment sensitivity, and an
+  illegal-instruction-trap mechanism) — all ruled out or inconclusive. Real
+  root cause needs either Sega/SGL toolchain documentation we don't have,
+  or a lucky find. **A real Saturn BIOS dump may help** (would resolve
+  exception-vector questions directly) — pending, see bottom of log.
+- **The working technique for making progress in `.PPB` files anyway**:
+  scan for `STS.L PR,@-R15` (`0x4F22`) byte patterns to find genuine
+  function starts, then in Ghidra: select that address range → Clear Code
+  Bytes → Disassemble → Create Function (targeted, not bulk). Works
+  reliably; bulk "select-all + Auto Analyze" does not (cascading
+  misalignment).
+- **`pc-port/`** (C11 + SDL2) compiles clean and has real implementations
+  of: object linked lists + transform dispatcher, sound scheduler,
+  per-frame boot loop, streaming audio (ring buffer + SDL backend, test
+  tone), cached file loading, a minimal debug renderer, and keyboard-to-pad
+  input scaffolding (not wired to anything — no real mapping known yet).
+  See `pc-port/README.md` for the up-to-date per-file breakdown.
+
+---
+
 Quick pass over each target (see `docs/entry_point_notes.md` for the table itself).
 Use `tools/sh2dis.py A.BIN <file_offset> <len>` to reproduce/extend any of these.
 

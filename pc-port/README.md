@@ -27,8 +27,12 @@ e.g. `assets/DIRECTOR.PPB`).
 ./build/shinobi_legions_pc
 ```
 
-Expect it to open a blank window and print log lines to the console — no
-rendering or real game logic is implemented yet.
+Expect a window with two small debug markers moving around (driven by the
+traced object-transform data, see `render.*` below) and a 440Hz test tone
+playing — not real graphics or music yet, just proof the plumbing works.
+Arrow keys / Z-X-C / A-S-D / Q-W / Enter poll as a Saturn-style pad (see
+`input.*`) but nothing consumes that input yet — the real button mapping
+is still unknown (blocked on `DIRECTOR.PPB`, see docs).
 
 ## Layout
 
@@ -58,6 +62,12 @@ rendering or real game logic is implemented yet.
   `Obj_GetTransformBlock()`'s mode-4/mode-8 slots, so movement in the traced
   object-transform data is visible on screen. Not real sprite rendering —
   we don't have sprite/tile data yet — just a data-flow sanity check.
+- `src/input.*` — new: keyboard-to-pad scaffolding (`Input_Update`/
+  `Input_GetPadState`), Saturn-digital-pad-shaped `PadState` struct. Not
+  wired to any game logic yet — the real pad-reading code was never found
+  in A.BIN and is presumed to live in `DIRECTOR.PPB`/`SHINOBI.PPB`, blocked
+  on the disassembly wall documented in `docs/jump_table_functions.md`.
+  Exists so the plumbing is ready the moment the real mapping is known.
 - `src/sys.*` — generic helpers (memcpy, the master/slave sync stub).
 
 Each function is named to match its Ghidra counterpart — cross-reference
@@ -65,10 +75,17 @@ Each function is named to match its Ghidra counterpart — cross-reference
 
 ## Status
 
-Compiles and runs (verified in CI-less sandbox build, 2026-08-05) with five
-subsystems now doing real work instead of stub logging: object linked lists,
-the sound scheduler, the per-frame boot loop, the streaming audio ring
-buffer/SDL backend, and cached file loading. Still no rendering and no real
-per-slot object data (blocked on DIRECTOR.PPB being readable) — next step is
-porting more traced behavior in as more of A.BIN/DIRECTOR.PPB gets
-identified.
+Compiles and runs (verified in CI-less sandbox build, 2026-08-05) with real
+implementations for: object linked lists + the mode-4/8/0x10/0x20 transform
+dispatcher, the sound scheduler, the per-frame boot loop, the streaming
+audio ring buffer/SDL backend (test tone), cached file loading, a minimal
+SDL2 renderer (debug markers only), and keyboard-to-pad input scaffolding
+(not wired to anything yet). No real sprite/tile rendering, no real music,
+no real input handling — all three are blocked on the same wall: gameplay
+logic (including pad input) lives in `DIRECTOR.PPB`/`SHINOBI.PPB`, and
+those files resist static disassembly in both Ghidra and a from-scratch
+disassembler (see `docs/jump_table_functions.md` for the full
+investigation — several hypotheses tested, root cause still unconfirmed).
+Next step once that's unblocked: wire real per-slot object data, real pad
+reads, and real track/sprite data into the plumbing that's already in
+place.
