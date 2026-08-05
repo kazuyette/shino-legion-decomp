@@ -1179,3 +1179,37 @@ theory is right: **`Director_EntryDispatch` and its `SHINOBI.PPB`
 counterpart are both mostly-empty dispatchers with exactly one real path
 (state 1) gated behind an indexed function-pointer call.** That's the
 actual next target, not the address theory.
+
+### State 1's pointer confirmed unresolvable as-is; `Res_FixupPointers` ruled out
+
+Tried the targeted-function approach on state 1's block directly: created
+a function at `0x06040020` in Ghidra (DIRECTOR.PPB). Ghidra's own analyzer
+— independently of the manual `sh2dis.py` reading — resolved the exact
+same call: `(*DAT_06040090)()`, with `DAT_06040090 = 0x52680604`, then hit
+"bad instruction" immediately after (same wall as the manual read). Two
+independent tools agreeing rules out a script bug on our side — the value
+genuinely is `0x52680604` in the file, and it genuinely isn't a valid
+address to call through, by any tool's reckoning.
+
+Checked the one remaining live hypothesis: does `Res_FixupPointers` (A.BIN's
+confirmed relocation-fixup routine) get called anywhere in the
+`DIRECTOR.PPB` load path, the way it's used for streaming-audio headers?
+`get_xrefs_to(Res_FixupPointers)` in A.BIN returns exactly two callers —
+**`Stream_InitFromHeader` and `Stream_SetCallback`, both streaming-audio-only.**
+Nothing in `Load_DirectorPPB`/`Stage_ResetAndLoadDirector`'s traced call
+chain touches it. **This hypothesis is ruled out** — A.BIN does not
+relocate the overlay's internal pointers before jumping in.
+
+**Where this leaves it**: whatever fixes up these pool values (if anything
+does) must happen either inside `DIRECTOR.PPB`/`SHINOBI.PPB`'s own code
+(self-relocation logic we haven't located — would need to be very early,
+before `Director_EntryDispatch` is ever reached) or the pool values aren't
+addresses being called through at all and the decompile's `(*DAT_...)()`
+reading is itself misleading (possible if Ghidra/our manual read is
+misinterpreting the instruction stream here the same way both did for the
+"FFFF" gaps elsewhere in these dispatchers). Genuinely unresolved. This is
+a good place to stop this specific thread — it's hit a real wall, not a
+lack of effort, and further progress likely needs a different technique
+(e.g. checking if any *other* address in either `.PPB` file's early bytes
+looks like self-relocation/init code we haven't identified yet) rather than
+more manual byte-staring at this exact spot.
