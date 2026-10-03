@@ -11,6 +11,7 @@
 #include "camera.h"
 #include "sprite.h"
 #include "objects.h"
+#include "enemy.h"
 #include "objhandlers.h"
 #include "fixmath.h"
 extern RenderSprite g_lastSprite; extern int g_spriteCount;
@@ -20,7 +21,7 @@ static void tick(uint16_t held)
 {
     fake[0].connected = 1; fake[0].raw = (uint16_t)~held;
     W16(0x060143EAu, R16(0x060143EAu) + 1u); W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);
-    Pad_Update(2); Scroll_Update(); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Obj_UpdateAll();
+    Pad_Update(2); Scroll_Update(); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Obj_UpdateEnemies(); Obj_UpdateAll();
 }
 int main(int argc, char **argv)
 {

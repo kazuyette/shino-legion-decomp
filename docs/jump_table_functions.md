@@ -1941,3 +1941,32 @@ New semantics learned while porting:
   0x8000. Sho: 0x06044A78 two 128×128 8bpp slots at offsets 0 / 0x4000 (0x060EA2AC),
   0x06044AF8 decompresses SHOU.CHR frames into them; common chars 0x4B0+ at 0x72000
   (0x06040A90, table 0x060C9794).
+
+## Enemies & combat (2026-10-03, pc-port 0.8.0)
+
+- `Obj_UpdateEnemies` 0x06048954: types < 0x1000, handlers 0x060A9090[type] (1 → 0x0608FB9C,
+  2 → 0x0609630A, 3 → 0x0609E258, 4 → 0x060673C6, …), current enemy 0x060F205C / slot idx
+  0x060F2060; `Enemy_FindSlot` 0x06048D00 → 0x060F2062 (stage list 0x060A91B8[stage*5+i];
+  1-1 = {−, 1, 4, 3, −}); after the handler +0x10 &= ~0x2000.
+- Per slot: char base 0x060A9064 {0x60, 0x60, 0x3C0, 0x420}, VRAM offset 0x060A9070
+  {0xC000, 0x12000, 0x2E000, 0x4A000}, colour bank 0x060A9084. Loaders 0x060A9124[type]
+  run by `Enemy_LoadTypes` 0x06048C8A (slots 0-3) at stage start; 0x06049AF4(type, table)
+  registers the chars (same table format as 0x06060108).
+- Soldier 0x0608FB9C: subtype = +0x12 & 0x1F (2..12 → jump table at 0x0608FC48; 12 =
+  rides a platform → 0x0608F58C); default: asleep when |x−camX−160| or |y−camY−160| ≥ 256
+  unless airborne/hit; init 0x0608FDE4 (HP 1, timer 30); actions 0 stand, 1 crouch, 2
+  crouched, 3 stand up, 4 jump, 5 fall, 6 land, 9/10 shoot standing/crouched, 0xB throw in
+  the air, 0xC land after throw, 0xD hurt, 0xE knocked away, 0xF cut down (overlay anim 0x10
+  drawn with colour bank +1). Anim tables 0x060A92B8[type] = {defs 0x060BFFB0, scripts
+  0x060E43D4}; anim = action (0x06048D3C).
+- Hitboxes: anim +0x68 list of {kind, l, t, r, b} (≤ 11, 0xFFFF end), mirrored with
+  flags2 & 0x8000; 0x06048DB2(a, ka, b, kb) (skip if > 512 px apart) → 0x06048EBC → index
+  pair or 0xFFFF, overlap centre in 0x0602527C. Kinds: player 0 body, 1 guard, 2 sword;
+  enemy 0 body, 1 guard, 2 weapon, 3 weak spot.
+- Effects: 64 × 0x30 at 0x060F33D4 (`Obj_Spawn` 0x060621B2: type, flags|1, param, anim at
+  +0x10); types 1/6 explosion parts, 2 hit spark, 3 guard spark, 4 Sho's slash trail,
+  7 shield flash. Projectiles: 64 × 0x40 at 0x060F23D0 (spawn 0x0606098C; 0x060612C2 =
+  any projectile inside a box). Sho's shurikens: 2 objects at 0x060EA32C.
+- Score 0x060252C8 (max 0x05F5E0F6), high score 0x06000214, lives 0x060252B8 (≤ 99),
+  extend table A.BIN 0x06014418[difficulty 0x060252C4] = 30000/60000/90000. Magic state
+  0x060252BA (0x4000 active, low nibble = art), shield points 0x060252BC.

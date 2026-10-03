@@ -3,6 +3,24 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.8.0 — 2026-10-03
+- Enemies: the black ninja soldiers of 1-1 (type 0x0001) wake up when on screen, face
+  Sho, shoot / crouch / jump to dodge shurikens, take sword hits, die with their
+  explosion overlay and give 100 points (docs/screenshots/v0.8.0_enemies.png).
+- Ported: enemy loop 0x06048954 (slots per stage 0x060A91B8, 0x06048D00), type loaders
+  0x06048C8A / 0x0608FA74, char banks 0x06049AF4, soldier handler 0x0608FB9C with its
+  AI (0x06092C74, 0x06092E14, 0x06092ECE, 0x0609307A, 0x060936DE, 0x0609379C, 0x06093856,
+  0x06093ACC, 0x060935F0, 0x06093930), anim switch 0x06048D3C, overlay 0x06049A4C.
+- Combat: hitbox lists 0x06048DB2 / 0x06048EBC (kinds 0 body, 1 guard, 2 attack,
+  3 weak spot), enemy attack vs Sho 0x0604931E (guard block, damage, touch), Sho's
+  sword / shurikens vs enemy 0x060494B4 / 0x0604967C, damage 0x06045BEC (incl. the
+  Ikazuchi shield), knock direction 0x06060E40, sword power 0x06045BA6, attack kind
+  0x0604634E, death burst 0x06049256, score 0x06062B38 (high score, extra life
+  every 30000/60000/90000), lives 0x06062B0C, effect allocator 0x060621B2.
+- Not yet: projectiles (enemy shurikens 0x0606098C, Sho's shurikens), effect
+  animations (sparks/explosions are allocated but not drawn), item drops 0x06062A14,
+  soldier subtypes 2-12 (e.g. the ones riding platforms), types 0x0003 / 0x0004.
+
 ## 0.7.0 — 2026-10-03
 - Stage objects come alive: the floating platforms of 1-1 (type 0x1004) bob on the
   water, sink and tilt under Sho and carry him (docs/screenshots/v0.7.0_platforms.png).

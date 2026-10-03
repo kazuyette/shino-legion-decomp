@@ -23,7 +23,6 @@ void     sub_06042D80(int32_t dx, int32_t dy, int a, int32_t v) { printf("[obj] 
 void     sub_06044280(void)     { ONCE("06044280"); }
 void     sub_0604592E(void)     { ONCE("0604592E"); }
 void     sub_06046782(void)     { ONCE("06046782"); }
-void     Obj_Spawn(int t, int32_t x, int32_t y, int l, int p) { printf("[obj] spawn type %d at %08X,%08X left=%d p=%d\n", t, (unsigned)x, (unsigned)y, l != 0, p); }
 void     sub_0602DDD2(void)     { ONCE("0602DDD2"); }
 
 void     sub_06007D60(int sfx, int bank) { printf("[sfx] bank %d %03X\n", bank, sfx); }

@@ -10,6 +10,7 @@
 #include "version.h"
 #include "stage.h"
 #include "objects.h"
+#include "enemy.h"
 #include "camera.h"
 
 int main(int argc, char **argv)
@@ -86,6 +87,7 @@ int main(int argc, char **argv)
              * "animation finished" after 20 frames so the state machine moves. */
             if (!have_game_data && frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
             Player_Tick();                   /* SHINOBI 0x06040B72 (draws via Player_Draw) */
+            Obj_UpdateEnemies();             /* SHINOBI 0x06048954 */
             Obj_UpdateAll();                 /* SHINOBI 0x06060014 (frame 0x0606B8FA) */
             if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {

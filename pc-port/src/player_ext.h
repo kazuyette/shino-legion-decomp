@@ -20,7 +20,7 @@ void     sub_06042D80(int32_t dx, int32_t dy, int angle, int32_t speed); /* spaw
 void     sub_06044280(void);
 void     sub_0604592E(void);
 void     sub_06046782(void);        /* anim-driven effect trigger */
-void     Obj_Spawn(int type, int32_t x, int32_t y, int facingLeft, int param); /* 0x060621B2 */
+int      Obj_Spawn(int type, int32_t x, int32_t y, int flags, int param);    /* 0x060621B2 (effects) */
 void     sub_0602DDD2(void);
 void     sub_06007D60(int sfx, int bank);  /* play banked sound */
 #endif
