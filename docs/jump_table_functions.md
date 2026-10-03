@@ -1724,3 +1724,41 @@ Static trace (capstone SH-2 disassembler, `tools/sh2cap.py A|S <lo> <hi>`; needs
   Observed action ids: 0,1,2,4,5,7,0xF,0x12,0x13,0x14,0x15,0x1B,0x1C,0x1D,0x1E,0x20,0x21,0x23–0x27,
   0x31,0x34,0x36,0x3B,0x3F,0x4E,0x4F,0x50,0x58. E.g. pressed&slot1 → 4 (+Up held → 5,
   then 0x24); `0x060EA432 & 0xF00 == 0x300` → 0x25. Semantics TBD (needs emulator or more reading).
+
+## Player actions decoded (2026-10-03)
+
+Functions (SHINOBI, renamed in Ghidra):
+- `Player_SelectAction_Stand` 0x060411FC, `Player_SelectAction_Crouch` 0x06041B3C,
+  `Player_SelectAction_Air` 0x06041E48 — one input->action selector per posture
+  (0x060424A6 also reads the action slots: 4th posture? TBD).
+- `Player_UpdateAction` 0x06042E66 — 81-case switch (`braf` @ 0x06043686) executing
+  the current action, mostly "on anim end (+0x58 & 0x8000) -> next action".
+- `Obj_UpdateAll` 0x06060014 — enemy/object manager: 0x78-byte objects, handler
+  table 0x060AC820 indexed by object type. `Obj_Spawn` 0x060621B2(type,x,y,facing,param).
+- Shuriken stock: `0x060252B6` (A-button throw requires != 0).
+
+Player struct 0x060EA2B4 (confirmed fields):
+`+2 & 0x8000` facing left (X velocity negated) · `+2 & 0x0080` air action used ·
+`+2 & 0x0040` guarding · `+2 & 0x0800` crouched · `+2 & 0x0008` got hit ·
+`+8`/`+0xC` X/Y position · `+0x16` HP · `+0x30`/`+0x34` X/Y velocity (16.16 fixed) ·
+`+0x58 & 0x8000` animation finished, `+0x58 & 3` anim event (spawn frame).
+
+Default buttons: slot0 = A, slot1 = B, slot2 = C. Y/Z act as extra guard buttons
+(`slot1 + 0x30` masks).
+
+| Gesture | Stand | Crouch | Air | Confidence |
+|---|---|---|---|---|
+| idle | 0x00 (fidgets 0x1D/0x1E after idle timer) | 0x28 | — | high |
+| walk (L/R held) | 0x01 | — | — | high |
+| crouch down/up transition | 0x27 | — | — | high |
+| slash (slot1/B pressed) | 0x04, +Up 0x05, held 0x24 | 0x09, held 0x31 | 0x0C, +Up 0x0D, 0x3C | medium |
+| shuriken (slot0/A, stock>0) | 0x07 | 0x0B | 0x0E | medium |
+| guard start/hold/release (hold B or Y/Z) | 0x20/0x21/0x1F | 0x2D/0x2E/0x2F→0x30 | 0x43/0x44/0x45→0x47 | high |
+| blocked a hit (guard recoil) | 0x26 | 0x33 | 0x46 | medium |
+| hurt / dead | 0x12 / 0x13 | 0x29 / 0x2A | 0x12 / 0x3F | high |
+| flag4&0x4000 reaction | 0x14 | 0x2B | — | low |
+| special (game flag 0x2000 @0x060252BA, SFX 0x116) | 0x15 | 0x2C | 0x3E | low (ninjutsu?) |
+| B+C together (consumes 2 @0x060252BC) | 0x50 | — | — | low |
+| jump-related (slot2/C) | via 0x06041990/0x06041ABA | same | 0x1A, wall/double 0x06/0x17, 0x16 | low |
+| airborne states | — | — | 0x35/0x37/0x38/0x39/0x3A/0x3D | medium |
+| edge/proximity idle | 0x4F | — | — | low |
