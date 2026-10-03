@@ -3,6 +3,9 @@ md=C.Cs(C.CS_ARCH_SH,C.CS_MODE_SH2|C.CS_MODE_BIG_ENDIAN)
 
 import os;M=os.path.expanduser("~/mnt/Shinobi_Legions_(USA)_(DW0536)/extracted/")
 files={'A':(open(M+'A.BIN','rb').read(),0x06004000),'S':(open(M+'SHINOBI.dec.bin','rb').read(),0x06040000)}
+# DIRECTOR.PPB overlays SHINOBI at the same address: select it with SL_OVERLAY=D
+if os.environ.get('SL_OVERLAY')=='D': files['S']=(open(M+'DIRECTOR.dec.bin','rb').read(),0x06040000)
+files['D']=(open(M+'DIRECTOR.dec.bin','rb').read(),0x06040000)
 def rd(a,n):
     for d,b in files.values():
         if b<=a<b+len(d): return int.from_bytes(d[a-b:a-b+n],'big')
