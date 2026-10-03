@@ -1849,3 +1849,31 @@ New semantics learned while porting:
   frame with the LZ decompressor 0x060091C8 straight into VRAM when it changes.
 - `Player_Draw` 0x06043FDA: Anim_Tick(P+0x58) with flag 0x4000, screen pos = pos − camera
   (0x060252A0/A4), colour bank 0x400, somersault: Y −0x20 + rotation by 0x060EA434.
+
+## Stages: backgrounds & collision (2026-10-03, pc-port 0.6.0)
+
+- Files: `STAGEx_y.CHR` (one LZ block → VDP2 VRAM 0x25E00000, 3 × 128 KB of 16x16 8bpp
+  tiles, one bank per layer), `STAGEx_y.MAP` (one LZ block → LWRAM 0x002B0000, ptr
+  0x060EA650). Name tables: SHINOBI 0x060CEEE4 (CHR, MAP at +0x48) and 0x060DAF74 (SPR);
+  order 7_1,7_2,2_1..6_2,1_1,1_2 → stage index (0x0602526A) 12 = 1-1.
+- MAP layout: +0x000/+0x400/+0x800 collision attrs per tile (512 × u16) for layers 0/1/2;
+  +0xC00/+0xE00/+0x1000 3 palettes (256 RGB555) → shadow CRAM 0/0x100/0x200 colours;
+  +0x1200 3 × u32 page offsets (base +0x1220); pages = 32×32 u16 pattern names
+  (bits 14-12 palette bank, bit 15 H-flip (guess), bits 9-0 tile → 16x16 = 4 cells TL,TR,BL,BR).
+- Layer descriptors 0x060EA588 + n*0x30: +0x10/+0x14 offsets (layer px = world + off − 2048),
+  +0x18/+0x1A parallax rates (0x100 = 1), +0x1C pages, +0x20 page layout {u8 w, u8 h, ids;
+  0xFF = empty}, +0x28 collision attrs, +0x2C char base (×0x20 bytes).
+  Per-stage init table SHINOBI 0x060A8B0C (1-1 = 0x060473B4: layouts 0x060CEAD8 26×2,
+  0x060CEB0E 16×1, 0x060CEB20 8×1; world origin 1024,1024).
+- Collision attr: low 4 bits = shape (index into 0x060A8AE4 → 4-bit 8x8-quadrant mask,
+  quadrant bits from 0x060A8B04), bits 6-4 = surface type → side flags table 0x060CA700
+  {0x1F solid, 0x12 one-way+special, 0x02 floor, 0x10, 0x2F, 0x0F}. Side flags: 1 ceiling,
+  2 floor, 4 wall left, 8 wall right.
+- Player box 32×72 (w=4, h=9/6/8). Resolve tries push dirs 0x060A8A64 (ground) /
+  0x060A8A74 (air); stuck → flags10 |= 0x400 (hazard counter); squeezed → force crouch
+  (flags10 & 0x8000). Landing sets flags2 |= 0x10 → action 0x3B (landing, previously
+  mislabelled "hazard").
+- Camera 0x060446FC: player target screen pos 0x060EA550/554 (92,180), ranges
+  [110,210]×[110,170], ±6/±7 px dead zone, max 4/3 px/frame, look-ahead 0x060EA558
+  (decay ×0.875 via FixMul 0x0602DD54), idle look up/down. Screen clamp 0x060451C8
+  (0x060EA618+0x10..0x16 = top 24, -, right 304, left 16).

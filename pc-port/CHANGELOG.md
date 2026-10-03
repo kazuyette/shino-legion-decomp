@@ -3,6 +3,20 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.6.0 — 2026-10-03
+- Stage 1-1 playable: real backgrounds and real map collision (flat-floor
+  placeholder removed). Screenshot: docs/screenshots/v0.6.0_stage1_1.png.
+- Ported: stage load/init (0x0604861C common part + 1-1 init 0x060473B4, palettes
+  0x06047128), map lookup 0x06046F12, attribute + 8x8-quadrant test 0x06046FE2 /
+  0x06047066, surface types 0x06045B88, box probe 0x06045670, push-out 0x0604562C,
+  collision resolve 0x06045340, floor probes 0x060457EC / 0x0604588E, screen clamp
+  0x060451C8, camera follow 0x060446FC.
+- Emulated VDP2 VRAM (stage tiles); 3 background layers rendered (sky, city
+  parallax, level) from 512x512 page textures.
+- APPROXIMATIONS: layer scroll formula (VDP2 scroll update not traced; layer 1
+  sits a bit low), H-flip bit, player start position, camera "previous" vars.
+- Assets now also need STAGE1_1.CHR and STAGE1_1.MAP.
+
 ## 0.5.1 — 2026-10-03
 - Game controller support (SDL GameController: Xbox, PlayStation, Switch Pro and
   most pads), hot-plug, 2 ports. Keyboard and controller 1 work together.

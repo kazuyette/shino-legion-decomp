@@ -8,6 +8,8 @@
 #include "player.h"
 #include "ram.h"
 #include "version.h"
+#include "stage.h"
+#include "camera.h"
 
 int main(int argc, char **argv)
 {
@@ -28,6 +30,8 @@ int main(int argc, char **argv)
     else
         have_game_data = 0;
     Player_Init();
+    if (have_game_data && Stage_Load("assets", 12))   /* stage 1-1 */
+        Stage_SpawnPlayer();
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -77,6 +81,7 @@ int main(int argc, char **argv)
              * "animation finished" after 20 frames so the state machine moves. */
             if (!have_game_data && frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
             Player_Tick();                   /* SHINOBI 0x06040B72 (draws via Player_Draw) */
+            Camera_Update();                 /* SHINOBI 0x060446FC */
             if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {
                 printf("[player] action %02X -> %02X (pad %04X)\n",

@@ -7,6 +7,7 @@
 #include "pad.h"
 #include "anim.h"
 #include "sprite.h"
+#include "collision.h"
 
 /* Globals touched by the player code (addresses in emulated RAM). */
 #define G_SYSFLAGS     0x0602529Eu  /* 0x8000 = world frozen (ninjutsu), low 3 bits = game-over seq */
@@ -54,7 +55,7 @@ static int32_t Player_SlopePush(void)
 {
     int32_t d = 0;
     if (!(R16(G_SYSFLAGS) & 0x8000)) {
-        uint16_t s = sub_0604588E(P32(P_X), P32(P_Y), 5, RS16(G_PROBE_PARAM));
+        uint16_t s = Coll_CountFloor(P32(P_X), P32(P_Y), 5, RS16(G_PROBE_PARAM));
         if ((s == 1 || s == 2) && (!(HELD & DIR_LR) || (P16(P_FLAGS2) & PF2_CROUCHED))) {
             d = (P16(P_FLAGS2) & PF2_FACE_LEFT) ? (int32_t)0xFFFE0000 : 0x00020000;
             PW32(P_PUSHX, (uint32_t)(P32(P_PUSHX) + d));
@@ -773,7 +774,7 @@ void Player_UpdateAction(void)
         if (P16(P_FLAGS2) & PF2_POSTURE4) set_act(ACT_POSTURE4_IDLE);
     }
     if (Player_Action() == ACT_IDLE &&
-        sub_0604588E(P32(P_X), P32(P_Y), 10, RS16(G_PROBE_PARAM)) < 10)
+        Coll_CountFloor(P32(P_X), P32(P_Y), 10, RS16(G_PROBE_PARAM)) < 10)
         set_act(ACT_EDGE_IDLE_Q);
 }
 
@@ -905,6 +906,6 @@ void Player_Init(void)
     W16(0x060EA422u, 0xFFFF); W16(0x060EA424u, 0xFFFF);          /* streamed char slots empty */
     PW16(P_PREVACT, 0xFFFF);                                    /* start the idle anim */
     if (R32(0x0601440Cu) == 0) W32(0x0601440Cu, 0x00024000);   /* walk speed if A.BIN not loaded */
-    PW32(P_X, 0x00A00000);                                      /* PC test spawn point */
+    PW32(P_X, 0x00A00000);                                      /* overwritten by Stage_SpawnPlayer */
     PW32(P_Y, 0x00C00000);
 }

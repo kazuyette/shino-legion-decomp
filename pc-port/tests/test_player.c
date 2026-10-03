@@ -6,6 +6,7 @@
 #include "input.h"
 #include "player.h"
 #include "ram.h"
+#include "test_world.h"
 static InputPort fake[2];
 const InputPort *Input_GetPort(int p) { return &fake[p]; }
 static void tick(uint16_t held, int anim_done)
@@ -22,6 +23,7 @@ static void tick(uint16_t held, int anim_done)
 int main(void)
 {
     Player_Init();
+    Test_BuildFlatWorld();
     tick(0, 0);                        EXPECT(ACT_IDLE);
     tick(PAD_B, 0);                    EXPECT(ACT_SLASH);          /* B tap = slash */
     tick(0, 1);                        EXPECT(ACT_RECOVER);        /* anim end -> recover */

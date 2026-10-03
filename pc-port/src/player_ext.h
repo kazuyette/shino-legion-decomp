@@ -18,12 +18,9 @@ void     sub_060437C0(void);        /* ninjutsu execution */
 void     sub_06043A44(void);
 void     sub_06042D80(int32_t dx, int32_t dy, int angle, int32_t speed); /* spawn shuriken */
 void     sub_06044280(void);
-uint16_t sub_0604588E(int32_t x, int32_t y, int r, int16_t p); /* terrain probe */
 void     sub_0604592E(void);
 void     sub_06046782(void);        /* anim-driven effect trigger */
 void     Obj_Spawn(int type, int32_t x, int32_t y, int facingLeft, int param); /* 0x060621B2 */
 void     sub_0602DDD2(void);
-void     sub_060451C8(void);        /* camera scroll push */
-void     sub_06045340(uint32_t obj, int n); /* terrain collision */
 void     sub_06007D60(int sfx, int bank);  /* play banked sound */
 #endif

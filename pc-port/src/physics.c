@@ -2,6 +2,7 @@
 #include "player.h"
 #include "player_ext.h"
 #include "pad.h"
+#include "collision.h"
 
 #define G_WALK_SPEED   0x0601440Cu  /* s32 16.16, A.BIN data (2.25 px/frame) */
 #define G_JUMP_RELEASE 0x060EA574u  /* bit0 = jump button released this jump */
@@ -103,7 +104,7 @@ void Player_Physics(void)
 {
     int a = Player_Action();
     if (a == ACT_NINJUTSU || a == ACT_CROUCH_NINJUTSU || a == ACT_AIR_NINJUTSU || a == 0x4A) return;
-    sub_060451C8();                                     /* camera scroll */
+    Player_ClampToScreen();                             /* 0x060451C8 */
     Obj_Integrate(PLAYER);
     int16_t h = 9;                                      /* hitbox half-height */
     if (P16(P_FLAGS2) & PF2_CROUCHED) h = 6;
@@ -113,7 +114,7 @@ void Player_Physics(void)
     PW16(0x1E, 4);
     PW16(0x20, (uint16_t)h);
     if (R32(G_CHEAT_KEY) != CHEAT_MAGIC || (HELD & 0xA0) != 0xA0)   /* cheat: RT+Y = no-clip */
-        sub_06045340(PLAYER, 4);
+        Obj_CollideMap(PLAYER, 4, h);                   /* 0x06045340 */
     if (P16(P_FLAGS2) & 0x10) {
         PW16(P_FLAGS2, P16(P_FLAGS2) & 0xFFFD);
         sub_06007CDE(0x112);

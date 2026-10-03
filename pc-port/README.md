@@ -38,7 +38,7 @@ it is shown in the window title, printed at startup, and by `--version`.
 ## Assets
 
 Copy from `extracted/` (see `tools/`) into `assets/` next to the executable:
-`A.BIN`, `SHINOBI.dec.bin` (`tools/ppb_decompress.py`), `SHOU.CHR`.
+`A.BIN`, `SHINOBI.dec.bin` (`tools/ppb_decompress.py`), `SHOU.CHR`, `STAGE1_1.CHR`, `STAGE1_1.MAP`.
 Without them the port still runs, but nothing is drawn.
 
 ## Run

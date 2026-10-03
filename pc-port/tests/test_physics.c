@@ -5,6 +5,7 @@
 #include "input.h"
 #include "player.h"
 #include "ram.h"
+#include "test_world.h"
 static InputPort fake[2];
 const InputPort *Input_GetPort(int p) { return &fake[p]; }
 static int frames_in_act, last_act = -1;
@@ -27,8 +28,9 @@ static int32_t jump_peak(int hold_frames)
         if (P32(P_Y) < peak) peak = P32(P_Y);
         if (i > 10 && !(P16(P_FLAGS2) & PF2_AIRBORNE) && P32(P_Y) == floor_y) break;
     }
-    assert(P32(P_Y) == floor_y);                       /* landed back */
-    assert(Player_Action() == ACT_LANDING_Q);          /* landing pose */
+    tick(0);
+    assert((P32(P_Y) >> 16) == (floor_y >> 16) - 1 || P32(P_Y) == floor_y);   /* landed back (snapped) */
+    assert(Player_Action() == 0x3B);                   /* landing (set by the real collision) */
     for (int i = 0; i < 10; i++) tick(0);
     assert(Player_Action() == ACT_IDLE);
     return floor_y - peak;
@@ -37,6 +39,7 @@ int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
     Player_Init();
+    Test_BuildFlatWorld();
     for (int i = 0; i < 5; i++) tick(0);               /* settle on the floor */
     int32_t x0 = P32(P_X);
     tick(PAD_RIGHT); tick(PAD_RIGHT);

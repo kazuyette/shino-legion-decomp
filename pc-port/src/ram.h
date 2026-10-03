@@ -14,12 +14,17 @@
 #define LWRAM_BASE 0x00200000u   /* Work RAM Low: SHOU.CHR etc. are loaded here */
 #define LWRAM_SIZE 0x00100000u
 
+#define VDP2_VRAM_BASE 0x25E00000u   /* VDP2 VRAM: stage tiles (STAGEx_y.CHR) */
+#define VDP2_VRAM_SIZE 0x00080000u
+
 extern uint8_t g_hwram[HWRAM_SIZE];
 extern uint8_t g_lwram[LWRAM_SIZE];
+extern uint8_t g_vdp2vram[VDP2_VRAM_SIZE];
 
 static inline uint8_t *Ram_Ptr(uint32_t a)
 {
     if ((a & 0x0FF00000u) == LWRAM_BASE) return &g_lwram[a & (LWRAM_SIZE - 1)];
+    if ((a & 0xFFF80000u) == VDP2_VRAM_BASE) return &g_vdp2vram[a & (VDP2_VRAM_SIZE - 1)];
     return &g_hwram[(a - HWRAM_BASE) & (HWRAM_SIZE - 1)];
 }
 static inline uint16_t R16(uint32_t a) { const uint8_t *p = Ram_Ptr(a); return (uint16_t)(p[0] << 8 | p[1]); }
@@ -33,5 +38,7 @@ static inline void AND16(uint32_t a, uint32_t m) { W16(a, R16(a) & m); }
 
 /* Loads a raw binary into HWRAM at `addr`. Returns bytes loaded, 0 on failure. */
 size_t Ram_LoadImage(const char *path, uint32_t addr);
+/* Loads a word-LZ compressed file and decompresses it to `addr`. */
+size_t Ram_LoadCompressed(const char *path, uint32_t addr, size_t maxOut);
 
 #endif
