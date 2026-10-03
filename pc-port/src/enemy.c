@@ -9,6 +9,8 @@
 #include "stage.h"
 #include "player_ext.h"
 #include "collision.h"
+#include "fx.h"
+#include "fixmath.h"
 #include <stdio.h>
 
 #define O         R32(ENEMY_CUR)
@@ -88,48 +90,9 @@ void Enemy_LoadTypes(void)
 
 void Enemy_ResetTables(void)
 {
-    for (uint32_t i = 0; i < 64; i++) W16(PROJECTILES + i * 0x40, 0xFFFF);
-    for (uint32_t i = 0; i < 64; i++) W16(EFFECTS + i * 0x30, 0xFFFF);
+    Projectiles_Clear();                                            /* 0x06060904 */
+    Effects_Clear();                                                /* 0x0606210A */
     W16(0x060EA32Cu, 0xFFFF); W16(0x060EA32Cu + 0x78, 0xFFFF);     /* Sho's shurikens */
-}
-
-/* 0x0606216E / 0x060621B2: effect objects (sparks, explosions). Their update and
- * drawing (types 1-7) are not ported yet. */
-int Obj_Spawn(int type, int32_t x, int32_t y, int flags, int param)
-{
-    int s;
-    for (s = 0; s < 64; s++) if (R16(EFFECTS + (uint32_t)s * 0x30) == 0xFFFF) break;
-    if (s == 64) return -1;
-    uint32_t e = EFFECTS + (uint32_t)(int16_t)(s * 0x30);
-    W16(e, (uint32_t)type);
-    W32(e + 8, (uint32_t)x);
-    W32(e + 0xC, (uint32_t)y);
-    W16(e + 2, (uint32_t)(flags | 1));
-    W16(e + 4, (uint32_t)param);
-    W16(e + 6, 0);
-    Anim_Reset(e + 0x10);
-    return s;
-}
-
-/* 0x0606098C: enemy projectile (not ported yet). */
-static void Projectile_Spawn(int kind, int32_t x, int32_t y, int dir, uint32_t data)
-{
-    (void)kind; (void)x; (void)y; (void)dir; (void)data;
-    once("projectile spawn 0x0606098C, kind", (unsigned)kind);
-}
-
-int Projectile_InBox(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
-{
-    if (x1 < x0) { int32_t t = x0; x0 = x1; x1 = t; }
-    if (y1 < y0) { int32_t t = y0; y0 = y1; y1 = t; }
-    for (uint32_t i = 0; i < 64; i++) {
-        uint32_t e = PROJECTILES + i * 0x40;
-        if ((R16(e + 4) & 0x2000) || (R16(e + 4) & 0x4000) || R16(e) == 0xFFFF) continue;
-        if (RS32(e + 8) <= x0 || x1 <= RS32(e + 8)) continue;
-        if (RS32(e + 0xC) <= y0 || y1 <= RS32(e + 0xC)) continue;
-        return 1;
-    }
-    return 0;
 }
 
 /* --------------------------------------------------------------- hitboxes */
@@ -182,7 +145,7 @@ static int Player_SwordPower(void)                                  /* 0x06045BA
     return ((R16(MAGIC) & 0x4000) && (R16(MAGIC) & 0xF) == 4) ? 4 : 2;
 }
 
-static void Player_KnockDir(uint32_t pt)                            /* 0x06060E40 */
+void Player_KnockDir(uint32_t pt)                            /* 0x06060E40 */
 {
     if (((R16(MAGIC) & 0x00F0) || !(R16(MAGIC) & 0x4000)) && !(R16(0x0602529Cu) & 1)) {
         AND16(PL + 2, 0x7FFF);
@@ -190,7 +153,7 @@ static void Player_KnockDir(uint32_t pt)                            /* 0x06060E4
     }
 }
 
-static void Player_TakeDamage(int16_t dmg)                          /* 0x06045BEC */
+void Player_TakeDamage(int16_t dmg)                          /* 0x06045BEC */
 {
     if (R16(PL + 4) & 0x0410) return;
     if ((R16(0x0602529Cu) & 1) && R32(0x06014414u) == 0x4465268Fu) return;   /* cheat: invincible */
@@ -493,9 +456,19 @@ static void Soldier_Jump(int16_t landAct, int16_t airAct)            /* 0x060938
     }
 }
 
-/* 0x06093518 + 0x0600635A: angle from the enemy (+dx,+dy) to Sho. Needs the atan
- * routine; projectiles are not ported yet, so this only feeds the stub. */
-static int Soldier_Aim(uint32_t o, int32_t dx, int32_t dy) { (void)o; (void)dx; (void)dy; return 0; }
+/* 0x06093518: angle from the enemy (+dx,+dy) to Sho's chest, leading a running Sho. */
+static int Soldier_Aim(uint32_t o, int32_t dx, int32_t dy)
+{
+    if (R16(o + 2) & 0x8000) dx = -dx;
+    int32_t lead = 0;
+    if (iabs(RS32(PL + 0x30)) > 0x8000 && !(R16(PL + 2) & 0x4000)) {
+        if (R16(PL + 2) & 0x0200) lead = RS32(0x060C0944u);              /* running */
+        else lead = RS32((R16(PL + 2) & 0x0800) ? 0x060C094Cu : 0x060C0948u);
+    }
+    if (R16(PL + 2) & 0x8000) lead = -lead;
+    return Atan8((int16_t)((uint32_t)(RS32(o + 8) + dx) >> 16), (int16_t)((uint32_t)(RS32(o + 0xC) + dy) >> 16),
+                 (int16_t)((uint32_t)(RS32(PL + 8) + lead) >> 16), (int16_t)((uint32_t)(RS32(PL + 0xC) + (int32_t)0xFFD80000) >> 16));
+}
 
 static int Soldier_Think(uint32_t next)                             /* 0x0609307A */
 {
@@ -534,7 +507,7 @@ static int Soldier_Think(uint32_t next)                             /* 0x0609307
         int32_t x = RS32(o + 8) + dx, y = RS32(o + 0xC) + dy;
         int32_t xl = (a == 9) ? 0x000A0000 : 0, xr = (a == 9) ? 0x01360000 : 0x01400000;
         if (RS32(CAM_X) + xl <= x && x <= RS32(CAM_X) + xr && RS32(CAM_Y) <= y && y <= RS32(CAM_Y) + 0x00E00000)
-            Projectile_Spawn(1, x, y, dir, R32(0x060C085Cu + 4u * (uint32_t)STAGE));
+            Projectile_Spawn(1, x, y, (int16_t)dir, RS32(0x060C085Cu + 4u * (uint32_t)STAGE));
         AND16(o + 0x58, 0xFFFC);
         sub_06007CDE(0x125);
         return 0;
@@ -547,7 +520,7 @@ static int Soldier_Think(uint32_t next)                             /* 0x0609307
         int32_t x = RS32(o + 8) + dx, y = RS32(o + 0xC) + (int32_t)0xFFD50000;
         if (RS32(CAM_X) <= x && x <= RS32(CAM_X) + 0x01400000 &&
             RS32(CAM_Y) + (int32_t)0xFFD80000 <= y && y <= RS32(CAM_Y) + 0x00E00000)
-            Projectile_Spawn(1, x, y, dir, R32(0x060C085Cu + 4u * (uint32_t)STAGE));
+            Projectile_Spawn(1, x, y, (int16_t)dir, RS32(0x060C085Cu + 4u * (uint32_t)STAGE));
         AND16(o + 0x58, 0xFFFC);
         sub_06007CDE(0x125);
         return 0;

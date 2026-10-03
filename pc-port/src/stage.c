@@ -8,6 +8,7 @@
 #include "objects.h"
 #include "render.h"
 #include "enemy.h"
+#include "fx.h"
 #include <stdio.h>
 
 /* VDP2 register shadow (A.BIN): +4 = CRAOFA, NBGn colour RAM offset in bits 4n..4n+2. */
@@ -107,6 +108,7 @@ int Stage_Load(const char *dir, int idx)
     if (idx == 12) stage1_1_init();
     else printf("[stage] per-stage init for index %d not ported yet\n", idx);
     stage_palettes();
+    Common_LoadChars();                                    /* 0x06040A90 */
     Stage_RegisterSpriteChars();                           /* 0x06060108 */
     Enemy_ResetTables();
     Enemy_LoadTypes();                                     /* 0x06048C8A: enemy chars + palettes */

@@ -11,6 +11,7 @@
 #include "sprite.h"
 #include "objects.h"
 #include "enemy.h"
+#include "fx.h"
 extern RenderSprite g_lastSprite; extern int g_spriteCount;
 static InputPort fake[2];
 const InputPort *Input_GetPort(int p) { return &fake[p]; }
@@ -18,7 +19,7 @@ static void tick(uint16_t held)
 {
     fake[0].connected = 1; fake[0].raw = (uint16_t)~held;
     W16(0x060143EAu, R16(0x060143EAu) + 1u); W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);
-    Pad_Update(2); Scroll_Update(); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Obj_UpdateEnemies(); Obj_UpdateAll();
+    Pad_Update(2); Scroll_Update(); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Obj_UpdateEnemies(); Obj_UpdateAll(); Projectiles_Update(); Effects_Update();
 }
 int main(int argc, char **argv)
 {
@@ -70,6 +71,30 @@ int main(int argc, char **argv)
     printf("soldier killed after %d frames, score %d -> %d, Sho HP %d\n", dead, score0, RS32(SCORE), RS16(0x060EA2CAu));
     assert(dead >= 0);
     assert(RS32(SCORE) == score0 + 100);
+    assert(RS16(0x060EA2CAu) < 16);                 /* enemy shurikens reached Sho */
+    /* next soldier: kill it with Sho's shurikens from a distance */
+    uint32_t e2 = 0; bx = 0x7FFFFFFF;
+    for (int s = 0; s < OBJ_SLOTS; s++) {
+        uint32_t o = OBJ_TABLE + (uint32_t)s * OBJ_SIZE;
+        if (R16(o) == 1 && (R16(o + 0x12) & 0x1F) < 2 && RS32(o + 8) < bx) { bx = RS32(o + 8); e2 = o; }
+    }
+    assert(e2);
+    PW16(P_HP, 16);
+    PW32(P_X, (uint32_t)(RS32(e2 + 8) - 0x00A00000));
+    PW32(P_Y, (uint32_t)(RS32(e2 + 0xC) - 0x00100000));
+    W32(CAM_X, (uint32_t)(P32(P_X) - RS32(0x060EA550u)));
+    W32(CAM_Y, (uint32_t)(P32(P_Y) - RS32(0x060EA554u)));
+    int thrown = 0, killed = -1; score0 = RS32(SCORE);
+    for (int i = 0; i < 400 && killed < 0; i++) {
+        tick((i & 16) ? PAD_A : 0);
+        for (int k = 0; k < 64; k++) if (R16(PROJECTILES + k * 0x40) == 0) { thrown = 1; break; }
+        if (R16(e2) == 0xFFFF) killed = i;
+    }
+    printf("shuriken: thrown %d, soldier killed after %d frames, score +%d\n", thrown, killed, RS32(SCORE) - score0);
+    assert(thrown && killed >= 0 && RS32(SCORE) == score0 + 100);
+    int fx = 0;
+    for (int k = 0; k < 64; k++) fx += R16(EFFECTS + k * 0x30) != 0xFFFF;
+    printf("effects alive: %d\n", fx);
     printf("all enemy tests OK\n");
     return 0;
 }

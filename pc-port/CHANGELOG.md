@@ -3,6 +3,21 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.9.0 — 2026-10-03
+- Combat complete on 1-1 soldiers: shurikens fly both ways (Sho's: button A; the
+  ninjas' aimed throws), hit sparks, guard sparks, explosions and slash trails are
+  drawn (docs/screenshots/v0.9.0_combat.png). Sho can now be hurt from a distance.
+- Ported: projectile system (64 slots 0x060F23D0): update 0x0606088C, spawn 0x0606098C,
+  collision 0x06060A7C (walls, weapons reflect, guards, weak spots, piercing/bouncing
+  modes), target search 0x06061062, hitbox test 0x06060E8E, bounce 0x0606137C, Sho's
+  shuriken 0x060613BA + throw 0x06042D80 (Ikazuchi powered type), enemy shuriken
+  0x06061854; aim 0x06093518 with the atan routine A.BIN 0x0600635A (table 0x0600EEFC).
+- Effects (64 slots 0x060F33D4): update 0x06061FA0 (start delays), explosion 0x06062224,
+  hit spark 0x06062314, guard spark 0x060623E4, slash trail 0x060624B4; clear 0x0606210A.
+- Common sprite characters 0x4B0+ and palettes (0x06040A90).
+- Still missing: effect types 5, 7-0x14 (shield flash, magic...), powered shuriken handler
+  (type 4), item drops, soldier subtypes, enemy types 3/4.
+
 ## 0.8.0 — 2026-10-03
 - Enemies: the black ninja soldiers of 1-1 (type 0x0001) wake up when on screen, face
   Sho, shoot / crouch / jump to dodge shurikens, take sword hits, die with their

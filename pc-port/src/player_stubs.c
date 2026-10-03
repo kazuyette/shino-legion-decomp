@@ -18,7 +18,6 @@ void     sub_06042C88(void)     { ONCE("06042C88"); }
 void     sub_06042E24(void)     { ONCE("06042E24"); }
 void     sub_060437C0(void)     { ONCE("060437C0 (ninjutsu)"); }
 void     sub_06043A44(void)     { ONCE("06043A44"); }
-void     sub_06042D80(int32_t dx, int32_t dy, int a, int32_t v) { printf("[obj] shuriken dx=%08X dy=%08X angle=%02X speed=%08X\n", (unsigned)dx, (unsigned)dy, a, (unsigned)v); }
 #include "ram.h"
 void     sub_06044280(void)     { ONCE("06044280"); }
 void     sub_0604592E(void)     { ONCE("0604592E"); }

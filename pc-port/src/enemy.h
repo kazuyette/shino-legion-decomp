@@ -34,5 +34,6 @@ void     Enemy_AnimSwitch(void);                                       /* 0x0604
 void     Enemy_DeathBurst(uint32_t o);                                 /* 0x06049256 */
 void     Score_Add(int32_t pts);                                       /* 0x06062B38 */
 int      Lives_Add(int16_t n);                                         /* 0x06062B0C */
-int      Projectile_InBox(int32_t x0, int32_t y0, int32_t x1, int32_t y1); /* 0x060612C2 */
+void     Player_KnockDir(uint32_t pt);                                 /* 0x06060E40 */
+void     Player_TakeDamage(int16_t dmg);                               /* 0x06045BEC */
 #endif

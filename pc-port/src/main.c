@@ -11,6 +11,7 @@
 #include "stage.h"
 #include "objects.h"
 #include "enemy.h"
+#include "fx.h"
 #include "camera.h"
 
 int main(int argc, char **argv)
@@ -89,6 +90,8 @@ int main(int argc, char **argv)
             Player_Tick();                   /* SHINOBI 0x06040B72 (draws via Player_Draw) */
             Obj_UpdateEnemies();             /* SHINOBI 0x06048954 */
             Obj_UpdateAll();                 /* SHINOBI 0x06060014 (frame 0x0606B8FA) */
+            Projectiles_Update();            /* SHINOBI 0x0606088C */
+            Effects_Update();                /* SHINOBI 0x06061FA0 */
             if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {
                 printf("[player] action %02X -> %02X (pad %04X)\n",

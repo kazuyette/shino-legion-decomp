@@ -1970,3 +1970,29 @@ New semantics learned while porting:
 - Score 0x060252C8 (max 0x05F5E0F6), high score 0x06000214, lives 0x060252B8 (≤ 99),
   extend table A.BIN 0x06014418[difficulty 0x060252C4] = 30000/60000/90000. Magic state
   0x060252BA (0x4000 active, low nibble = art), shield points 0x060252BC.
+
+## Projectiles & effects (2026-10-03, pc-port 0.9.0)
+
+- Stage init (SHINOBI 0x0606B780…): 0x06040A90 common chars 0x4B0+ (table 0x060C9794, VRAM
+  0x72000; palettes 0x060C9494 → CRAM 0x700, 0x060C9694 → 0x380), 0x0606BAE4, 0x060472D2,
+  Player_InitChars 0x06044A78, effects clear 0x0606210A, 0x06048A40, Enemy_LoadTypes
+  0x06048C8A, stage chars 0x06060108, projectiles clear 0x06060904, 0x0606294E, 0x060471D4,
+  0x06063538, …
+- Frame after Obj_UpdateAll: projectiles 0x0606088C (handlers 0x060AC994[type], 45 entries,
+  copied to the stack each frame), effects 0x06061FA0, items 0x06062894 (64 × 0x30 at
+  0x060F3FDC), 0x0606BCD0, 0x06063554.
+- Projectile: see pc-port/src/fx.h. Spawn 0x0606098C(type, x, y, angle, speed): v =
+  (cos, sin)·speed, flags 0x2001 (types 0/4 not hostile). Collision 0x06060A7C(dmg, mode):
+  wall (map attr flags == 0xF on layer 0x060EA64A), then 0x06061062 target bits 4 weapon /
+  8 weak / 2 guard / 1 body (Sho's projectiles scan the object table within 160 × 112 px,
+  240 px tall for types 0x17/0x1046; hostile ones test Sho). Modes: 0x2000 reflectable
+  (target flags2 & 4), 0x1000 guardable, 0x0800 bounce, 0x0200 → 0x06045D0A (damage + player
+  +4 |= 0x40), 0x8000 piercing. Shurikens use (1 or 2, 0x3A00); off-screen beyond
+  −128..448 px → freed; bouncing ones fade over 16 frames.
+- Effects: 0x06061FA0 runs handlers when the delay (+4) reaches 0: 0/1/6/0xF explosion
+  (anim defs 0x060ACCFE, scripts 0x060D2FE8, banks 0x71/0x72/0x39/0x3A), 2 hit spark
+  (0x060ACB20 anim 3, bank 0x73), 3 guard spark (anim 2, 0x74), 4 slash trail (anim 4,
+  0x70), 5 0x060627C8, 7 shield 0x06062578, 8/9 0x0604E180, 10-13 0x06062670, 0xE 0x0605B08A,
+  0x12 0x06077B24, 0x13 0x06077C4C, 0x14 0x060841E4.
+- Atan 0x0600635A(x1, y1, x2, y2) → 8-bit angle (0 = right, 0x40 = up): ratio
+  (min << 16) / max in soft-float double, nearest of tan table 0x0600EEFC (step 4).
