@@ -393,7 +393,7 @@ void Player_UpdateAction(void)
         }
         if (anim_done()) set_act(ACT_IDLE);
         break;
-    case 0x03: case 0x34: case 0x36: sub_060439CC(); break;
+    case 0x03: case 0x34: case 0x36: Player_JumpExec(); break;
     case 0x04: case 0x05: Player_SlashExec(); sub_06046782(); break;
     case 0x06: case 0x17: sub_06046782(); sub_06043C58(); break;
     case 0x07: case 0x0B: case 0x0E: case 0x19: Player_ShurikenExec(); break;
@@ -515,7 +515,7 @@ void Player_UpdateAction(void)
         sub_06046782();
         if (anim_done() || (P16(P_FLAGS4) & 0x20)) set_act(ACT_CROUCH_IDLE2);
         break;
-    case 0x35: case 0x37: case 0x38: case 0x39: case 0x3A: sub_06040FF0(); break;
+    case 0x35: case 0x37: case 0x38: case 0x39: case 0x3A: Player_AirJumpHold(); break;
     case 0x43: if (anim_done()) set_act(ACT_AIR_GUARD); break;
     case 0x44:
         p2_or(PF2_GUARDING);
@@ -524,7 +524,7 @@ void Player_UpdateAction(void)
     case 0x45: if (anim_done()) set_act(ACT_AIR_RECOVER); break;
     case 0x4C: set_act(ACT_IDLE); break;
     case 0x4D:
-        sub_06040FF0();
+        Player_AirJumpHold();
         if (anim_done()) set_act(ACT_LANDING_Q);
         break;
     case 0x4E:
@@ -634,8 +634,8 @@ void Player_Tick(void)
         Player_UpdateAction();
         Player_OnActionChange();
         if ((HELD & 0x90) == 0x90 && R32(G_CHEAT_KEY) == CHEAT_MAGIC) sub_06040F80();  /* RT+Z debug move */
-        else sub_06040DE8();
-        sub_060450E4();
+        else Player_GroundVelocity();
+        Player_Physics();
     }
     sub_06043FDA();
     sub_06044280();
@@ -652,4 +652,7 @@ void Player_Init(void)
     PW16(P_HP, 0x10);
     W16(G_HP_MAX, 0x10);
     W16(G_SHURIKENS, 20);
+    if (R32(0x0601440Cu) == 0) W32(0x0601440Cu, 0x00024000);   /* walk speed if A.BIN not loaded */
+    PW32(P_X, 0x00A00000);                                      /* PC test spawn point */
+    PW32(P_Y, 0x00C00000);
 }

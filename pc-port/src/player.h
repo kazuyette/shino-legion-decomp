@@ -73,5 +73,11 @@ void Player_Tick(void);               /* 0x06040B72 */
 void Player_SelectPosture(void);      /* 0x06042910 */
 int  Player_SelectAction_Stand(void); /* 0x060411FC */
 void Player_UpdateAction(void);       /* 0x06042E66 */
+/* physics.c */
+void Obj_Integrate(uint32_t obj);     /* 0x060452A4 */
+void Player_GroundVelocity(void);     /* 0x06040DE8 */
+void Player_JumpExec(void);           /* 0x060439CC */
+void Player_AirJumpHold(void);        /* 0x06040FF0 */
+void Player_Physics(void);            /* 0x060450E4 */
 
 #endif

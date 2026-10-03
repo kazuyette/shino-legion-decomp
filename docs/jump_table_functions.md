@@ -1786,3 +1786,23 @@ New semantics learned while porting:
 - 0x0600648C (A.BIN) = `Anim_Start(state=P+0x58, animTbl=0x060A522C, frameTbl=0x060CA5AC, 0, anim=action)`.
 - Remaining stubs: see pc-port/src/player_stubs.c (physics 0x06040DE8/0x06040FF0, crouch/air
   selectors, jump exec 0x060439CC, ninjutsu 0x060437C0, terrain probe 0x0604588E, ...).
+
+## Physics (2026-10-03, ported in pc-port 0.3.0)
+
+- `Obj_Integrate` 0x060452A4 (generic, all objects): prevXY=+0x28/+0x2C; X += velX(+0x30)
+  + pushX(+0x38) + extX(+0x40); gravity on velY(+0x34): flags2&0x100 = off, else
+  flags2&0x400 ? +0x5000 (inverted, zeroed unless flags10&1 / extY<0) : -0x5000; velY clamped
+  ≥ -0x7A000; Y -= velY + 0x3C + 0x44 (Y down, velY>0 = up); pushes reset each frame.
+- `Player_GroundVelocity` 0x06040DE8: walk speed var 0x0601440C (=0x24000 from A.BIN data),
+  guard 0x1C000, crouch 0xC000, run 0x38000 (air run 0x2C000); D-pad sets facing.
+- `Player_JumpExec` 0x060439CC: on anim end → flags2 |= 0x1000 (jumping) | 0x100 (gravity off),
+  velY 0x60000, SFX 0x102, action 0x37 (0x39 after a run jump).
+- `Player_AirJumpHold` 0x06040FF0: +0x1A = air frame counter; holding slot2 keeps velY 6.0
+  (5.5 if not running) for < 12 frames; release latch 0x060EA574.
+- `Player_Physics` 0x060450E4: Camera_PushFromPlayer (0x060451C8), integrate, hitbox
+  (+0x1E=4, +0x20=9 / 6 crouched / 8 air-used), terrain collision 0x06045340(obj,4) unless
+  cheat + RT+Y (no-clip), flags2&0x10 → SFX 0x112.
+- Also identified: `Player_Draw` 0x06043FDA (64-entry position history, anim tick, sprite
+  setup = pos - camera), `Player_DrawAfterimages` 0x06044280 (6 ghosts),
+  `Player_ParseCommandInput` 0x06042B90 (motion input → 0x060EA432, e.g. 0x300 → action 0x25),
+  `Player_CheckItemPickup` 0x0604592E (spawns obj type 5).
