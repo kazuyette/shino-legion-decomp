@@ -5,6 +5,20 @@ summary first — it's the current state of the project in one place; the rest
 of the file is the detailed evidence trail behind it, useful for "why did we
 conclude that" but not required reading to get oriented.**
 
+## UNBLOCKED (2026-10-03): `.PPB` files are LZ-compressed
+
+Root cause of the "bad instruction after a 0xF word" wall: `DIRECTOR.PPB` and
+`SHINOBI.PPB` are **compressed**. The `0xFFFF`/`0xFxxx` words were LZ flag
+words (1 bit per following word, 1 = literal), every 17 words. Entropy ~7.0
+bits/byte was the tell. Format: u32 header (`0x80` + output size in words),
+then groups of [u16 flag, MSB-first] + 16 items; ref word = distance (w>>4,
+words) / length ((w&0xF)+3 words). Both files decode to exactly the declared
+size and consume the whole input. Tool: `tools/ppb_decompress.py` ->
+`extracted/*.dec.bin` (DIRECTOR 294316 B, SHINOBI 697002 B). All previous
+Ghidra work on the raw `.PPB` must be redone on the `.dec.bin` files; the
+correct load base still needs confirming (find the decompressor + loader in
+A.BIN, likely near `Res_LoadFileByName`).
+
 ## TL;DR / current status (2026-08-05)
 
 - **A.BIN** (`0x06002000-0x0603a300` roughly) is fully characterized: boot
