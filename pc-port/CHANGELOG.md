@@ -3,6 +3,23 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.13.0 — 2026-10-03
+- The game now boots like the Saturn: SEGA logo -> title screen (with the CD-DA title
+  music) -> Start -> "STAGE 1 START" movie -> intro movie -> stage 1-1 (the real one:
+  file STAGE7_1, the bamboo forest) — DIRECTOR.PPB and SHINOBI.PPB are swapped at
+  0x06040000 as on the hardware (A.BIN main loop 0x06004038, resource queue).
+- DIRECTOR ported: scene system, SEGA logo, title flow (menus partly), stage start,
+  new game / continue setup, story movies, font, stage-clear tally entry; SHINOBI's
+  mode dispatcher (load stage, frames, bonus tally, game over, return to DIRECTOR).
+- Movies: native Sega FILM/Cinepak player (bit-exact vs ffmpeg on all 26 .CPK) with sound.
+- Audio: SDL audio output, CD-DA tracks ripped by tools/rip_cdda.py (TRACK02/03.WAV).
+- Discovery: stage index 0 = game stage 1-1 = file STAGE7_1; the level ported so far
+  (file STAGE1_1, harbour) is game stage 7-1.
+- Options: --stage N (boot straight into stage index N), --skip-intro, --assets DIR.
+- Known gaps: title menus/options (steps 6+), tally / continue / game over screens are
+  partial, other stages' per-stage init (stage 1-1 ground layer colours are wrong),
+  sound effects (SCSP) still silent.
+
 ## 0.12.0 — 2026-10-03
 - Rendering: full sprite submission (A.BIN 0x060068C0 + SBL SPR_2DistSpr 0x0602905C).
   Every sprite is a VDP1 quad: scaling (waves, debris, statue fragments), rotation (now
