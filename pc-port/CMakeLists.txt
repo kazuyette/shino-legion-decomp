@@ -46,6 +46,12 @@ add_executable(shinobi_legions_pc
     src/objhandlers.c
     src/enemy.c
     src/fx.c
+    src/enemy_soldier_sub.c
+    src/enemy_soldier_a.c
+    src/enemy_soldier_b.c
+    src/enemy_soldier_c.c
+    src/enemy_t3.c
+    src/enemy_t4.c
 )
 
 find_library(MATH_LIBRARY m)

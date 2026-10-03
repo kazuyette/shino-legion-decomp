@@ -11,26 +11,15 @@
 #include "collision.h"
 #include "fx.h"
 #include "fixmath.h"
+#include "enemy_int.h"
 #include <stdio.h>
 
-#define O         R32(ENEMY_CUR)
-#define SLOT      RS16(ENEMY_CUR_SLOT)
-#define PL        0x060EA2B4u
-#define CAM_X     0x060252A0u
-#define CAM_Y     0x060252A4u
-#define FROZEN    (R16(0x0602529Eu) & 0x8000)
-#define SPR       0x060250ACu
-#define MAGIC     0x060252BAu        /* ninjutsu / magic state */
-#define STAGE     RS16(0x0602526Au)
-#define CHAR_BASE(s)  RS16(0x060A9064u + 2u * (uint32_t)(int16_t)(s))
-#define COLOR_BANK(s) RS16(0x060A9084u + 2u * (uint32_t)(int16_t)(s))
-#define SCRATCH_ANIM  0x060FFE80u    /* PC: stand-in for the originals' on-stack anim states */
 
 void Obj_Integrate(uint32_t o);      /* physics.c, 0x060452A4 */
 
 static uint32_t slot_addr(int s) { return OBJ_TABLE + (uint32_t)(int16_t)(s * (int)OBJ_SIZE); }
 static int32_t iabs(int32_t v) { return v < 0 ? -v : v; }
-static void once(const char *what, unsigned id)
+void Enemy_Once(const char *what, unsigned id)
 {
     static unsigned seen[64]; static int n;
     for (int i = 0; i < n; i++) if (seen[i] == id) return;
@@ -61,7 +50,7 @@ void Enemy_RegisterChars(int16_t type, uint32_t t)
 }
 
 /* 0x06005C30: copy n RGB555 colours into the shadow CRAM. */
-static void Pal_Copy(int dst, int n, uint32_t src)
+void Pal_Copy(int dst, int n, uint32_t src)
 {
     for (int i = 0; i < n; i++) W16(SHADOW_CRAM + 2u * (uint32_t)((dst + i) & 0xFFFF), R16(src + 2u * (uint32_t)i));
     W16(0x060250A8u, 1);
@@ -84,7 +73,9 @@ void Enemy_LoadTypes(void)
         uint16_t t = R16(0x060A91B8u + 2u * (uint32_t)(STAGE * 5 + i));
         if (t == 0xFFFF || R32(0x060A9124u + 4u * t) == 0) continue;
         if (t == 1) Enemy1_Load();
-        else once("loader for type", t);
+        else if (t == 3) Enemy3_Load();
+        else if (t == 4) Enemy4_Load();
+        else Enemy_Once("loader for type", t);
     }
 }
 
@@ -141,7 +132,7 @@ uint16_t Hitbox_Test(uint32_t a, int16_t ka, uint32_t b, int16_t kb)
 
 /* ------------------------------------------------------ player <-> enemy */
 
-static int Player_SwordPower(void)                                  /* 0x06045BA6 */
+int Player_SwordPower(void)                                  /* 0x06045BA6 */
 {
     return ((R16(MAGIC) & 0x4000) && (R16(MAGIC) & 0xF) == 4) ? 4 : 2;
 }
@@ -175,7 +166,7 @@ void Player_TakeDamage(int16_t dmg)                          /* 0x06045BEC */
     OR16(PL + 2, 8);
 }
 
-static int Player_AttackKind(void)                                  /* 0x0604634E */
+int Player_AttackKind(void)                                  /* 0x0604634E */
 {
     switch (RS16(0x060EA2BAu)) {
     case 0x04: case 0x09: case 0x0C: return 1;
@@ -190,7 +181,7 @@ static int Player_AttackKind(void)                                  /* 0x0604634
 
 /* 0x0604931E: the current enemy's attack boxes against Sho. Returns 2 blocked by Sho's
  * guard, 3 Sho hit by the weapon (dmgWeapon), 1 Sho touched the body (dmgTouch), 0. */
-static int Enemy_AttackPlayer(int16_t dmgWeapon, int16_t dmgTouch, uint16_t mode)
+int Enemy_AttackPlayer(int16_t dmgWeapon, int16_t dmgTouch, uint16_t mode)
 {
     uint32_t o = O;
     if ((mode & 0x8000) && Hitbox_Test(o, 2, PL, 1) != 0xFFFF && (mode & 0x4000) &&
@@ -217,7 +208,7 @@ static int Enemy_AttackPlayer(int16_t dmgWeapon, int16_t dmgTouch, uint16_t mode
 }
 
 /* 0x0604967C: Sho's shurikens (2 objects after the player) against the current enemy. */
-static int Enemy_CheckShurikens(void)
+int Enemy_CheckShurikens(void)
 {
     uint32_t o = O;
     if ((R16(o + 2) & 8) || (R16(o + 0x1C) & 0x8000)) return 0;
@@ -236,7 +227,7 @@ static int Enemy_CheckShurikens(void)
 }
 
 /* 0x060494B4: Sho's sword against the current enemy. 2 = damaged, 1 = guarded, 0. */
-static int Enemy_CheckPlayerHits(uint16_t mode)
+int Enemy_CheckPlayerHits(uint16_t mode)
 {
     uint32_t o = O;
     if (R16(o + 2) & 8) return 0;
@@ -273,7 +264,7 @@ void Enemy_AnimSwitch(void)
 }
 
 /* 0x06049A4C: draw a secondary animation (explosion overlay) on the current enemy. */
-static void Enemy_DrawOverlay(uint32_t st, int16_t bank, uint32_t a, uint32_t b, uint32_t c)
+void Enemy_DrawOverlay(uint32_t st, int16_t bank, uint32_t a, uint32_t b, uint32_t c)
 {
     uint32_t o = O;
     W16(st + 2, R16(a)); W16(st + 26, R16(b)); W16(st, R16(c));
@@ -323,7 +314,7 @@ void Enemy_DeathBurst(uint32_t o)
 
 /* ------------------------------------------------ type 0x0001: soldier */
 
-static void Soldier_Init(void)                                      /* 0x0608FDE4 */
+void Soldier_Init(void)                                      /* 0x0608FDE4 */
 {
     uint32_t o = O;
     W16(o + 6, 0);
@@ -334,7 +325,7 @@ static void Soldier_Init(void)                                      /* 0x0608FDE
     W16(o + 4, 0);
 }
 
-static int Soldier_CheckHits(void)                                  /* 0x06092C74 */
+int Soldier_CheckHits(void)                                  /* 0x06092C74 */
 {
     uint32_t o = O;
     int16_t a = RS16(o + 6);
@@ -352,7 +343,7 @@ static int Soldier_CheckHits(void)                                  /* 0x06092C7
     return Enemy_CheckPlayerHits(0xC000);
 }
 
-static void Soldier_OnHit(int r, uint32_t a, uint32_t b, uint32_t c)    /* 0x06092E14 */
+void Soldier_OnHit(int r, uint32_t a, uint32_t b, uint32_t c)    /* 0x06092E14 */
 {
     uint32_t o = O;
     int k = (r == 2) ? Player_AttackKind() : 4;
@@ -369,7 +360,7 @@ static void Soldier_OnHit(int r, uint32_t a, uint32_t b, uint32_t c)    /* 0x060
     sub_06007CDE(0x205);
 }
 
-static int Soldier_AnimDone(int16_t next)                           /* 0x06092ECE */
+int Soldier_AnimDone(int16_t next)                           /* 0x06092ECE */
 {
     uint32_t o = O;
     switch (RS16(o + 6)) {
@@ -409,7 +400,7 @@ static int Soldier_AnimDone(int16_t next)                           /* 0x06092EC
 }
 
 /* 0x0609379C: 1 = too close / unreachable (jump), 0 = shoot standing, 2 = shoot crouching. */
-static int Soldier_PlayerZone(void)
+int Soldier_PlayerZone(void)
 {
     uint32_t o = O;
     if (iabs(RS32(PL + 8) - RS32(o + 8)) < 0x500000 && iabs(RS32(PL + 0xC) - RS32(o + 0xC)) < 0x500000) return 1;
@@ -420,7 +411,7 @@ static int Soldier_PlayerZone(void)
     return 1;
 }
 
-static int Soldier_Decide(uint32_t next)                            /* 0x060936DE */
+int Soldier_Decide(uint32_t next)                            /* 0x060936DE */
 {
     uint32_t o = O;
     int z = Soldier_PlayerZone();
@@ -442,7 +433,7 @@ static int Soldier_Decide(uint32_t next)                            /* 0x060936D
     return z;
 }
 
-static void Soldier_Jump(int16_t landAct, int16_t airAct)            /* 0x06093856 */
+void Soldier_Jump(int16_t landAct, int16_t airAct)            /* 0x06093856 */
 {
     uint32_t o = O;
     int16_t throwAt = (STAGE == 9) ? 8 : 7;
@@ -458,7 +449,7 @@ static void Soldier_Jump(int16_t landAct, int16_t airAct)            /* 0x060938
 }
 
 /* 0x06093518: angle from the enemy (+dx,+dy) to Sho's chest, leading a running Sho. */
-static int Soldier_Aim(uint32_t o, int32_t dx, int32_t dy)
+int Soldier_Aim(uint32_t o, int32_t dx, int32_t dy)
 {
     if (R16(o + 2) & 0x8000) dx = -dx;
     int32_t lead = 0;
@@ -471,7 +462,7 @@ static int Soldier_Aim(uint32_t o, int32_t dx, int32_t dy)
                  (int16_t)((uint32_t)(RS32(PL + 8) + lead) >> 16), (int16_t)((uint32_t)(RS32(PL + 0xC) + (int32_t)0xFFD80000) >> 16));
 }
 
-static int Soldier_Think(uint32_t next)                             /* 0x0609307A */
+int Soldier_Think(uint32_t next)                             /* 0x0609307A */
 {
     uint32_t o = O;
     uint16_t a = R16(o + 6);
@@ -530,7 +521,7 @@ static int Soldier_Think(uint32_t next)                             /* 0x0609307
     return a;
 }
 
-static void Soldier_Physics(void)                                   /* 0x06093ACC */
+void Soldier_Physics(void)                                   /* 0x06093ACC */
 {
     uint32_t o = O;
     Obj_Integrate(o);
@@ -541,7 +532,7 @@ static void Soldier_Physics(void)                                   /* 0x06093AC
     }
 }
 
-static int Soldier_Dying(uint32_t a, uint32_t b, uint32_t c)        /* 0x060935F0 */
+int Soldier_Dying(uint32_t a, uint32_t b, uint32_t c)        /* 0x060935F0 */
 {
     uint32_t o = O;
     if (RS16(o + 6) != 0x0F) return 0;
@@ -558,7 +549,7 @@ static int Soldier_Dying(uint32_t a, uint32_t b, uint32_t c)        /* 0x060935F
     return 0;
 }
 
-static void Soldier_Draw(uint16_t p)                                /* 0x06093930 */
+void Soldier_Draw(uint16_t p)                                /* 0x06093930 */
 {
     uint32_t o = O;
     int16_t a = RS16(o + 6);
@@ -581,7 +572,7 @@ static void EnemyHandler_0001(void)                                 /* 0x0608FB9
 {
     uint32_t o = O;
     uint16_t sub = R16(o + 0x12) & 0x1F;
-    if ((uint16_t)(sub - 2) < 11) { once("soldier subtype", sub); return; }
+    if ((uint16_t)(sub - 2) < 11) { Soldier_Subtype(sub); return; }   /* jump table 0x0608FC48 */
     int32_t d = RS32(o + 8) - RS32(CAM_X) + (int32_t)0xFF600000;
     if (d < 0) d = RS32(CAM_X) - RS32(o + 8) + 0x00A00000;
     int far = d >= 0x01000000;
@@ -622,7 +613,9 @@ void Obj_UpdateEnemies(void)
         W16(ENEMY_CUR_SLOT, (uint16_t)s);
         if (s == -1) continue;
         if (t == 1) EnemyHandler_0001();
-        else once("enemy type", t);
+        else if (t == 3) EnemyHandler_0003();
+        else if (t == 4) EnemyHandler_0004();
+        else Enemy_Once("enemy type", t);
         if (!FROZEN) AND16(o + 0x10, 0xDFFF);
     }
 }
