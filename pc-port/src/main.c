@@ -13,6 +13,7 @@
 #include "enemy.h"
 #include "fx.h"
 #include "objhandlers_c.h"
+#include "fade.h"
 #include "camera.h"
 
 int main(int argc, char **argv)
@@ -37,8 +38,10 @@ int main(int argc, char **argv)
     W16(LIVES, 3);                                     /* PC: set by DIRECTOR's game start */
     W16(0x060252DCu, 0);                               /* first entry: Sho drops in */
     W16(G_GAME_MODE, 6);                               /* stage frames */
-    if (have_game_data && Stage_Load("assets", 12))   /* stage 1-1 */
+    if (have_game_data && Stage_Load("assets", 12)) { /* stage 1-1 */
         Stage_SpawnPlayer();
+        Fade_StageIntro();                             /* 16-frame fade-in (Game_LoadStage 0x0606B6EC) */
+    }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -80,6 +83,7 @@ int main(int argc, char **argv)
             printf("[pad] soft reset (A+B+C+Start)\n");
             Pad_Clear();
             Stage_ResetAndLoadDirector();
+            Fade_Reset();                    /* A.BIN 0x06004360 */
         }
         W16(0x060143EAu, R16(0x060143EAu) + 1u);   /* frame counters (A.BIN vblank / SHINOBI 0x06066958) */
         W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);
@@ -131,6 +135,7 @@ int main(int argc, char **argv)
                     Stage_Load("assets", 12);
                 }
                 Stage_SpawnPlayer();
+                Fade_StageIntro();
             } else {
                 printf("[game] mode %d (%s) not ported yet: restarting 1-1\n", mode,
                        mode == 7 ? "stage-clear tally" : mode == 9 ? "game over" : "DIRECTOR");
@@ -140,10 +145,12 @@ int main(int argc, char **argv)
                 Player_Init();
                 Stage_Load("assets", 12);
                 Stage_SpawnPlayer();
+                Fade_StageIntro();
             }
             W16(G_STAGE_STATE, R16(G_STAGE_STATE) & 0x7FF0);
             W16(G_GAME_MODE, 6);
         }
+        Fade_Update();                       /* A.BIN main loop 0x06004038 -> 0x06007084 */
 
         Render_Clear();
         Render_DrawFrame();

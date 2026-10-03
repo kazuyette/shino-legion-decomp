@@ -3,6 +3,7 @@
  * Style and field conventions: see objhandlers.c / objhandlers.h. */
 #include "objhandlers.h"
 #include "objhandlers_c.h"
+#include "fade.h"
 #include "objects.h"
 #include "anim.h"
 #include "fixmath.h"
@@ -152,17 +153,6 @@ void Player_CheckFall(void)
     OR16(PL + 2, 8);
 }
 
-/* A.BIN helpers used by the sequence. Screen fade / sound are not emulated: logged.
- * In the original 0x06006FDE sets FX_BUSY = 2 and A.BIN's per-frame sequencer
- * (0x06007084) clears it when the 16-step fade-out is over; here FX_BUSY stays 0,
- * so the transition happens on the frame after the request. */
-static void fade_stub(const char *what, unsigned addr)
-{
-    static unsigned done[8]; static int n;
-    for (int i = 0; i < n; i++) if (done[i] == addr) return;
-    if (n < 8) done[n++] = addr;
-    printf("[stage] %s (A.BIN 0x%08X) not ported\n", what, addr);
-}
 /* A.BIN 0x06005BB4 */
 static void abin_06005BB4(void)
 {
@@ -178,10 +168,7 @@ void Stage_UpdateState(void)
     if (!(R16(G_STAGE_STATE) & 7)) return;
     if (R16(G_STAGE_STATE) & 8) {                           /* first frame of the request */
         if (R16(FX_BUSY) == 0) {
-            fade_stub("sound request 0 (0x0600725C(0))", 0x0600725Cu);
-            W16(0x060250F8u, 0x100); W16(0x060250FAu, 0x100); W16(0x060250FCu, 0x100);   /* 0x06006F48(0x100,0x100,0x100) */
-            fade_stub("fade setup 0x060072AC(16, 2, 1)", 0x060072ACu);
-            fade_stub("start fade out 0x06006FDE", 0x06006FDEu);
+            Fade_StageOutro();                              /* 0x0600725C(0), 0x06006F48(0x100 x3), 0x060072AC(16,2,1), 0x06006FDE */
         }
         if ((R16(G_STAGE_STATE) & 7) == 2 && RS16(PL + 0x16) <= 0)   /* cleared while dying */
             W16(G_STAGE_STATE, (R16(G_STAGE_STATE) & 0xFFF8) | 1);

@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include "render.h"
+#include "fade.h"
 #include "ram.h"
 #include "sprite.h"
 #include "stage.h"
@@ -129,33 +130,34 @@ static uint32_t cram_argb(unsigned idx)
     return 0xFF000000u | r << 16 | g << 8 | b;
 }
 
-/* Decode a VDP1 character (CMDPMOD colour modes 0-5) from the emulated VRAM. */
+/* Decode a VDP1 character (CMDPMOD colour modes 0-5) from the emulated VRAM.
+ * Dot 0 is transparent unless SPD (CMDPMOD bit 6) is set. */
 static void decode_char(const RenderSprite *s, uint32_t *argb)
 {
     const uint8_t *v = Ram_Ptr(s->src);
-    int n = s->w * s->h;
+    int n = s->w * s->h, spd = (s->mode & 0x40) != 0;
     for (int i = 0; i < n; i++) {
         unsigned dot;
         switch ((s->mode >> 3) & 7) {
         case 0:                                     /* 4bpp colour bank */
             dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
-            argb[i] = dot ? cram_argb((s->colr & 0xFFF0u) | dot) : 0;
+            argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFFF0u) | dot) : 0;
             break;
         case 1: {                                   /* 4bpp lookup table at VRAM colr*8 */
             dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
             uint16_t e = R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + dot * 2u);
-            if (!dot) argb[i] = 0;
+            if (!dot && !spd) argb[i] = 0;
             else if (e & 0x8000) {
                 uint32_t r = (e & 31) * 255 / 31, g = ((e >> 5) & 31) * 255 / 31, b = ((e >> 10) & 31) * 255 / 31;
                 argb[i] = 0xFF000000u | r << 16 | g << 8 | b;
             } else argb[i] = cram_argb(e);
             break; }
-        case 2: dot = v[i] & 0x3F; argb[i] = dot ? cram_argb((s->colr & 0xFFC0u) | dot) : 0; break;
-        case 3: dot = v[i] & 0x7F; argb[i] = dot ? cram_argb((s->colr & 0xFF80u) | dot) : 0; break;
-        case 4: dot = v[i];        argb[i] = dot ? cram_argb((s->colr & 0xFF00u) | dot) : 0; break;
+        case 2: dot = v[i] & 0x3F; argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFFC0u) | dot) : 0; break;
+        case 3: dot = v[i] & 0x7F; argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFF80u) | dot) : 0; break;
+        case 4: dot = v[i];        argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFF00u) | dot) : 0; break;
         default: {                                  /* RGB */
             uint16_t e = (uint16_t)(v[2 * i] << 8 | v[2 * i + 1]);
-            if (!(e & 0x8000)) { argb[i] = 0; break; }
+            if (!(e & 0x8000) && !(spd && e == 0)) { argb[i] = 0; break; }
             uint32_t r = (e & 31) * 255 / 31, g = ((e >> 5) & 31) * 255 / 31, b = ((e >> 10) & 31) * 255 / 31;
             argb[i] = 0xFF000000u | r << 16 | g << 8 | b;
             break; }
@@ -218,22 +220,207 @@ void Render_Clear(void)
     SDL_RenderClear(s_renderer);
 }
 
+/* ---- VDP2 priorities ----
+ * VDP2 register shadow 0x0603B46C mirrors 0x25F800E0..: +0x00 SPCTL, +0x04 CRAOFA, +0x0C CCCTL,
+ * +0x10..+0x16 PRISA..PRISD (sprite registers S0..S7), +0x18 PRINA (NBG0 | NBG1 << 8),
+ * +0x1A PRINB (NBG2 | NBG3 << 8), +0x1C PRIR, +0x1E CCRSA...
+ * Boot (SHINOBI 0x060401A0..) sets SPCTL sprite type 3 (dot: bit 15 MSB, 14-13 priority
+ * register, 12-11 colour calc, 10-0 colour code); the stage init 0x060472D2 copies the stage
+ * control block 0x060EA618 +0x22..+0x28 (S0..S3) and +0x2A..+0x30 (NBG0..NBG3) through
+ * SCL_SetPriority 0x0602AFD4 (1-1: S0..S3 = 3,4,5,7; NBG0..3 = 4,3,2,7).
+ * Higher priority is in front; 0 = not displayed; on a tie sprite > NBG0 > NBG1 > NBG2 > NBG3. */
+#define VDP2_SPCTL   (VDP2_SHADOW_ADDR + 0x00)
+#define VDP2_PRIS    (VDP2_SHADOW_ADDR + 0x10)
+#define VDP2_PRIN    (VDP2_SHADOW_ADDR + 0x18)
+#define STAGE_CTRL   0x060EA618u
+
+typedef struct { int nbg[4], spr[8], sptype; } Vdp2Prio;
+
+static void vdp2_priorities(Vdp2Prio *p)
+{
+    uint16_t spctl = R16(VDP2_SPCTL);
+    int any = 0;
+    p->sptype = spctl ? (spctl & 0xF) : 3;      /* PC: boot VDP2 init not ported -> type 3 */
+    for (int n = 0; n < 8; n++) any |= p->spr[n] = (R16(VDP2_PRIS + 2u * (uint32_t)(n >> 1)) >> (8 * (n & 1))) & 7;
+    for (int n = 0; n < 4; n++) any |= p->nbg[n] = (R16(VDP2_PRIN + 2u * (uint32_t)(n >> 1)) >> (8 * (n & 1))) & 7;
+    if (any) return;
+    /* PC: 0x060472D2 not ported -> take the values it would copy from the stage control block */
+    for (int n = 0; n < 4; n++) {
+        any |= p->spr[n] = R16(STAGE_CTRL + 0x22 + 2u * (uint32_t)n) & 7;
+        any |= p->nbg[n] = R16(STAGE_CTRL + 0x2A + 2u * (uint32_t)n) & 7;
+        p->spr[n + 4] = 0;
+    }
+    if (any) return;
+    for (int n = 0; n < 8; n++) p->spr[n] = 7;  /* nothing set up: layers 2,1,0 then sprites */
+    for (int n = 0; n < 4; n++) p->nbg[n] = 1;
+}
+
+/* Priority register number held in a sprite's colour data for the VDP2 sprite type
+ * (types 0-7, 16-bit dots). RGB dots use register 0. LUT sprites: colour of dot 1. */
+static int sprite_prio_reg(const RenderSprite *s, int type)
+{
+    static const uint8_t shift[8] = { 14, 13, 14, 13, 13, 12, 12, 12 }, bits[8] = { 2, 3, 1, 2, 2, 3, 3, 3 };
+    unsigned cm = (s->mode >> 3) & 7;
+    uint16_t c = s->colr;
+    if (cm >= 5 || type > 7) return 0;
+    if (cm == 1) {
+        c = R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + 2u);
+        if (c & 0x8000) return 0;
+    }
+    return (c >> shift[type]) & ((1 << bits[type]) - 1);
+}
+
+/* VDP1 framebuffer split by VDP2 priority: target p holds the pixels whose last-drawn sprite
+ * has priority p (other sprites erase what they cover), so a later sprite hides an earlier
+ * one even when it ends up behind a background layer, like the real framebuffer. Needs render
+ * targets + a custom blend mode; otherwise sprites are just grouped by priority. */
+static SDL_Texture *s_sprLayer[8];
+static SDL_BlendMode s_erase;
+static int s_layersOk = -1;
+
+static int sprite_layers_ok(void)
+{
+    if (s_layersOk >= 0) return s_layersOk;
+    s_layersOk = 0;
+    if (!SDL_RenderTargetSupported(s_renderer)) return 0;
+    s_erase = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                                         SDL_BLENDOPERATION_ADD, SDL_BLENDFACTOR_ZERO,
+                                         SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
+    for (int p = 1; p < 8; p++) {
+        s_sprLayer[p] = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
+                                          SCREEN_W, SCREEN_H);
+        if (!s_sprLayer[p] || SDL_SetTextureBlendMode(s_sprLayer[p], SDL_BLENDMODE_BLEND) < 0) return 0;
+    }
+    if (SDL_SetTextureBlendMode(s_sprLayer[1], s_erase) < 0) {   /* custom blend unsupported (software) */
+        for (int p = 1; p < 8; p++) { SDL_DestroyTexture(s_sprLayer[p]); s_sprLayer[p] = NULL; }
+        return 0;
+    }
+    SDL_SetTextureBlendMode(s_sprLayer[1], SDL_BLENDMODE_BLEND);
+    return s_layersOk = 1;
+}
+
+static float fnorm(float *x, float *y, float dx, float dy)
+{
+    float l = SDL_sqrtf(*x * *x + *y * *y);
+    if (l < 1e-3f) { *x = dx; *y = dy; return 1.0f; }
+    *x /= l; *y /= l;
+    return l;
+}
+
+/* Draw one distorted-sprite command as two textured triangles (A,B,C)+(A,C,D). The VDP1
+ * vertices are inclusive pixel positions: each corner is moved half a pixel outwards along
+ * its two edges so an untransformed w x h sprite covers exactly w x h pixels. erase = draw
+ * the sprite's opaque texels as holes (framebuffer overwrite by another priority). */
+static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase)
+{
+    static const int un[4] = { 1, 0, 3, 2 }, vn[4] = { 3, 2, 1, 0 };   /* u / v neighbour of A,B,C,D */
+    static const float usg[4] = { -1, 1, 1, -1 }, vsg[4] = { -1, -1, 1, 1 };
+    static const int idx[6] = { 0, 1, 2, 0, 2, 3 };
+    SDL_Vertex vx[4];
+    SDL_Color col = { 255, 255, 255, 255 };
+    if (!erase && ((s->mode >> 3) & 7) == 5) {      /* VDP1 colour calculation: RGB sprites only */
+        switch (s->mode & 7) {
+        case 1: col.r = col.g = col.b = 0; col.a = 128; break;   /* shadow */
+        case 2: col.r = col.g = col.b = 128; break;               /* half luminance */
+        case 3: col.a = 128; break;                               /* half transparency */
+        default: break;
+        }
+    }
+    for (int i = 0; i < 4; i++) {
+        float ux = (float)(s->qx[i] - s->qx[un[i]]), uy = (float)(s->qy[i] - s->qy[un[i]]);
+        float wx = (float)(s->qx[i] - s->qx[vn[i]]), wy = (float)(s->qy[i] - s->qy[vn[i]]);
+        fnorm(&ux, &uy, usg[i], 0);
+        fnorm(&wx, &wy, 0, vsg[i]);
+        /* Dir flips: texel corner i goes to the mirrored vertex (same as flipping the UVs,
+         * which SDL's software renderer mishandles) */
+        int k = i;
+        if (s->flipH) k = un[k];
+        if (s->flipV) k = vn[k];
+        vx[k].position.x = (float)s->qx[i] + 0.5f + 0.5f * (ux + wx);
+        vx[k].position.y = (float)s->qy[i] + 0.5f + 0.5f * (uy + wy);
+        vx[k].color = col;
+        vx[i].tex_coord.x = (i == 1 || i == 2) ? 1.0f : 0.0f;
+        vx[i].tex_coord.y = (i >= 2) ? 1.0f : 0.0f;
+    }
+    if (erase) SDL_SetTextureBlendMode(t, s_erase);
+    SDL_RenderGeometry(s_renderer, t, vx, 4, idx, 6);
+    if (erase) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+}
+
 void Render_DrawFrame(void)
 {
     if (!s_renderer) { s_queued = 0; return; }
     if (R16(0x060250A8u)) { Render_InvalidatePalettes(); W16(0x060250A8u, 0); }   /* CRAM changed */
-    for (int l = LAYERS - 1; l >= 0; l--) draw_layer(l);
 
-    for (int i = 0; i < s_queued; i++) {
-        const RenderSprite *s = &s_queue[i];
-        SDL_Texture *t = get_texture(s);
-        if (!t) continue;
-        SDL_Rect dst = { s->x, s->y, s->w, s->h };
-        SDL_RendererFlip f = (SDL_RendererFlip)((s->flipH ? SDL_FLIP_HORIZONTAL : 0) |
-                                                (s->flipV ? SDL_FLIP_VERTICAL : 0));
-        double ang = s->rotate ? s->angle * 360.0 / 256.0 : 0.0;
-        SDL_Point c = { s->cx - s->x, s->cy - s->y };
-        SDL_RenderCopyEx(s_renderer, t, NULL, &dst, ang, s->rotate ? &c : NULL, f);
+    /* VDP1 command list order: SPR_2 draw priority ascending, submission order on ties
+     * (Spr2 lists 0x06031588 / 0x060315F8). Stable insertion sort. */
+    static int order[MAX_QUEUE], vp[MAX_QUEUE];
+    static SDL_Texture *tex[MAX_QUEUE];
+    int n = s_queued;
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j > 0 && s_queue[order[j - 1]].prio > s_queue[i].prio) { order[j] = order[j - 1]; j--; }
+        order[j] = i;
+    }
+    Vdp2Prio pr;
+    vdp2_priorities(&pr);
+    unsigned used = 0;
+    for (int k = 0; k < n; k++) {
+        const RenderSprite *s = &s_queue[order[k]];
+        tex[k] = get_texture(s);
+        vp[k] = pr.spr[sprite_prio_reg(s, pr.sptype)];
+        if (tex[k]) used |= 1u << vp[k];
+    }
+    int split = (used & (used - 1)) != 0 && sprite_layers_ok();
+    if (split) {
+        for (int p = 1; p < 8; p++) {
+            if (!(used & (1u << p))) continue;
+            SDL_SetRenderTarget(s_renderer, s_sprLayer[p]);
+            SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, 0);
+            SDL_RenderClear(s_renderer);
+            for (int k = 0; k < n; k++) {
+                const RenderSprite *s = &s_queue[order[k]];
+                int shadow = ((s->mode >> 3) & 7) == 5 && (s->mode & 7) == 1;   /* darkens, no overwrite */
+                if (tex[k] && (vp[k] == p || !shadow)) draw_sprite(s, tex[k], vp[k] != p);
+            }
+        }
+        SDL_SetRenderTarget(s_renderer, NULL);
+    }
+    for (int p = 1; p < 8; p++) {
+        for (int l = LAYERS - 1; l >= 0; l--)
+            if (pr.nbg[l] == p) draw_layer(l);
+        if (!(used & (1u << p))) continue;
+        if (split) { SDL_RenderCopy(s_renderer, s_sprLayer[p], NULL, NULL); continue; }
+        for (int k = 0; k < n; k++)
+            if (tex[k] && vp[k] == p) draw_sprite(&s_queue[order[k]], tex[k], 0);
+    }
+    /* VDP2 colour offset A (screen fades, A.BIN 0x06007084): result = clamp(c + off). In the
+     * stage flow every layer (CLOFEN 0x7F) gets it, so one full-screen pass is exact. */
+    {
+        int r, g, b, m;
+        Fade_GetColorOffset(&r, &g, &b, &m);
+        if (m && (r || g || b)) {
+            SDL_Rect all = { 0, 0, SCREEN_W, SCREEN_H };
+            if (r < 0 || g < 0 || b < 0) {
+                SDL_BlendMode sub = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE,
+                    SDL_BLENDOPERATION_REV_SUBTRACT, SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD);
+                if (SDL_SetRenderDrawBlendMode(s_renderer, sub) == 0) {
+                    SDL_SetRenderDrawColor(s_renderer, (Uint8)(r < 0 ? (-r > 255 ? 255 : -r) : 0),
+                                           (Uint8)(g < 0 ? (-g > 255 ? 255 : -g) : 0), (Uint8)(b < 0 ? (-b > 255 ? 255 : -b) : 0), 255);
+                } else {                                   /* no REV_SUBTRACT: darken with alpha */
+                    int d = -(r < g ? (r < b ? r : b) : (g < b ? g : b));
+                    SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, (Uint8)(d > 255 ? 255 : d));
+                }
+                SDL_RenderFillRect(s_renderer, &all);
+            }
+            if (r > 0 || g > 0 || b > 0) {
+                SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_ADD);
+                SDL_SetRenderDrawColor(s_renderer, (Uint8)(r > 0 ? r : 0), (Uint8)(g > 0 ? g : 0), (Uint8)(b > 0 ? b : 0), 255);
+                SDL_RenderFillRect(s_renderer, &all);
+            }
+            SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_NONE);
+        }
     }
     s_queued = 0;
 }
@@ -246,5 +433,7 @@ void Render_Present(void)
 void Render_Shutdown(void)
 {
     Render_InvalidatePalettes();
+    for (int p = 0; p < 8; p++) if (s_sprLayer[p]) { SDL_DestroyTexture(s_sprLayer[p]); s_sprLayer[p] = NULL; }
+    s_layersOk = -1;
     if (s_renderer) { SDL_DestroyRenderer(s_renderer); s_renderer = NULL; }
 }

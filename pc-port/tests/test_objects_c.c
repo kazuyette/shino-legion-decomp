@@ -15,6 +15,7 @@
 #include "fx.h"
 #include "objhandlers.h"
 #include "objhandlers_c.h"
+#include "fade.h"
 extern RenderSprite g_lastSprite; extern int g_spriteCount;
 static InputPort fake[2];
 const InputPort *Input_GetPort(int p) { return &fake[p]; }
@@ -27,6 +28,7 @@ static void tick(uint16_t held)
     W16(0x060143EAu, R16(0x060143EAu) + 1u); W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);
     Pad_Update(2); Scroll_Update(); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick();
     Stage_UpdateState();
+    Fade_Update();
     if (RS16(G_STAGE_INDEX) != stage) return;
     Obj_UpdateEnemies(); Obj_UpdateAll(); Projectiles_Update(); Effects_Update(); Items_Update();
 }
@@ -60,6 +62,7 @@ int main(int argc, char **argv)
     snprintf(p, sizeof p, "%sSHOU.CHR", dir);        assert(Ram_LoadImage(p, 0x00200000u));
     Player_Init();
     assert(Stage_Load(dir, 12));
+    Fade_Reset();                                    /* boot 0x06004094 */
     W16(0x060252DCu, 1);                            /* no drop-in (0x0606E440 not run here) */
     Stage_SpawnPlayer();
     W16(G_GAME_MODE, 6);                     /* stage frames (dispatcher 0x0606B54C) */
@@ -88,7 +91,7 @@ int main(int argc, char **argv)
            g_lastSprite.x, g_lastSprite.y, g_lastSprite.colr);
     assert(n >= 5);
     int splash = -1, died = -1, hp0 = -1;
-    for (int i = 0; i < 400 && died < 0; i++) {
+    for (int i = 0; i < 600 && died < 0; i++) {
         tick(0);
         if (splash < 0 && R16(s + 0x14)) {
             splash = i;
@@ -103,10 +106,11 @@ int main(int argc, char **argv)
            R16(s + 0x14), R16(G_GAME_MODE), RS16(LIVES), R16(G_RESPAWN), R16(G_STAGE_STATE), died);
     assert(splash >= 0 && hp0 > splash);
     if (died >= 0) assert(R16(G_GAME_MODE) == 5 && RS16(LIVES) == 2 && R16(G_RESPAWN) == 1);
-    else printf("(death sequence not started by the player code within 400 frames)\n");
+    else printf("(death sequence not started by the player code within 600 frames)\n");
 
     /* exit zone */
     W16(G_STAGE_STATE, 0); W16(G_GAME_MODE, 6); W16(G_RESPAWN, 0); W16(G_CHECKPOINT, 2);
+    Fade_StageIntro(); for (int k = 0; k < 16; k++) Fade_Update();   /* reload + fade-in */
     PW16(P_HP, 8); PW16(P_FLAGS2, 0);
     place(0x37C00000, 0x05D00000);
     assert(Stage_CheckExit() == 0 && !(R16(G_STAGE_STATE) & 7));
@@ -118,7 +122,11 @@ int main(int argc, char **argv)
     Stage_UpdateState();                                                /* request frame: fade out */
     printf("after request frame: state %04X mode %d stage %d\n", R16(G_STAGE_STATE), R16(G_GAME_MODE), RS16(G_STAGE_INDEX));
     assert((R16(G_STAGE_STATE) & 0xF) == 2 && RS16(G_STAGE_INDEX) == 12);
-    Stage_UpdateState();                                                /* fade done (not emulated) */
+    int fade_frames = 0;
+    do { Fade_Update(); fade_frames++; Stage_UpdateState(); }           /* 16-frame fade-out, then the switch */
+    while (R16(G_GAME_MODE) == 6 && fade_frames < 40);
+    printf("fade-out took %d frames\n", fade_frames);
+    assert(fade_frames >= 16 && fade_frames <= 18);
     printf("next frame: mode %d (5 = load stage), stage %d (13 = 1-2), checkpoint %d\n",
            R16(G_GAME_MODE), RS16(G_STAGE_INDEX), R16(G_CHECKPOINT));
     assert(R16(G_GAME_MODE) == 5 && RS16(G_STAGE_INDEX) == 13 && R16(G_CHECKPOINT) == 0);

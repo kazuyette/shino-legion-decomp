@@ -107,6 +107,14 @@ int Stage_Load(const char *dir, int idx)
     W16(G_COLL_LAYER, 0);
     if (idx == 12) stage1_1_init();
     else printf("[stage] per-stage init for index %d not ported yet\n", idx);
+    /* 0x060472D2: VDP2 priorities from the control block (sprite registers S0-S3 at
+     * +0x22..+0x28, NBG0-3 at +0x2A..+0x30); boot sets sprite type 3 (SPCTL). */
+    W16(VDP2_SHADOW_ADDR, (uint16_t)((((R16(VDP2_SHADOW_ADDR) & 0x0FFF) | 0x2000) & 0xFFDF & 0xFFF0) | 3) & 0xFFEF);
+    Scl_SetPriority(4, Ram_Ptr(C + 0x2A)[1]);  Scl_SetPriority(8, Ram_Ptr(C + 0x2C)[1]);
+    Scl_SetPriority(0x10, Ram_Ptr(C + 0x2E)[1]); Scl_SetPriority(0x20, Ram_Ptr(C + 0x30)[1]);
+    Scl_SetPriority(0x100, Ram_Ptr(C + 0x22)[1]); Scl_SetPriority(0x200, Ram_Ptr(C + 0x24)[1]);
+    Scl_SetPriority(0x400, Ram_Ptr(C + 0x26)[1]); Scl_SetPriority(0x800, Ram_Ptr(C + 0x28)[1]);
+    Scl_SetPriority(0x1000, 0); Scl_SetPriority(0x2000, 0); Scl_SetPriority(0x4000, 0); Scl_SetPriority(0x8000, 0);
     stage_palettes();
     Common_LoadChars();                                    /* 0x06040A90 */
     Stage_RegisterSpriteChars();                           /* 0x06060108 */
