@@ -1,11 +1,8 @@
 #include "pad.h"
 #include "input.h"
+#include "ram.h"
 
 PadPort  g_padPorts[2];
-uint16_t g_gameHeld, g_gamePressed, g_gamePressedPrev;
-uint16_t g_actionBtn[3];
-int16_t  g_buttonConfig;
-uint32_t g_demoFlags;
 
 /* A.BIN 0x0600F290: 6 button layouts, 8-byte stride (3 used words + pad). */
 static const uint16_t kButtonConfig[6][4] = {
@@ -60,26 +57,31 @@ static uint16_t mirror_lr(uint16_t v)
 
 int Game_LatchPad1(uint16_t playerFlags4)
 {
-    g_gameHeld = g_gamePressed = g_gamePressedPrev = 0;
+    uint16_t held = 0, pressed = 0, pressedPrev = 0;
+    uint32_t demo = R32(ADDR_DEMO_FLAGS);
 
-    int cfg = g_buttonConfig;
-    if (g_demoFlags & 0x8000) cfg = 0;
-    if (cfg < 0 || cfg > 5)   cfg = 0;   /* PC safety; original indexes blindly */
+    int cfg = RS16(ADDR_BUTTON_CONFIG);
+    if (demo & 0x8000) cfg = 0;
+    if (cfg < 0 || cfg > 5) cfg = 0;   /* PC safety; original indexes blindly */
     for (int i = 0; i < 3; i++)
-        g_actionBtn[i] = kButtonConfig[cfg][i];
+        W16(ADDR_ACTION_BTN0 + 2u * (unsigned)i, kButtonConfig[cfg][i]);
 
     if (!(playerFlags4 & PFLAG4_INPUT_OFF)) {
-        g_gameHeld        = g_padPorts[0].held;
-        g_gamePressed     = g_padPorts[0].pressed;
-        g_gamePressedPrev = g_padPorts[0].pressed_prev;
+        held        = g_padPorts[0].held;
+        pressed     = g_padPorts[0].pressed;
+        pressedPrev = g_padPorts[0].pressed_prev;
     }
     if (playerFlags4 & PFLAG4_MIRROR_LR) {
-        g_gameHeld    = mirror_lr(g_gameHeld);
-        g_gamePressed = mirror_lr(g_gamePressed);
+        held    = mirror_lr(held);
+        pressed = mirror_lr(pressed);
     }
+    W16(ADDR_GAME_HELD, held);
+    W16(ADDR_GAME_PRESSED, pressed);
+    W16(ADDR_GAME_PRESSED_PREV, pressedPrev);
+
     if (playerFlags4 & PFLAG4_ALT_INPUT)
         return 1;   /* TODO: port SHINOBI 0x060463DC */
-    if (g_demoFlags & 0x8000)
+    if (demo & 0x8000)
         return 2;   /* TODO: port SHINOBI 0x06046A98 (demo input) */
     return 0;
 }

@@ -5,10 +5,17 @@
 #include "input.h"
 #include "pad.h"
 #include "player.h"
+#include "ram.h"
 
 int main(int argc, char **argv)
 {
     (void)argc; (void)argv;
+
+    if (Ram_LoadImage("assets/A.BIN", 0x06004000u))
+        printf("[ram] A.BIN loaded\n");
+    if (Ram_LoadImage("assets/SHINOBI.dec.bin", 0x06040000u))
+        printf("[ram] SHINOBI.dec.bin loaded\n");
+    Player_Init();
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -51,9 +58,23 @@ int main(int argc, char **argv)
             Pad_Clear();
             Stage_ResetAndLoadDirector();
         }
-        Game_LatchPad1(g_player.flags4);     /* SHINOBI 0x06040CAC */
-        if (g_gamePressed)
-            printf("[pad] pressed %04x held %04x\n", g_gamePressed, g_gameHeld);
+        Game_LatchPad1(P16(P_FLAGS4));       /* SHINOBI 0x06040CAC */
+        {
+            static int last_act = -1, frames_in_act = 0;
+            /* No animation system yet: fake "animation finished" after 20
+             * frames in the same action so the state machine keeps moving. */
+            if (frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
+            Player_Tick();                   /* SHINOBI 0x06040B72 */
+            AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
+            if (Player_Action() != last_act) {
+                printf("[player] action %02X -> %02X (pad %04X)\n",
+                       last_act & 0xFF, Player_Action(), R16(ADDR_GAME_HELD));
+                last_act = Player_Action();
+                frames_in_act = 0;
+            } else {
+                frames_in_act++;
+            }
+        }
         Boot_RunFrame();
 
         Render_Clear();

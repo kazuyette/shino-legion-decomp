@@ -3,6 +3,8 @@
 #include "pad.h"
 #include "input.h"
 #include "player.h"
+#include "ram.h"
+#define g_gameHeld R16(ADDR_GAME_HELD)
 static InputPort fake[2];
 const InputPort *Input_GetPort(int p){ return &fake[p]; }
 static void frame(uint16_t held){ fake[0].connected=1; fake[0].raw=(uint16_t)~held; Pad_Update(2); }
@@ -17,7 +19,7 @@ int main(void){
   Game_LatchPad1(PFLAG4_MIRROR_LR); assert(g_gameHeld==PAD_LEFT);
   frame(0); Game_LatchPad1(PFLAG4_MIRROR_LR); assert(g_gameHeld==0);
   Game_LatchPad1(PFLAG4_INPUT_OFF); assert(g_gameHeld==0);
-  g_buttonConfig=4; Game_LatchPad1(0); assert(g_actionBtn[0]==PAD_C && g_actionBtn[2]==PAD_A);
-  g_demoFlags=0x8000; assert(Game_LatchPad1(0)==2 && g_actionBtn[0]==PAD_A);
+  W16(ADDR_BUTTON_CONFIG,4); Game_LatchPad1(0); assert(R16(ADDR_ACTION_BTN0)==PAD_C && R16(ADDR_ACTION_BTN2)==PAD_A);
+  W32(ADDR_DEMO_FLAGS,0x8000); assert(Game_LatchPad1(0)==2 && R16(ADDR_ACTION_BTN0)==PAD_A);
   printf("all pad tests OK\n"); return 0;
 }

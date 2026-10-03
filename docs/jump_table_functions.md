@@ -1762,3 +1762,27 @@ Default buttons: slot0 = A, slot1 = B, slot2 = C. Y/Z act as extra guard buttons
 | jump-related (slot2/C) | via 0x06041990/0x06041ABA | same | 0x1A, wall/double 0x06/0x17, 0x16 | low |
 | airborne states | — | — | 0x35/0x37/0x38/0x39/0x3A/0x3D | medium |
 | edge/proximity idle | 0x4F | — | — | low |
+
+## Player logic ported to pc-port (2026-10-03)
+
+Ported faithfully (pc-port/src/player.c, emulated big-endian HWRAM in ram.*, original
+addresses kept): `Player_Tick` 0x06040B72, `Player_SelectPosture` 0x06042910,
+`Player_SelectAction_Stand` 0x060411FC, `Player_UpdateAction` 0x06042E66,
+`Player_OnActionChange` 0x06043DE0, `Player_SlashExec` 0x06043AA0 (combo 4->5->0x1C via
+flags4 bits 0/1), `Player_ShurikenExec` 0x06043CB8 (spawns via 0x06042D80, SFX 0x100,
+decrements 0x060252B6), `Player_WalkExec` 0x06043944, `Player_SlopePush` 0x06041154,
+`Player_CheckBounce` 0x06041ABA, `Player_TryJump` 0x06041990. All renamed in Ghidra.
+
+New semantics learned while porting:
+- X = ninjutsu (0x15) when 0x060252BE != 0; sets 0x0602529E |= 0x8000 = world frozen
+  (Player_Tick then only runs during ninjutsu actions 0x15/0x2C/0x4A/0x3E).
+- C (slot2) = jump 0x34 (0x36 if previous action was run), with input buffer
+  0x060EA436/438; Down+jump on a thin floor (flags10 & 0x4800) = drop through.
+- Double-tap L/R = run (0x02, flags2 |= 0x200); tap window in 0x060EA42E
+  (dir bit 0x8000 | age). B while running = run slash 0x1B; B+C while running = 0x50.
+- Cheat: u32 0x06014414 == 0x4465268F enables RT+Z free-move (0x06040F80) and
+  invincibility (0x0602529C bit0).
+- Hazard floors: flags10 & 0x400 counts frames in *(0x060EA41C)+2 → instant death.
+- 0x0600648C (A.BIN) = `Anim_Start(state=P+0x58, animTbl=0x060A522C, frameTbl=0x060CA5AC, 0, anim=action)`.
+- Remaining stubs: see pc-port/src/player_stubs.c (physics 0x06040DE8/0x06040FF0, crouch/air
+  selectors, jump exec 0x060439CC, ninjutsu 0x060437C0, terrain probe 0x0604588E, ...).

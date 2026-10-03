@@ -45,7 +45,12 @@ the console, and A+B+C+Start triggers the original soft reset.
   `Pad_Clear`, `Sys_CheckSoftReset` (A.BIN 0x060042B8) and `Game_LatchPad1`
   (SHINOBI 0x06040CAC: game pad vars, 6 button layouts, L/R mirroring).
   Unit test: `gcc -std=c11 -Isrc tests/test_pad.c src/pad.c src/player.c`.
-- `src/player.*` — player struct @ 0x060EA2B4 (partial, offsets static-asserted).
+- `src/ram.*` — emulated Saturn HWRAM (big-endian). Ported code keeps original
+  addresses; `assets/A.BIN` and `assets/SHINOBI.dec.bin` are loaded at their real bases if present.
+- `src/player.*` — player state machine ported from SHINOBI (tick, posture dispatch,
+  standing selector, 81-case action executor, slash combo, shuriken, walk). Action changes
+  are printed to the console. Unported callees are logging stubs in `src/player_stubs.c`.
+  Test: `gcc -std=c11 -Isrc tests/test_player.c src/player.c src/player_stubs.c src/pad.c src/ram.c`.
 
 - `src/boot.*` — boot sequence and per-frame loop, mirrors `Boot_And_MainLoop` /
   `Stage_ResetAndLoadDirector` in A.BIN. `Boot_RunFrame` now runs the real

@@ -36,12 +36,15 @@ int  Pad_Update(unsigned nports);   /* A.BIN 0x0600572A, returns 0 if nports > 2
 int  Sys_CheckSoftReset(void);
 
 /* ---- SHINOBI layer: game pad vars ---- */
-extern uint16_t g_gameHeld;          /* 0x060EA428 */
-extern uint16_t g_gamePressed;       /* 0x060EA42A */
-extern uint16_t g_gamePressedPrev;   /* 0x060EA42C */
-extern uint16_t g_actionBtn[3];      /* 0x060EA548/54A/54C, from config table */
-extern int16_t  g_buttonConfig;      /* 0x060252C0, option-menu index 0..5 */
-extern uint32_t g_demoFlags;         /* 0x06014408, bit 0x8000 = demo (forces cfg 0) */
+/* Game pad vars, in emulated RAM (ram.h) at their original addresses. */
+#define ADDR_GAME_HELD         0x060EA428u
+#define ADDR_GAME_PRESSED      0x060EA42Au
+#define ADDR_GAME_PRESSED_PREV 0x060EA42Cu
+#define ADDR_ACTION_BTN0       0x060EA548u   /* slot0 (default A: shuriken) */
+#define ADDR_ACTION_BTN1       0x060EA54Au   /* slot1 (default B: sword/guard) */
+#define ADDR_ACTION_BTN2       0x060EA54Cu   /* slot2 (default C: jump) */
+#define ADDR_BUTTON_CONFIG     0x060252C0u   /* s16, option-menu index 0..5 */
+#define ADDR_DEMO_FLAGS        0x06014408u   /* u32, bit 0x8000 = demo (forces cfg 0) */
 
 /* Player flags word read by the latch (player struct 0x060EA2B4 + 4). */
 #define PFLAG4_INPUT_OFF   0x0400
