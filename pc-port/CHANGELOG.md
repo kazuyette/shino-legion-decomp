@@ -3,6 +3,18 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.10.0 — 2026-10-03
+- All 1-1 enemies: soldier subtypes 2 (ambusher that respawns), 3/11 (walk-in shooter),
+  4 (drops from the top of the screen), 7/8 (squad of four with a leader giving fire
+  orders), 10 (drop-in ambusher), 12 (rides a floating platform, leaps out and throws),
+  type 3 (leaping ninja: hops, drops, counter-slash, burns) and type 4 (guard ninja:
+  runs, slashes, back-flips, wall-jumps; spawned by object 0x1003, not yet ported).
+- Items: drops, pickup (shurikens, health, 1-up tokens, magic), timeout blink;
+  animated common sprites 0x06063350; random generator 0x0602DDD2.
+- Fix: object list byte 6 is the flags byte for Obj_Register (was shifted by 8) and the
+  param is sign-extended — this is what selects soldier subtypes and platform riders.
+- New tests: test_soldier_a/b/c, test_enemy_t34 (tests/SOURCES.txt lists the sources).
+
 ## 0.9.0 — 2026-10-03
 - Combat complete on 1-1 soldiers: shurikens fly both ways (Sho's: button A; the
   ninjas' aimed throws), hit sparks, guard sparks, explosions and slash trails are

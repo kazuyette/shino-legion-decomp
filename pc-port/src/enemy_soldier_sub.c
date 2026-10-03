@@ -13,6 +13,7 @@ void Soldier_Subtype(uint16_t sub)
     case 3: case 11: Soldier_Sub03(); break;
     case 4:  Soldier_Sub04(); break;
     case 7:  Soldier_Sub07(); break;
+    case 8:  Soldier_Sub08(); break;
     case 10: Soldier_Sub0A(); break;
     case 12: Soldier_Sub0C(); break;
     default: Enemy_Once("soldier subtype", sub); break;

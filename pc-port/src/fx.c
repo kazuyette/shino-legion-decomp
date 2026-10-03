@@ -473,7 +473,7 @@ void sub_06042D80(int32_t dx, int32_t dy, int angle, int32_t speed)
 
 int32_t sub_0602DDD2(void)
 {
-    int32_t v = RS32(0x0603A4B0u) * 5 + 0x3573;
+    int32_t v = (int32_t)(R32(0x0603A4B0u) * 5u + 0x3573u);
     W32(0x0603A4B0u, (uint32_t)v);
     return v;
 }
