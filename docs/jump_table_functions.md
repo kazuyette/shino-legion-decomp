@@ -1705,3 +1705,22 @@ Static trace (capstone SH-2 disassembler, `tools/sh2cap.py A|S <lo> <hi>`; needs
 - **17 references to `0x0601C4A0` in SHINOBI.dec.bin** (e.g. `0x06040D12`, `0x06066998`, `0x06066A3C`,
   `0x06067096`, `0x060670E8`, `0x060671C8`, `0x06067250`, `0x0606B960`) → player/menu logic, next step.
 - Ghidra: `0x0600572A` has no function yet (press F there, then rename `Pad_Update`).
+
+## Player input & action state machine (2026-10-03, SHINOBI.dec.bin)
+
+- `Sys_CheckSoftReset` (A.BIN `0x060042B8`, unnamed in Ghidra): A+B+C held + Start pressed.
+- `Game_LatchPad1` @ `0x06040CAC`: copies port-0 pad into the game's own vars, gated by
+  flags at `0x060EA2B4+4` (`0x400` = input disabled, `0x200` = swap/clear L|R bits `0xC000`,
+  `0x10` = jump to `0x060463DC`, probably demo/replay):
+  - `0x060EA428` held, `0x060EA42A` pressed, `0x060EA42C` previous pressed
+  - action-button masks from config table `0x0600F290` (8-byte stride, index = option at
+    `0x060252C0`, 6 entries = all permutations of A/B/C) → `0x060EA548` slot0,
+    `0x060EA54A` slot1, `0x060EA54C` slot2. Default (cfg 0): slot0=A, slot1=B, slot2=C.
+- 17 SHINOBI functions read `0x060EA428/A/C` (list: run tools/sh2cap.py ref scan).
+- **`Player_SelectAction` @ `0x060411FC`** (14 pad refs): player action state machine.
+  Player struct at **`0x060EA2B4`**: `+2` flags, `+4` flags, `+6` current action id,
+  `+0x16` HP-like (<1 → action `0x13`, death?), `+0x22` previous action, `+0x34` (speed/timer, set
+  per action), `+0x58` flags. `0x060EA430` = idle frame counter (actions 0/0x1D/0x1E/0x4F).
+  Observed action ids: 0,1,2,4,5,7,0xF,0x12,0x13,0x14,0x15,0x1B,0x1C,0x1D,0x1E,0x20,0x21,0x23–0x27,
+  0x31,0x34,0x36,0x3B,0x3F,0x4E,0x4F,0x50,0x58. E.g. pressed&slot1 → 4 (+Up held → 5,
+  then 0x24); `0x060EA432 & 0xF00 == 0x300` → 0x25. Semantics TBD (needs emulator or more reading).
