@@ -1877,3 +1877,16 @@ New semantics learned while porting:
   [110,210]×[110,170], ±6/±7 px dead zone, max 4/3 px/frame, look-ahead 0x060EA558
   (decay ×0.875 via FixMul 0x0602DD54), idle look up/down. Screen clamp 0x060451C8
   (0x060EA618+0x10..0x16 = top 24, -, right 304, left 16).
+
+## Scroll update & layer colours (2026-10-03, pc-port 0.6.1)
+
+- `Scroll_Update` 0x060443D8: 0x060252A8/AC = camera at frame start; saves previous layer
+  positions (desc +8/+0xC); `Camera_Update`; clamps camera to world bounds
+  [C+0, C+8−320] × [C+4, C+0xC−224] (C = 0x060EA618); screen shake (C+0x20 & 0x80, table
+  0x060CA6F0 {−2,0,2,0} indexed by 0x060143EA & 3); `Layer_FromCamera` 0x060470A4 for each
+  layer with the frame-start camera: pos = FixMul(cam − 1024px, rate << 8) + offset (desc +0/+4);
+  VDP2 scroll regs shadow 0x06024058 = (pos − 1024px) & 0x07FFFFFF; then 0x0604455A (TBD).
+- `Vdp2_SetColorRamOffsets` 0x06005EAC(n0..n3): CRAOFA in the VDP2 register shadow
+  0x0603B46C+4. Stage init uses (0,1,2,3): tile colour = CRAM[(bank + layer offset) * 256 + pixel].
+- Stage 1-1 layers: 0 = level (palette MAP+0x1000 via bank 2), 1 = harbour/ships (MAP+0xE00),
+  2 = sky, mountains, Hong Kong skyline (MAP+0x1000).

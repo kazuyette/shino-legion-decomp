@@ -15,7 +15,7 @@ const InputPort *Input_GetPort(int p) { return &fake[p]; }
 static void tick(uint16_t held)
 {
     fake[0].connected = 1; fake[0].raw = (uint16_t)~held;
-    Pad_Update(2); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Camera_Update();
+    Pad_Update(2); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Scroll_Update();
 }
 static int run_until(uint16_t held, int act, int max)
 {
@@ -33,7 +33,7 @@ int main(int argc, char **argv)
     assert(Stage_Load(dir, 12));
     Stage_SpawnPlayer();
     int fell = 0;
-    for (int i = 0; i < 120; i++) { tick(0); Camera_Update(); if (P16(P_FLAGS2) & 0x4000) fell = 1; }
+    for (int i = 0; i < 120; i++) { tick(0); if (P16(P_FLAGS2) & 0x4000) fell = 1; }
     printf("stage 1-1: landed at world %.1f,%.1f (layer y %.1f) after falling: %s\n",
            P32(P_X) / 65536.0, P32(P_Y) / 65536.0, P32(P_Y) / 65536.0 - 1024, fell ? "yes" : "no");
     assert(!(P16(P_FLAGS2) & 0x4000));                             /* standing on the map */

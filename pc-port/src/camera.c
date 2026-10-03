@@ -15,8 +15,7 @@ static int32_t fixmul(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) 
 
 void Camera_Update(void)
 {
-    /* ASSUMPTION: 0x060252A8/AC hold the camera committed last frame (the
-     * VDP2 scroll commit that copies them is not traced yet). */
+    /* 0x060252A8/AC = camera at the start of this frame (set by Scroll_Update). */
     int32_t dx = 0, dy;
     if (PX - RS32(0x060252A8u) < RS32(SX) + (int32_t)0xFFFA0000 && !(LOCKS & 2)) {
         W32(CAM_X, (uint32_t)(PX - RS32(SX) + 0x60000));
@@ -65,6 +64,35 @@ void Camera_Update(void)
     W32(SY, (uint32_t)(RS32(SY) + dy));
     W32(CAM_Y, (uint32_t)(RS32(CAM_Y) - dy));
 
-    W32(0x060252A8u, R32(CAM_X));                           /* commit (assumption, see above) */
+}
+
+/* 0x060470A4: layer position from the camera: FixMul(cam - 1024, rate) + offset. */
+static void layer_from_camera(int32_t cx, int32_t cy, uint32_t d)
+{
+    W32(d + 0, (uint32_t)(fixmul(cx + (int32_t)0xFC000000, RS16(d + 0x18) << 8) + RS32(d + 0x10)));
+    W32(d + 4, (uint32_t)(fixmul(cy + (int32_t)0xFC000000, RS16(d + 0x1A) << 8) + RS32(d + 0x14)));
+}
+
+/* 0x060443D8: per-frame scroll update (camera follow + world bounds + layers). */
+void Scroll_Update(void)
+{
+    const uint32_t D = 0x060EA588u, C = 0x060EA618u;
+    W32(0x060252A8u, R32(CAM_X));
     W32(0x060252ACu, R32(CAM_Y));
+    for (uint32_t n = 0; n < 3; n++) {                      /* previous layer positions */
+        W32(D + n * 0x30 + 8, R32(D + n * 0x30));
+        W32(D + n * 0x30 + 12, R32(D + n * 0x30 + 4));
+    }
+    Camera_Update();
+    if (RS32(CAM_X) < RS32(C + 0)) W32(CAM_X, R32(C + 0));
+    if (RS32(CAM_Y) < RS32(C + 4)) W32(CAM_Y, R32(C + 4));
+    if (RS32(C + 8) + (int32_t)0xFEC00000 <= RS32(CAM_X))  W32(CAM_X, (uint32_t)(RS32(C + 8) + (int32_t)0xFEBFFFFF));
+    if (RS32(C + 0xC) + (int32_t)0xFF200000 <= RS32(CAM_Y)) W32(CAM_Y, (uint32_t)(RS32(C + 0xC) + (int32_t)0xFF1FFFFF));
+    if (R16(C + 0x20) & 0x80) {                             /* screen shake */
+        int16_t shake = RS16(0x060CA6F0u + 2u * (R16(0x060143EAu) & 3));
+        W32(CAM_Y, (uint32_t)(RS32(CAM_Y) + shake * 0x10000));
+    }
+    for (uint32_t n = 0; n < 3; n++)                        /* layers follow the frame-start camera */
+        layer_from_camera(RS32(0x060252A8u), RS32(0x060252ACu), D + n * 0x30);
+    /* VDP2 scroll registers ((pos - 1024) & 0x07FFFFFF) are derived by the renderer. */
 }

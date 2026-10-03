@@ -3,6 +3,7 @@
 #include "ram.h"
 #include "lz.h"
 #include "sprite.h"
+#include "stage.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -55,11 +56,12 @@ static SDL_Texture *page_texture(int l, int pid)
     uint32_t d = LAYER_DESC + (uint32_t)l * 0x30;
     uint32_t pages = R32(d + 0x1C) + (uint32_t)pid * 0x800;
     uint32_t chr = VDP2_VRAM_BASE + R32(d + 0x2C) * 0x20;
+    unsigned craof = (R16(VDP2_SHADOW_ADDR + 4) >> (4 * l)) & 7;   /* CRAOFA: per-layer CRAM offset */
     for (int ty = 0; ty < 32; ty++)
         for (int tx = 0; tx < 32; tx++) {
             uint16_t pn = R16(pages + (uint32_t)(ty * 32 + tx) * 2);
             uint32_t tile = chr + (uint32_t)(pn & 0x3FF) * 128;
-            uint32_t pal = SHADOW_CRAM + 2u * (((pn >> 12) & 7) * 256u);
+            uint32_t pal = SHADOW_CRAM + 2u * (((((pn >> 12) & 7) + craof) & 7) * 256u);
             for (int y = 0; y < 16; y++)
                 for (int x = 0; x < 16; x++) {
                     int sx = (pn & 0x8000) ? 15 - x : x;
@@ -85,9 +87,8 @@ static SDL_Texture *page_texture(int l, int pid)
 static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 static int wrap(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
 
-/* APPROXIMATION: the VDP2 scroll update is not traced yet. Layer pixel =
- * (camera - 1024) * rate/256 + layer offset - 1024, which matches the
- * collision mapping exactly for layer 0 (rate 1.0, offset 1024). */
+/* Layer scroll = VDP2 scroll register = layer position (desc +0/+4, computed
+ * by Scroll_Update / 0x060470A4) - 1024 px. */
 static void draw_layer(int l)
 {
     uint32_t d = LAYER_DESC + (uint32_t)l * 0x30;
@@ -95,9 +96,8 @@ static void draw_layer(int l)
     if (!lay || !R32(d + 0x1C)) return;
     int pw = Ram_Ptr(lay)[0], ph = Ram_Ptr(lay)[1];
     if (pw <= 0 || ph <= 0) return;
-    int camx = RS32(0x060252A0u) >> 16, camy = RS32(0x060252A4u) >> 16;
-    int sx = ((camx - 1024) * RS16(d + 0x18) >> 8) + (RS32(d + 0x10) >> 16) - 1024;
-    int sy = ((camy - 1024) * RS16(d + 0x1A) >> 8) + (RS32(d + 0x14) >> 16) - 1024;
+    int sx = (RS32(d + 0) >> 16) - 1024;
+    int sy = (RS32(d + 4) >> 16) - 1024;
     for (int py = floordiv(sy, 512); py * 512 < sy + SCREEN_H; py++)
         for (int px = floordiv(sx, 512); px * 512 < sx + SCREEN_W; px++) {
             uint8_t pid = Ram_Ptr(lay)[2 + wrap(py, ph) * pw + wrap(px, pw)];

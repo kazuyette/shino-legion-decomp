@@ -7,6 +7,18 @@
 #include "player.h"
 #include <stdio.h>
 
+/* VDP2 register shadow (A.BIN): +4 = CRAOFA, NBGn colour RAM offset in bits 4n..4n+2. */
+
+/* 0x06005EAC */
+void Vdp2_SetColorRamOffsets(int n0, int n1, int n2, int n3)
+{
+    uint32_t a = VDP2_SHADOW_ADDR + 4;
+    if (n0 >= 0) W16(a, (R16(a) & 0xFFF8) | (n0 & 7));
+    if (n1 >= 0) W16(a, (R16(a) & 0xFF8F) | (n1 & 7) << 4);
+    if (n2 >= 0) W16(a, (R16(a) & 0xF8FF) | (n2 & 7) << 8);
+    if (n3 >= 0) W16(a, (R16(a) & 0x8FFF) | (n3 & 7) << 12);
+}
+
 #define MAP_ADDR   0x002B0000u           /* LWRAM, *(0x060EA650) */
 #define D          LAYER_DESC            /* 3 layer descriptors, 0x30 bytes */
 #define C          0x060EA618u           /* scroll/screen control block */
@@ -61,7 +73,9 @@ int Stage_Load(const char *dir, int idx)
     W32(D + 0x28, m); W32(D + 0x58, m + 0x400); W32(D + 0x88, m + 0x800);   /* collision attrs */
     W16(C + 0x10, 0x18); W16(C + 0x12, 0x7FFF); W16(C + 0x14, 0x130); W16(C + 0x16, 0x10);
     W32(D + 0x2C, 0); W32(D + 0x5C, 0x1000); W32(D + 0x8C, 0x2000); W32(D + 0xBC, 0x2C00);  /* char bases */
-    W16(C + 0x18, 0); W16(C + 0x1A, 0); W16(C + 0x1C, 0); W16(C + 0x20, 0);
+    W16(C + 0x18, 0); W16(C + 0x1A, 0); W16(C + 0x1C, 0);
+    Vdp2_SetColorRamOffsets(0, 1, 2, 3);                   /* 0x06005EAC: NBG0..3 CRAM offsets */
+    W16(C + 0x20, 0);
     W32(0x060EA550u, 0x005C0000u); W32(0x060EA554u, 0x00B40000u);
     W32(0x060EA568u, 0x00D20000u); W32(0x060EA564u, 0x006E0000u);
     W32(0x060EA55Cu, 0x006E0000u); W32(0x060EA560u, 0x00AA0000u);
@@ -85,4 +99,5 @@ void Stage_SpawnPlayer(void)
     W32(CAM_Y, (uint32_t)(P32(P_Y) - RS32(0x060EA554u)));
     W32(0x060252A8u, R32(CAM_X));
     W32(0x060252ACu, R32(CAM_Y));
+    Scroll_Update();
 }

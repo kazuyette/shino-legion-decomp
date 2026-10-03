@@ -3,6 +3,15 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.6.1 — 2026-10-03
+- Backgrounds fixed (docs/screenshots/v0.6.1_stage1_1.png):
+  - per-layer colour RAM offsets (VDP2 CRAOFA, 0x06005EAC(0,1,2,3)): the "sunset"
+    was a wrong palette; it is a blue sky over the Hong Kong skyline;
+  - full scroll update ported (0x060443D8): camera clamped to the world bounds,
+    screen shake, layer positions from the frame-start camera (0x060470A4,
+    exact formula FixMul(cam - 1024, rate) + offset). No more scroll approximation.
+- Layer roles: 0 = level, 1 = harbour (ships), 2 = sky/mountains/city.
+
 ## 0.6.0 — 2026-10-03
 - Stage 1-1 playable: real backgrounds and real map collision (flat-floor
   placeholder removed). Screenshot: docs/screenshots/v0.6.0_stage1_1.png.

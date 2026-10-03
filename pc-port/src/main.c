@@ -81,7 +81,7 @@ int main(int argc, char **argv)
              * "animation finished" after 20 frames so the state machine moves. */
             if (!have_game_data && frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
             Player_Tick();                   /* SHINOBI 0x06040B72 (draws via Player_Draw) */
-            Camera_Update();                 /* SHINOBI 0x060446FC */
+            Scroll_Update();                 /* SHINOBI 0x060443D8 */
             if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {
                 printf("[player] action %02X -> %02X (pad %04X)\n",
