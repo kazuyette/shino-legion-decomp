@@ -3,6 +3,17 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.12.0 — 2026-10-03
+- Rendering: full sprite submission (A.BIN 0x060068C0 + SBL SPR_2DistSpr 0x0602905C).
+  Every sprite is a VDP1 quad: scaling (waves, debris, statue fragments), rotation (now
+  turning the right way), distorted sprites (trap doors), global sprite zoom, screen
+  culling, SPR_2 draw-priority ordering, and VDP2 sprite/layer priorities (0x060472D2:
+  e.g. sprites with priority register S0 pass behind the level layer).
+- Screen fades: A.BIN colour-offset fader (sequencer 0x06007084, 0x060072AC, 0x06006FB8,
+  0x06006FDE, …) — 16-frame fade-in at stage start, fade-out before a death reload or
+  a stage change; drawn as VDP2 colour offset A.
+- Fix: 0x06006F56 is Fade_Reset (not an object-list init as the old docs said).
+
 ## 0.11.0 — 2026-10-03
 - Stage 1-1 is complete as a level: Sho drops in from the sky at the original start
   (checkpoint table 0x060A8D94), item crates (0x1002, written into the collision map,
