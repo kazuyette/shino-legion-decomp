@@ -56,6 +56,16 @@ add_executable(shinobi_legions_pc
     src/enemy_soldier_c.c
     src/enemy_t3.c
     src/enemy_t4.c
+    src/shinobi.c
+    src/director.c
+    src/director_font.c
+    src/director_title.c
+    src/director_tally.c
+    src/director_gameover.c
+    src/movie.c
+    src/movie_cpk.c
+    src/cpk.c
+    src/audio.c
 )
 
 find_library(MATH_LIBRARY m)

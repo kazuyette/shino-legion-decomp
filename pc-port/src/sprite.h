@@ -1,6 +1,7 @@
 #ifndef SPRITE_H
 #define SPRITE_H
 #include <stdint.h>
+#include <stddef.h>
 
 /* Character table @ 0x0601C508, 10 bytes per char (A.BIN):
  *  +0 VDP1 VRAM address >> 3 (emulated VRAM at 0x25C00000)
@@ -12,6 +13,13 @@
 /* 0x06006DE4: `off` = VRAM offset from the character area 0x25C04740.
  * mode = VDP1 CMDPMOD colour bits: 0x00 4bpp bank, 0x08 4bpp LUT, 0x20 8bpp, 0x28 RGB. */
 void Char_Register(int id, int w, int h, int mode, uint32_t off);
+/* A.BIN 0x06006E64: Char_Register for a list (u32 count, then 8-byte entries), packed from `off`. */
+void Char_RegisterList(int base, uint32_t off, uint32_t list);
+/* A.BIN 0x06005C30: copy n RGB555 colours from emulated memory into the shadow CRAM. */
+void Pal_Copy(int dst, int n, uint32_t src);
+/* A.BIN 0x06004EE8: word-LZ decompression between two emulated addresses (bytes written). */
+size_t Lz_DecompressRam(uint32_t src, uint32_t dst);
+#define SPR_WORK 0x060250ACu   /* the sprite struct every A.BIN/DIRECTOR caller fills (layout below) */
 /* 0x06044A78 */
 void Player_InitChars(void);
 /* Sprite struct (e.g. 0x060250AC), s16 unless noted:

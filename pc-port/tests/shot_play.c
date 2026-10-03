@@ -6,6 +6,8 @@
 #include "player.h"
 #include "ram.h"
 #include "render.h"
+#include "boot.h"
+#include "shinobi.h"
 #include "stage.h"
 #include "camera.h"
 #include "objects.h"
@@ -43,6 +45,7 @@ int main(int argc, char **argv)
     snprintf(p, sizeof p, "%s/SHOU.CHR", d); Ram_LoadImage(p, 0x00200000u);
     Player_Init(); W16(LIVES, 3); W16(0x060252DCu, 0); W16(G_GAME_MODE, 6);
     Stage_Load(d, 12);
+    Shinobi_InitVdp2(); Vdp2_DisplayOn();   /* NBG enable + DISP, honoured by render.c */
     Stage_SpawnPlayer();
     static char name[32]; int n = 0;
     for (int i = 0; i < 600; i++) {

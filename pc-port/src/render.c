@@ -100,6 +100,9 @@ static int wrap(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
  * by Scroll_Update / 0x060470A4) - 1024 px. */
 static void draw_layer(int l)
 {
+    /* SclConfig of NBGl (0x06020D08 + 0x4C*l), byte 0 = display enable: set by SHINOBI's
+     * VDP2 init 0x060400B0, cleared by Director_Init 0x06040094 (DIRECTOR = sprites only) */
+    if (!Ram_Ptr(0x06020D08u + 0x4Cu * (uint32_t)l)[0]) return;
     uint32_t d = LAYER_DESC + (uint32_t)l * 0x30;
     uint32_t lay = R32(d + 0x20);
     if (!lay || !R32(d + 0x1C)) return;
@@ -350,6 +353,12 @@ static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase)
 void Render_DrawFrame(void)
 {
     if (!s_renderer) { s_queued = 0; return; }
+    if (!(R16(0x0603A570u) & 0x8000)) {            /* VDP2 TVMD shadow: DISP off = black screen */
+        SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, 255);
+        SDL_RenderClear(s_renderer);
+        s_queued = 0;
+        return;
+    }
     if (R16(0x060250A8u)) { Render_InvalidatePalettes(); W16(0x060250A8u, 0); }   /* CRAM changed */
 
     /* VDP1 command list order: SPR_2 draw priority ascending, submission order on ties

@@ -37,26 +37,41 @@ it is shown in the window title, printed at startup, and by `--version`.
 
 ## Assets
 
-Copy from `extracted/` (see `tools/`) into `assets/` next to the executable:
-`A.BIN`, `SHINOBI.dec.bin` (`tools/ppb_decompress.py`), `SHOU.CHR`, `STAGE1_1.CHR`, `STAGE1_1.MAP`.
-Without them the port still runs, but nothing is drawn.
+The executable reads the disc files from an `assets/` folder (or `--assets DIR`); the
+layout is the one of `extracted/` (`python3 tools/iso_extract.py extracted/track1.iso NAME
+extracted/NAME` extracts one file from the data track):
+
+| file(s) | used for |
+|---|---|
+| `A.BIN` | system program, loaded at 0x06004000 at power-on (required) |
+| `DIRECTOR.dec.bin` (or `DIRECTOR.PPB`) | front-end overlay at 0x06040000: logo, title, stage start, tally, continue... |
+| `SHINOBI.dec.bin` (or `SHINOBI.PPB`) | in-game overlay at 0x06040000 |
+| `SHOU.CHR` | Sho's graphics (LWRAM 0x00200000, loaded by DIRECTOR) |
+| `TITLE.PBC`, `STGCLEAR.PBC`, `STAFFROL.PBC` | title, stage clear, staff roll pictures |
+| `STAGEn_m.CHR/.MAP/.SPR` (n = 1..9, m = 1..2) | stage graphics/maps (game 1-1 = `STAGE7_1`, see docs/director.md §4.1) |
+| `*.CPK` | movies (not played yet: the movie player is a stub, every movie is skipped) |
+| `*.SND`, `TITLE.PCM`, `ENDING.PCM` | sound banks / CD-DA tracks (not handled yet, only logged) |
+
+`X.dec.bin` is `X.PPB` already decompressed (`tools/ppb_decompress.py`); when it is absent
+the `.PPB` is decompressed at load time. Without `A.BIN` nothing runs.
 
 ## Run
 
-The game expects the extracted disc files under an `assets/` folder next to
-the executable (same layout as `extracted/` from `tools/extract_disc.py`,
-e.g. `assets/DIRECTOR.PPB`).
-
 ```
-./build/shinobi_legions_pc
+./build/shinobi_legions_pc [--assets DIR] [--skip-intro] [--stage N] [--verbose]
 ```
 
-The loop runs a drift-free ~60fps (measures elapsed time and sleeps off
-the remainder, rather than a blind `SDL_Delay(16)`).
+The program follows A.BIN's main loop (`src/boot.c`): DIRECTOR.PPB is loaded first
+(SEGA logo, title, Start = GAME START, stage start, story), then SHINOBI.PPB for the stage;
+stage clear / game over / demo end load DIRECTOR back (`src/director*.c`, `src/shinobi.c`).
 
-Expect a window with two small debug markers moving around (driven by the
-traced object-transform data, see `render.*` below) and a 440Hz test tone
-playing — not real graphics or music yet, just proof the plumbing works.
+- `--skip-intro`: no SEGA logo at boot (on the Saturn the BIOS shows it and the game skips
+  its own; without this option the port shows DIRECTOR's logo in place of the BIOS one).
+- `--stage N`: development shortcut, boots straight into stage index N (0 = 1-1 ... 17 = 9-2;
+  index 0 and 12 have their per-stage setup ported, the others load with a warning).
+- `--verbose`: log the player's action changes.
+
+The loop runs a drift-free ~60fps (measures elapsed time and sleeps off the remainder).
 Arrow keys = D-pad, Z/X/C = A/B/C, A/S/D = X/Y/Z, Q/W = L/R, Enter = Start.
 The input chain is the real one (see `pad.*`): pressed buttons are logged to
 the console, and A+B+C+Start triggers the original soft reset.
@@ -76,9 +91,18 @@ the console, and A+B+C+Start triggers the original soft reset.
   are printed to the console. Unported callees are logging stubs in `src/player_stubs.c`.
   Test: `gcc -std=c11 -Isrc tests/test_player.c src/player.c src/player_stubs.c src/pad.c src/ram.c`.
 
-- `src/boot.*` — boot sequence and per-frame loop, mirrors `Boot_And_MainLoop` /
-  `Stage_ResetAndLoadDirector` in A.BIN. `Boot_RunFrame` now runs the real
-  4-slot object update + sound scheduler sequence traced from the main loop.
+- `src/boot.*` — A.BIN boot + main loop `Boot_And_MainLoop` 0x06004038 (`Boot_Init`,
+  one `Boot_Frame` per frame: pad, soft reset 0x060042B8, resource queue, overlay entry
+  0x06040000, `Fade_Update`), `--stage` shortcut.
+- `src/director*.c`, `src/director_int.h` — DIRECTOR.PPB (front-end): entry, init, scene
+  table, SEGA logo, stage start, story movies, new game / continue variables, font
+  (`director_font.c`); title / tally / continue+game over+staff roll are stubs for now
+  (`director_title.c`, `director_tally.c`, `director_gameover.c`). See docs/director.md.
+- `src/movie.*`, `src/cpk.h`, `src/movie_stub.c` — DIRECTOR's movie wrapper (playlist,
+  skip rules, frame as a VDP1 RGB char) over a CPK/Cinepak backend (stub: movies skipped).
+- `src/shinobi.*` — SHINOBI.PPB entry and game modes (0x0606B54C: init, load stage,
+  stage frames, stage-clear bonuses, game over, back to DIRECTOR).
+  Headless test of the whole flow: `tests/test_director.c`.
 - `src/sound.*` — real 7-entry command queue feeding an 8-channel
   voice-stealing scheduler (`Snd_ChannelScheduler`, `Snd_FindFreeOrEvictChannel`,
   `Snd_StopMatchingChannels`), matching the traced allocator in A.BIN.
@@ -87,16 +111,16 @@ the console, and A+B+C+Start triggers the original soft reset.
   (`Obj_SetTransformParamSecondary`, mode 4 only — the other modes and its
   clamp pre-pass weren't traced), and a real sentinel-based doubly linked
   list for `Obj_InitLinkedLists`.
-- `src/mode.*` — idle/attract mode entry.
-- `src/resource.*` — `DIRECTOR.PPB` loading, handle cleanup, and a real
-  `Res_LoadFileByName` with an 8-slot in-memory cache (round-robin eviction)
-  matching the traced resource-loader behavior.
+- `src/mode.*` — old speculative port (actually Cpk_Reset territory, see docs/director.md); unused.
+- `src/resource.*` — A.BIN file requests (`Res_Request` 0x06004A1C: raw / LZ /
+  sound bank, the 8-slot queue 0x060049C4 / 0x0600446A, `Load_ShinobiPPB` /
+  `Load_DirectorPPB` overlay swaps at 0x06040000) reading from the asset directory.
 - `src/stream.*` — ring buffer (`RingBuf_*`) + streaming audio engine
   (`Stream_InitFromCallback`/`Stream_Update`/`Stream_BeginPlayback`) wired to
   a real SDL2 audio device callback with underrun-to-silence handling. Takes
   a PCM fill callback instead of parsing the original track-table header,
-  since that format lives in data we can't read yet (DIRECTOR.PPB). Now wired
-  into `Boot_Init`/`Boot_RunFrame`, feeding a synthesized 440Hz test tone
+  since that format lives in data we can't read yet (DIRECTOR.PPB). No longer
+  called (it is actually the CPK movie library, see docs/director.md); was feeding a synthesized 440Hz test tone
   through the real ring-buffer path — proves the plumbing works end-to-end;
   swap the callback for a real decoder once track data is readable.
 - `src/render.*` — new: minimal SDL2 renderer. Clears the screen each frame

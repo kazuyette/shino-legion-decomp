@@ -49,12 +49,7 @@ void Enemy_RegisterChars(int16_t type, uint32_t t)
     }
 }
 
-/* 0x06005C30: copy n RGB555 colours into the shadow CRAM. */
-void Pal_Copy(int dst, int n, uint32_t src)
-{
-    for (int i = 0; i < n; i++) W16(SHADOW_CRAM + 2u * (uint32_t)((dst + i) & 0xFFFF), R16(src + 2u * (uint32_t)i));
-    W16(0x060250A8u, 1);
-}
+/* Pal_Copy (A.BIN 0x06005C30) moved to sprite.c (shared with DIRECTOR). */
 
 /* 0x0608FA74: soldier graphics + 4 palettes (darkened on stage index 0). */
 static void Enemy1_Load(void)

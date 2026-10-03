@@ -1,99 +1,133 @@
+/* A.BIN boot sequence and main loop body (0x06004038), soft reset (0x060042B8). */
 #include "boot.h"
-#include "sound.h"
-#include "object.h"
-#include "mode.h"
+#include "ram.h"
+#include "pad.h"
+#include "fade.h"
 #include "resource.h"
-#include "sys.h"
-#include "stream.h"
+#include "director.h"
+#include "shinobi.h"
 #include <stdio.h>
-#include <math.h>
 
-static unsigned char s_director_buffer[256 * 1024];
-
-/* --- Streaming audio wiring ---
- * We don't have real PPB audio/track data yet (blocked on DIRECTOR.PPB
- * being readable -- see docs), so this feeds Stream_Update a synthesized
- * 440Hz test tone through the exact same ring-buffer/SDL2 path the real
- * streaming engine (docs: Stream_InitFromHeader/Stream_Update/RingBuf_*)
- * would use. Proves the port of that subsystem actually works end-to-end;
- * swap TestToneFillCallback for a real decoder once track data is available. */
-static AudioStream s_music_stream;
-static double s_tone_phase = 0.0;
-
-static int TestToneFillCallback(void *userdata, int16_t *dst, int num_samples)
+/* 0x06005BA0 */
+void Vdp2_DisplayOn(void)
 {
-    (void)userdata;
-    const double freq = 440.0;
-    const double sample_rate = 44100.0;
-    for (int i = 0; i < num_samples; i++) {
-        int16_t sample = (int16_t)(3000.0 * sin(s_tone_phase));
-        dst[i * 2 + 0] = sample; /* left */
-        dst[i * 2 + 1] = sample; /* right */
-        s_tone_phase += 2.0 * 3.14159265358979323846 * freq / sample_rate;
-        if (s_tone_phase > 2.0 * 3.14159265358979323846) {
-            s_tone_phase -= 2.0 * 3.14159265358979323846;
-        }
+    W16(VDP2_TVMD, R16(VDP2_TVMD) | 0x8000);
+    W16(0x0603A474u, 1);                         /* VDP2 shadow dirty */
+}
+
+/* 0x06005BB4 */
+void Vdp2_DisplayOff(void)
+{
+    W16(VDP2_TVMD, R16(VDP2_TVMD) & 0x7FFF);
+    W16(0x0603A474u, 1);
+}
+
+void Boot_Init(int biosLogo)
+{
+    /* 0x06005130, 0x06005840, 0x060057F0, 0x06005B0A (hardware init), 0x06004418: */
+    W16(0x0602524Cu, 0);                         /* no movie open (CPK library) */
+    Res_Init();                                  /* 0x06004418 */
+    /* 0x06004E10: no pending overlay decompression */
+    W16(0x0601ABC8u, 0); W32(0x0601ABCCu, 0);
+    /* 0x06008CC4 Cpk_Reset, 0x06007BAC (sound) */
+    Fade_Reset();                                /* 0x06006F56 */
+    /* 0x06005154, 0x06009114 */
+    W16(0x0601C498u, 0);                         /* DMA/peripheral flag; 0x25FE0030/50 = 0 */
+    /* 0x0600513A, 0x0600550C, 0x06005522 */
+    W16(0x0602526Au, 0xFFFF);                    /* stage index -1 */
+    W16(0x060252C0u, 0);                         /* control type */
+    W16(0x060252C4u, 1);                         /* difficulty NORMAL */
+    W16(0x060252B4u, 20);                        /* initial shurikens */
+    W32(0x060252E0u, 0xFFFFFFFFu);               /* soft reset: ignored */
+    if (R32(0x06000210u) != 0x39303130u || R32(0x06000214u) > 0x05F5E0FFu) {   /* "9010" */
+        W32(0x06000214u, 0);                     /* hi-score */
+        W32(0x06000210u, 0x39303130u);
     }
-    return num_samples;
+    W32(G_DIR_SCENE, 0);
+    if (biosLogo) W32(0x06014404u, 1);           /* PC: see boot.h */
+    Load_DirectorPPB();                          /* 0x06004EAC */
+    W16(G_DIR_MODE, 0);
 }
 
-void Boot_Init(void)
+/* jsr @0x06040000 with *0x060145FC = 0x06040000 */
+void Overlay_Entry(void)
 {
-    printf("[boot] init\n");
-    Obj_InitLinkedLists();
-    Reset_ObjectAndChannelTables();
-    /* "assets" is the extracted disc file tree, see README for layout. */
-    Load_DirectorPPB("assets", s_director_buffer, sizeof(s_director_buffer));
-
-    Stream_InitFromCallback(&s_music_stream, TestToneFillCallback, NULL, 2);
-    Stream_BeginPlayback(&s_music_stream);
-    if (!Stream_OpenAudioDevice(&s_music_stream, 44100)) {
-        fprintf(stderr, "[boot] audio device failed to open, continuing without sound\n");
+    W32(0x060145FCu, 0x06040000u);
+    switch (Res_OverlayResident()) {
+    case OVL_DIRECTOR: Director_Entry(); break;
+    case OVL_SHINOBI:  Shinobi_Entry();  break;
+    default: break;                              /* nothing loaded (missing assets) */
     }
 }
 
-void Boot_Shutdown(void)
+void Boot_Frame(void)
 {
-    Stream_CloseAudioDevice();
+    /* VBlank interrupt side: peripheral read + frame counter */
+    Pad_Update(2);                               /* 0x0600572A */
+    W16(0x060143EAu, R16(0x060143EAu) + 1u);
+    /* main loop 0x060041C6: 0x0602CCC4 (frame sync) */
+    Sys_SoftReset();                             /* 0x060042B8 */
+    Res_ProcessQueue();                          /* 0x0600446A */
+    Res_PendingDecompress();                     /* 0x06004E1C */
+    /* 0x060288A8(1) Spr2_OpenCommand, 0x06005F4C clipping: renderer */
+    Overlay_Entry();                             /* 0x06040000 */
+    /* 0x0602894C, NBG0..3 config (0x06029B40 with the SclConfig blocks 0x06020D08 +
+     * 0x4C*n; byte 0 = display enable, read by render.c) */
+    Fade_Update();                               /* 0x06007084 */
+    /* 0x0600863E sound scheduler: sound.c (not part of the headless build) */
 }
 
-/* The 4 fixed object "slots" processed every frame in the real main loop,
- * identified by their mode bitflags (docs/jump_table_functions.md, "Big
- * find: the real per-frame main loop body"). Slots 1-2 get an extra
- * param-copy step in the original (FUN_060042ac, SGL-internals territory,
- * not ported here) that slots 3-4 skip. */
-static const int kObjectSlotModes[4] = {4, 8, 0x10, 0x20};
-
-void Boot_RunFrame(void)
+/* 0x060042B8 */
+void Sys_SoftReset(void)
 {
-    Sys_SignalStopAndWaitAck();
-
-    /* NOTE: the real Boot_And_MainLoop calls Stage_ResetAndLoadDirector()
-     * here every single frame, but that function internally gates almost
-     * all of its work behind a CD/peripheral-ready check and only does
-     * real work on an actual stage transition (see docs). We don't have
-     * that gating condition ported yet, so we deliberately do NOT call it
-     * from here — call it explicitly when a real stage-transition event
-     * fires, to avoid spamming a reload every frame on PC. */
-
-    for (int i = 0; i < 4; i++) {
-        int mode = kObjectSlotModes[i];
-        Obj_ConsumeFlagAndStore(mode);
-        Obj_SetTransformParam(mode, 0, 0); /* TODO: real per-slot data once DIRECTOR.PPB is readable */
-        Obj_SetReadyFlag();
+    int32_t act = -1;
+    if ((R16(0x0601C4A0u) & 0x0700) == 0x0700 && (R16(0x0601C4A4u) & 0x0800))
+        act = RS32(0x060252E0u);
+    if (act == -1) return;
+    if (act == 1) {                              /* jmp *(0x0600026C): back to the BIOS */
+        printf("[boot] soft reset -> BIOS (PC: reboot)\n");
+        Boot_Init(1);
+        return;
     }
-
-    Snd_ChannelScheduler();
-    Stream_Update(&s_music_stream);
+    printf("[boot] soft reset -> DIRECTOR title\n");
+    W16(0x0601C498u, 0);                         /* + DMA 0x25FE0030/50 = 0 */
+    Vdp2_DisplayOff();                           /* 0x06005BB4 */
+    W16(VDP2_TVMD, R16(VDP2_TVMD) & 0x7FFF);     /* + direct write to TVMD 0x25F80000 */
+    Res_CloseIfOpen();                           /* 0x060048D8 */
+    /* 0x0602CCC4, 0x06030A1A (sound stop) */
+    Res_Init();                                  /* 0x06004418 */
+    W16(0x0601ABC8u, 0); W32(0x0601ABCCu, 0);    /* 0x06004E10 */
+    /* 0x06008CC4 Cpk_Reset, 0x06007BAC */
+    Fade_Reset();                                /* 0x06006F56 */
+    Load_DirectorPPB();                          /* 0x06004EAC */
+    W32(G_DIR_SCENE, 1);
+    W32(0x060252E0u, 0xFFFFFFFFu);
+    W16(0x0602526Au, 0xFFFF);
+    W16(G_DIR_MODE, 0);
 }
 
-void Stage_ResetAndLoadDirector(void)
+/* PC only (--stage N). Same variables as a GAME START from the title (Title_NewGameDefaults
+ * 0x06040F3E + Title_Launch 0x060412D4) and SHOU.CHR in LWRAM like the story scene step 0,
+ * then the overlay swap DIRECTOR's stage start does (g_DirMode 2 -> Load_ShinobiPPB). */
+void Boot_DevStartStage(int idx)
 {
-    printf("[boot] stage reset\n");
-    Sys_SignalStopAndWaitAck();
-    Snd_CmdStopAll();
-    Res_CloseIfOpen();
-    Mode_EnterIdle();
-    Reset_ObjectAndChannelTables();
-    Load_DirectorPPB("assets", s_director_buffer, sizeof(s_director_buffer));
+    int d = RS16(0x060252C4u);
+    W16(RES_QCOUNT, 0);                          /* drop the queued DIRECTOR.PPB */
+    W32(0x060252E0u, 1);
+    W16(0x0602529Cu, 0);
+    W16(0x060252B2u, 0);
+    W16(0x060252B0u, R16(0x06014424u + 2u * (uint32_t)d));   /* HP max */
+    W16(0x060252B8u, R16(0x0601442Au + 2u * (uint32_t)d));   /* lives */
+    W16(0x060252C2u, R16(0x06014430u + 2u * (uint32_t)d));   /* continues */
+    W16(0x060252BAu, 0);
+    W32(0x060252C8u, 0);
+    W16(0x060252DCu, 0);                         /* Sho drops in */
+    W16(0x060252B6u, R16(0x060252B4u));
+    W16(0x060252BEu, 0);
+    W16(0x0602529Eu, 0);
+    W32(0x060252D0u, 0); W32(0x060252D4u, 5000); W32(0x060252D8u, 1);   /* bonus seeds */
+    W16(0x0602526Au, (uint32_t)idx);
+    Res_RequestFile(1, 0, LWRAM_BASE, "SHOU.CHR");
+    Load_ShinobiPPB();                           /* 0x06004E6A */
+    W16(G_DIR_MODE, 0);
 }

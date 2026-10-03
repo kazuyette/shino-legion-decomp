@@ -9,6 +9,39 @@
 
 #define SPR16(spr, f) RS16((spr) + 2u * (f))
 
+/* A.BIN 0x06005C30: copy n RGB555 colours into the shadow CRAM. */
+void Pal_Copy(int dst, int n, uint32_t src)
+{
+    for (int i = 0; i < n; i++) W16(SHADOW_CRAM + 2u * (uint32_t)((dst + i) & 0xFFFF), R16(src + 2u * (uint32_t)i));
+    W16(0x060250A8u, 1);
+}
+
+/* A.BIN 0x06006E64: register a list of characters packed from VRAM offset `off`.
+ * list: u16 count_hi, u16 count_lo, then count x { u16 (unused: offset/32), u16 size/32,
+ * s16 colour mode, u8 width/8, u8 height }. Char ids base, base+1, ... (u16). */
+void Char_RegisterList(int base, uint32_t off, uint32_t list)
+{
+    uint32_t n = (uint32_t)R16(list) << 16 | R16(list + 2);
+    uint32_t e = list + 4;
+    for (uint32_t i = 0; i < n; i++, e += 8) {
+        Char_Register((int)(uint16_t)(base + (int)i), Ram_Ptr(e + 6)[0] * 8, Ram_Ptr(e + 7)[0], RS16(e + 4), off);
+        off += (uint32_t)R16(e + 2) * 32u;
+    }
+}
+
+/* A.BIN 0x06004EE8: decompress a word-LZ block that is in emulated memory (RAM or VRAM)
+ * to another emulated address. Returns the bytes written (0 on a bad block). */
+size_t Lz_DecompressRam(uint32_t src, uint32_t dst)
+{
+    uint32_t srcEnd = ((src & 0x0FF00000u) == LWRAM_BASE) ? LWRAM_BASE + LWRAM_SIZE : HWRAM_BASE + HWRAM_SIZE;
+    uint32_t dstEnd = ((dst & 0xFFF80000u) == VDP1_VRAM_BASE) ? VDP1_VRAM_BASE + VDP1_VRAM_SIZE
+                    : ((dst & 0xFFF80000u) == VDP2_VRAM_BASE) ? VDP2_VRAM_BASE + VDP2_VRAM_SIZE
+                    : ((dst & 0x0FF00000u) == LWRAM_BASE) ? LWRAM_BASE + LWRAM_SIZE : HWRAM_BASE + HWRAM_SIZE;
+    size_t n = Lz_Decompress(Ram_Ptr(src), srcEnd - src, Ram_Ptr(dst), dstEnd - dst);
+    if ((dst & 0xFFF80000u) == VDP1_VRAM_BASE && n) Render_InvalidateVram(dst, n);
+    return n;
+}
+
 /* 0x06006DE4: `off` = VDP1 VRAM offset relative to the character area 0x25C04740. */
 void Char_Register(int id, int w, int h, int mode, uint32_t off)
 {

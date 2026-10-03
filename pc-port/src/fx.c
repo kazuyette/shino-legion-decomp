@@ -29,11 +29,7 @@ static void once(const char *what, unsigned id)
 
 /* ------------------------------------------------------------ common chars */
 
-static void Pal_Copy(int dst, int n, uint32_t src)                     /* 0x06005C30 */
-{
-    for (int i = 0; i < n; i++) W16(SHADOW_CRAM + 2u * (uint32_t)((dst + i) & 0xFFFF), R16(src + 2u * (uint32_t)i));
-    W16(0x060250A8u, 1);
-}
+/* Pal_Copy: A.BIN 0x06005C30, sprite.c */
 
 /* Shurikens, sparks, explosions...: chars 0x4B0+ at VRAM offset 0x72000 (table
  * 0x060C9794), palettes CRAM 0x700 (256) and 0x380 (128). */

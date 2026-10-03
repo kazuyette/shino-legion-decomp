@@ -5,6 +5,8 @@
 #include "player.h"
 #include "ram.h"
 #include "render.h"
+#include "boot.h"
+#include "shinobi.h"
 static InputPort fake[2];
 const InputPort *Input_GetPort(int p) { return &fake[p]; }
 static SDL_Window *win;
@@ -28,6 +30,7 @@ int main(void)
     Render_Init(win);
     Ram_LoadImage("assets/A.BIN", 0x06004000u); Ram_LoadImage("assets/SHINOBI.dec.bin", 0x06040000u);
     Ram_LoadImage("assets/SHOU.CHR", 0x00200000u);
+    Shinobi_InitVdp2(); Vdp2_DisplayOn();   /* NBG enable + DISP, honoured by render.c */
     Player_Init();
     for (int i = 0; i < 20; i++) frame(0, i == 19 ? "s1_idle.bmp" : NULL);
     for (int i = 0; i < 20; i++) frame(PAD_RIGHT, i == 12 ? "s2_walk.bmp" : NULL);

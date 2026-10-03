@@ -1,6 +1,7 @@
 /* Logging stubs for original functions not ported yet (see player_ext.h).
  * Each logs once on first call so the console shows what the current
  * gameplay path still depends on. */
+#include "audio.h"
 #include "player_ext.h"
 #include <stdio.h>
 
@@ -24,3 +25,9 @@ void     sub_0604592E(void)     { ONCE("0604592E"); }
 void     sub_06046782(void)     { ONCE("06046782"); }
 
 void     sub_06007D60(int sfx, int bank) { printf("[sfx] bank %d %03X\n", bank, sfx); }
+
+/* Sound calls of DIRECTOR (SCSP / CD-DA, work packages D8/D9), declared in director_int.h. */
+void Snd_SetAreaMap(uint32_t map)  { (void)map; ONCE("06007E96 Snd_SetAreaMap"); }
+void Snd_SetCdDaLevel(int l, int r) { Audio_SetMusicLevels(l, r); }   /* 0x0603125C */
+void Snd_SetCdDaPan(int l, int r)   { (void)l; (void)r; ONCE("060312F4 Snd_SetCdDaPan"); }
+void Snd_SetMasterVolume(int v)     { (void)v; ONCE("06030710 Snd_SetMasterVolume"); }

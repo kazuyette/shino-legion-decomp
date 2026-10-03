@@ -14,11 +14,26 @@ static const uint16_t kButtonConfig[6][4] = {
     { PAD_B, PAD_C, PAD_A, 0 },
 };
 
+/* The A.BIN table really lives at 0x0601C4A0 (8 bytes per port: held, held_prev, pressed,
+ * pressed_prev); DIRECTOR and SHINOBI read it there, so keep the emulated RAM in sync. */
+#define PAD_TABLE 0x0601C4A0u
+static void pad_mirror(void)
+{
+    for (unsigned p = 0; p < 2; p++) {
+        uint32_t a = PAD_TABLE + 8u * p;
+        W16(a + 0, g_padPorts[p].held);
+        W16(a + 2, g_padPorts[p].held_prev);
+        W16(a + 4, g_padPorts[p].pressed);
+        W16(a + 6, g_padPorts[p].pressed_prev);
+    }
+}
+
 void Pad_Clear(void)
 {
     for (int p = 0; p < 2; p++)
         g_padPorts[p].held = g_padPorts[p].held_prev =
         g_padPorts[p].pressed = g_padPorts[p].pressed_prev = 0;
+    pad_mirror();
 }
 
 int Pad_Update(unsigned nports)
@@ -37,6 +52,7 @@ int Pad_Update(unsigned nports)
             e->held = e->held_prev = e->pressed = e->pressed_prev = 0;
         }
     }
+    pad_mirror();
     return 1;
 }
 
