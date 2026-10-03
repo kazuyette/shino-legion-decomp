@@ -1683,3 +1683,25 @@ toolchain documentation" or a self-relocation routine we haven't located
 yet (see previous section). The BIOS didn't resolve it, but it did cleanly
 close off one whole line of investigation with certainty instead of a
 shrug — worth having done.
+
+## Pad input FOUND (2026-10-03)
+
+Static trace (capstone SH-2 disassembler, `tools/sh2cap.py A|S <lo> <hi>`; needs `pip install capstone`).
+
+- `0x0602CF00-0x0602DC00` in A.BIN = Sega SMPC/peripheral library (SBL-style INTBACK state machine,
+  reads OREG `0x20100021+`, triple-buffered per-port records `[id, size, data...]`).
+- `PER_GetPer` @ `0x0602D076(PerData **per, PerStatus **st)` — returns pointers to the latest buffers.
+- `Per_FetchWait` @ `0x0600569C` — loops `PER_GetPer(&0x0601C4E4, &0x0601C4E8)` until ready.
+- `Pad_Update` @ `0x0600572A(u16 nports)` — **the game's pad state**, ports 0..1, only if the
+  peripheral is a standard digital pad (data size 2), otherwise zeroed. Table at **`0x0601C4A0`**,
+  8 bytes per port (port 1 at `0x0601C4A8`):
+  - `+0` held      = ~raw (1 = pressed)
+  - `+2` held, previous frame
+  - `+4` pressed   = held & ~prev (edge, new this frame)
+  - `+6` pressed, previous frame
+- `Pad_Clear` @ `0x06005706` zeroes both entries.
+- Saturn pad bits (after inversion): R `0x8000`, L `0x4000`, D `0x2000`, U `0x1000`, Start `0x0800`,
+  A `0x0400`, C `0x0200`, B `0x0100`, RT `0x0080`, X `0x0040`, Y `0x0020`, Z `0x0010`, LT `0x0008`.
+- **17 references to `0x0601C4A0` in SHINOBI.dec.bin** (e.g. `0x06040D12`, `0x06066998`, `0x06066A3C`,
+  `0x06067096`, `0x060670E8`, `0x060671C8`, `0x06067250`, `0x0606B960`) → player/menu logic, next step.
+- Ghidra: `0x0600572A` has no function yet (press F there, then rename `Pad_Update`).
