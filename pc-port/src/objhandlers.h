@@ -18,6 +18,12 @@ int     Rect_Intersect(const ObjRect *a, const ObjRect *b, int32_t d[2]); /* 0x0
 int     Obj_PlayerContact(uint16_t mode);                               /* 0x06060268 */
 int     Obj_CarryContact(uint32_t self, uint32_t other, int w, int h);  /* 0x0604BE64 */
 
+void    ObjHandler_1000(void);   /* 0x06049F0C  objhandlers_a.c */
+void    ObjHandler_1001(void);   /* 0x0604A67C  objhandlers_a.c */
+void    ObjHandler_1002(void);   /* 0x0604BF3C  objhandlers_b.c */
+void    ObjHandler_1003(void);   /* 0x0604C7C0  objhandlers_b.c (trap door, spawns guard type 4) */
+void    ObjHandler_1005(void);   /* 0x0604B838  objhandlers_c.c */
+void    ObjHandler_1006(void);   /* 0x0604CB56  objhandlers_c.c */
 void    ObjHandler_1004(void);                                          /* 0x0604B9F8 floating platform */
 /* Dispatch for Obj_UpdateAll; unported types are skipped (logged once). */
 void    ObjHandler_Call(uint16_t type);

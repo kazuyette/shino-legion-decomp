@@ -215,7 +215,13 @@ void ObjHandler_Call(uint16_t type)
 {
     static uint8_t warned[0x1000];
     switch (type) {
+    case 0x1000: ObjHandler_1000(); break;
+    case 0x1001: ObjHandler_1001(); break;
+    case 0x1002: ObjHandler_1002(); break;
+    case 0x1003: ObjHandler_1003(); break;
     case 0x1004: ObjHandler_1004(); break;
+    case 0x1005: ObjHandler_1005(); break;
+    case 0x1006: ObjHandler_1006(); break;
     default:
         if (!warned[type & 0xFFF]) {
             warned[type & 0xFFF] = 1;

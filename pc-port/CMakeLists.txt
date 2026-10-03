@@ -44,6 +44,9 @@ add_executable(shinobi_legions_pc
     src/stage.c
     src/objects.c
     src/objhandlers.c
+    src/objhandlers_a.c
+    src/objhandlers_b.c
+    src/objhandlers_c.c
     src/enemy.c
     src/fx.c
     src/enemy_soldier_sub.c
