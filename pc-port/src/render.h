@@ -1,21 +1,30 @@
 #ifndef RENDER_H
 #define RENDER_H
 
-#include <SDL2/SDL.h>
+#include <stdint.h>
 
-/* Minimal SDL2 renderer. This is a placeholder visualization, NOT an
- * accurate VDP1/VDP2 reimplementation -- we don't have real sprite/tile
- * data yet (that lives in DIRECTOR.PPB/SHINOBI.PPB, still unreadable). Its
- * only job right now is to prove the data path works: values written by
- * Obj_SetTransformParam show up as moving markers on screen. Real rendering
- * needs the actual sprite/pattern data first.
- *
- * Conceptually mirrors two traced A.BIN functions without reimplementing
- * their register-level behavior: Render_Clear ~= Vdp1_EraseFrameBuffer's
- * role (start-of-frame clear), Render_DrawFrame ~= consuming what
- * Obj_SetTransformParam/Vdp1_Emit*Cmd would have fed to real hardware. */
+struct SDL_Window;
 
-int  Render_Init(SDL_Window *window);
+/* SDL2 renderer standing in for VDP1/VDP2. The game queues sprites through
+ * Sprite_Draw (sprite.c, port of A.BIN 0x060068C0); each queued sprite is
+ * an 8bpp LZ-compressed character in emulated RAM + a palette in the
+ * shadow CRAM. Logical resolution = Saturn NTSC 320x224. */
+
+#define SCREEN_W 320
+#define SCREEN_H 224
+
+typedef struct {
+    uint32_t src;        /* RAM address of the LZ-compressed 8bpp pixels */
+    uint32_t palette;    /* RAM address of 256 RGB555 colours */
+    int x, y, w, h;
+    int flipH, flipV;
+    int rotate, angle;   /* angle: 256 units per turn */
+    int cx, cy;          /* rotation centre (screen) */
+} RenderSprite;
+
+int  Render_Init(struct SDL_Window *window);
+void Render_QueueSprite(const RenderSprite *s);
+void Render_InvalidatePalettes(void);
 void Render_Clear(void);
 void Render_DrawFrame(void);
 void Render_Present(void);

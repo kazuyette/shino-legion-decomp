@@ -20,14 +20,6 @@ void     sub_060437C0(void)     { ONCE("060437C0 (ninjutsu)"); }
 void     sub_06043A44(void)     { ONCE("06043A44"); }
 void     sub_06042D80(int32_t dx, int32_t dy, int a, int32_t v) { printf("[obj] shuriken dx=%08X dy=%08X angle=%02X speed=%08X\n", (unsigned)dx, (unsigned)dy, a, (unsigned)v); }
 #include "ram.h"
-/* PC placeholder until the A.BIN animation player is ported: reset anim
- * flags (+0x58) and frame counters (+0x5A, +0x72). */
-void     Anim_Start(uint32_t st, uint32_t at, uint32_t ft, int z, int anim)
-{
-    (void)at; (void)ft; (void)z; (void)anim; ONCE("0600648C Anim_Start (placeholder)");
-    W16(st, 0); W16(st + 2, 0); W16(st + 0x1A, 0);
-}
-void     sub_06043FDA(void)     { ONCE("06043FDA"); }
 void     sub_06044280(void)     { ONCE("06044280"); }
 uint16_t sub_0604588E(int32_t x, int32_t y, int r, int16_t p) { (void)x; (void)y; (void)r; (void)p; ONCE("0604588E (terrain probe, returns 0xFF)"); return 0xFF; }
 void     sub_0604592E(void)     { ONCE("0604592E"); }
@@ -61,3 +53,4 @@ void     sub_06045340(uint32_t o, int n)
         W16(o + 0x1A, R16(o + 0x1A) + 1);
     }
 }
+void     sub_06007D60(int sfx, int bank) { printf("[sfx] bank %d %03X\n", bank, sfx); }

@@ -3,6 +3,22 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.5.0 — 2026-10-03
+- First on-screen graphics: Sho is drawn from the real game data
+  (docs/screenshots/v0.5.0_player.png).
+- Ported: word-LZ decompressor in C (lz.c), animation player Anim_Start/Anim_Tick
+  (A.BIN 0x0600648C/0x060064C0, script commands F900-FF00), Char_Register
+  (0x06006DE4), Sprite_Draw geometry (0x060068C0: flips, rotation, colour bank),
+  Player_SubmitSprite streaming (0x06044AF8), Pal_SetFaded (0x06005C8C) into an
+  emulated shadow CRAM, Player_UpdatePalette (0x06044D78), Player_Draw (0x06043FDA,
+  incl. somersault rotation).
+- Emulated LWRAM (0x00200000) for SHOU.CHR; SDL renderer at 320x224 with a texture
+  cache (8bpp + palette, index 0 transparent).
+- Real animation scripts now drive the state machine (fake "anim finished" only
+  when the game data is missing).
+- Assets needed in assets/: A.BIN, SHINOBI.dec.bin, SHOU.CHR (extract from your disc).
+- Tests: tests/test_realdata.c (real data, headless), tests/shot.c (screenshots).
+
 ## 0.4.0 — 2026-10-03
 - Air selector ported (0x06041E48): air slash (B, +Up, diagonal), Down+B down-stab
   (0x16, bounces off enemies -> 0x4D), air shuriken, Y/Z air attack 0x3C, double

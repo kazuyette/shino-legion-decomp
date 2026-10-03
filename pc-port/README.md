@@ -23,6 +23,12 @@ The port version lives in `CMakeLists.txt` (`project(... VERSION x.y.z)`) and is
 logged in `CHANGELOG.md`. CMake generates `version.h` (version + short git hash);
 it is shown in the window title, printed at startup, and by `--version`.
 
+## Assets
+
+Copy from `extracted/` (see `tools/`) into `assets/` next to the executable:
+`A.BIN`, `SHINOBI.dec.bin` (`tools/ppb_decompress.py`), `SHOU.CHR`.
+Without them the port still runs, but nothing is drawn.
+
 ## Run
 
 The game expects the extracted disc files under an `assets/` folder next to

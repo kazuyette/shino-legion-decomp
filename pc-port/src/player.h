@@ -81,5 +81,6 @@ void Player_GroundVelocity(void);     /* 0x06040DE8 */
 void Player_JumpExec(void);           /* 0x060439CC */
 void Player_AirJumpHold(void);        /* 0x06040FF0 */
 void Player_Physics(void);            /* 0x060450E4 */
+void Player_Draw(void);               /* 0x06043FDA */
 
 #endif

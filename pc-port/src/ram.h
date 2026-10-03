@@ -11,10 +11,17 @@
 
 #define HWRAM_BASE 0x06000000u
 #define HWRAM_SIZE 0x00100000u
+#define LWRAM_BASE 0x00200000u   /* Work RAM Low: SHOU.CHR etc. are loaded here */
+#define LWRAM_SIZE 0x00100000u
 
 extern uint8_t g_hwram[HWRAM_SIZE];
+extern uint8_t g_lwram[LWRAM_SIZE];
 
-static inline uint8_t *Ram_Ptr(uint32_t a) { return &g_hwram[(a - HWRAM_BASE) & (HWRAM_SIZE - 1)]; }
+static inline uint8_t *Ram_Ptr(uint32_t a)
+{
+    if ((a & 0x0FF00000u) == LWRAM_BASE) return &g_lwram[a & (LWRAM_SIZE - 1)];
+    return &g_hwram[(a - HWRAM_BASE) & (HWRAM_SIZE - 1)];
+}
 static inline uint16_t R16(uint32_t a) { const uint8_t *p = Ram_Ptr(a); return (uint16_t)(p[0] << 8 | p[1]); }
 static inline int16_t  RS16(uint32_t a) { return (int16_t)R16(a); }
 static inline uint32_t R32(uint32_t a) { const uint8_t *p = Ram_Ptr(a); return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }

@@ -5,6 +5,8 @@
 #include "player.h"
 #include "player_ext.h"
 #include "pad.h"
+#include "anim.h"
+#include "sprite.h"
 
 /* Globals touched by the player code (addresses in emulated RAM). */
 #define G_SYSFLAGS     0x0602529Eu  /* 0x8000 = world frozen (ninjutsu), low 3 bits = game-over seq */
@@ -479,7 +481,7 @@ static void Player_OnActionChange(void)
     int a = Player_Action(), prev = PS16(P_PREVACT);
     if (a == prev) return;
     PW16(P_PREVACT, (uint16_t)a);
-    Anim_Start(PLAYER + P_ANIM, 0x060A522Cu, 0x060CA5ACu, 0, a);   /* A.BIN 0x0600648C */
+    Anim_Start(PLAYER + P_ANIM, 0x060A522Cu, 0x060CA5ACu, 0, a);   /* A.BIN 0x0600648C, anim id = action id */
     if (prev == ACT_RECOVER && a == ACT_GUARD_START)              PW16(P_5A, (uint16_t)(5 - old5a));
     if (prev == ACT_CROUCH_IDLE2 && a == ACT_CROUCH_GUARD_START) PW16(P_5A, (uint16_t)(4 - old5a));
     if (prev == ACT_AIR_RECOVER && a == ACT_AIR_GUARD_START)    PW16(P_5A, (uint16_t)(5 - old5a));
@@ -830,6 +832,42 @@ void Player_SelectPosture(void)
     AND16(PLAYER + P_FLAGS4, 0xF7FF);
 }
 
+/* 0x06043FDA: animate the player and submit its sprite (position history
+ * ring and riding-platform rotation not ported yet). */
+void Player_Draw(void)
+{
+    uint16_t saved = R16(G_SYSFLAGS);
+    int a = Player_Action();
+    if (a == ACT_NINJUTSU || a == ACT_CROUCH_NINJUTSU || a == 0x4A || a == ACT_AIR_NINJUTSU)
+        AND16(G_SYSFLAGS, 0x7FFF);                       /* keep animating during ninjutsu */
+    AND16(PLAYER + P_ANIM, 0xDFFF);
+    int still = R32(PLAYER + P_X) == R32(PLAYER + P_X_PREV);
+    if ((a == ACT_WALK && (R16(G_WALK_CTR) != 0 || still)) || (a == ACT_CRAWL && still) ||
+        (a == 0x11 && still && P32(P_VELX) != 0 && PS16(P_5A) != 0))
+        OR16(PLAYER + P_ANIM, 0x2000);                   /* pause the walk cycle when blocked */
+    OR16(PLAYER + P_ANIM, 0x4000);                       /* we submit the sprite ourselves */
+    Anim_Tick(PLAYER + P_ANIM);
+
+    uint32_t spr = ANIM_SPRITE;
+    W16(spr + 0x02, (uint32_t)((P32(P_X) - RS32(0x060252A0u)) >> 16));
+    W16(spr + 0x04, (uint32_t)((P32(P_Y) - RS32(0x060252A4u)) >> 16));
+    W16(spr + 0x10, (P16(P_FLAGS2) & PF2_FACE_LEFT) | 0x0200);
+    W32(spr + 0x18, 0x80);
+    W16(spr + 0x0A, 0x40);                               /* colour bank -> CRAM 0x400 */
+    W16(spr + 0x0C, 0);
+    W16(spr + 0x0E, 0);
+    if ((P16(P_FLAGS2) & PF2_AIR_USED) || a == ACT_RUN_SPECIAL) {   /* somersault spin */
+        W16(spr + 0x04, (uint32_t)(RS16(spr + 0x04) - 0x20));
+        OR16(spr + 0x10, 0x0400);
+        W16(spr + 0x14, R16(G_SPIN_ANGLE));
+        if (P16(P_FLAGS2) & PF2_FACE_LEFT) W16(spr + 0x14, (uint32_t)(-RS16(spr + 0x14)) & 0xFF);
+    }
+    Player_SubmitSprite(spr);                            /* 0x06044AF8 */
+    W16(G_SYSFLAGS, saved);
+    p2_and(0xDFFF);
+    if (P16(P_ANIM) & 0x40) p2_or(0x2000);               /* frame says "hold horizontal motion" */
+}
+
 /* 0x06040B72: player tick. */
 void Player_Tick(void)
 {
@@ -847,7 +885,8 @@ void Player_Tick(void)
         else Player_GroundVelocity();
         Player_Physics();
     }
-    sub_06043FDA();
+    Player_Draw();
+    Player_UpdatePalette();
     sub_06044280();
     AND16(PLAYER + P_FLAGS4, 0xFFDF);
     if (!(R16(G_SYSFLAGS) & 0x8000)) AND16(PLAYER + P_FLAGS4, 0xFEFF);
@@ -862,6 +901,9 @@ void Player_Init(void)
     PW16(P_HP, 0x10);
     W16(G_HP_MAX, 0x10);
     W16(G_SHURIKENS, 20);
+    W16(0x060EA426u, 0xFFFF);                                   /* force first palette load */
+    W16(0x060EA422u, 0xFFFF); W16(0x060EA424u, 0xFFFF);          /* streamed char slots empty */
+    PW16(P_PREVACT, 0xFFFF);                                    /* start the idle anim */
     if (R32(0x0601440Cu) == 0) W32(0x0601440Cu, 0x00024000);   /* walk speed if A.BIN not loaded */
     PW32(P_X, 0x00A00000);                                      /* PC test spawn point */
     PW32(P_Y, 0x00C00000);

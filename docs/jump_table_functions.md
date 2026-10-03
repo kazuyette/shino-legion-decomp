@@ -1822,3 +1822,30 @@ New semantics learned while porting:
 - `Player_CrouchSlashExec` 0x06043BC8: combo 9 → 0x32, else → 0x30.
 - Crouch: crawl 0x08 (L/R while crouched), stand up 0x27 when Down released (unless low
   ceiling flags10 & 0x8000), crouch guard 0x2D/0x2E/0x2F, recoil 0x33, hurt/dead 0x29/0x2A.
+
+## Graphics: player sprites (2026-10-03, pc-port 0.5.0)
+
+- `SHOU.CHR` (Sho, the hero) = 491 concatenated word-LZ blocks (2-4 byte alignment padding),
+  each one 8bpp frame. Loaded raw at LWRAM 0x00200000. Frame table SHINOBI 0x060CB020:
+  {u32 offset, s16 w, s16 h} per frame (w=0 = unused). `tools/chr_blocks.py` walks the blocks.
+  Stage files (*.CHR/*.SPR/*.MAP/*.PBC) use the same compression.
+- Palette: pointers at 0x060CA6F8 (normal 0x060CBFF8, special-aura 0x060CC1F8), 256 RGB555
+  (R low bits) loaded by `Player_UpdatePalette` 0x06044D78 → `Pal_SetFaded` 0x06005C8C
+  (dst, n, src, dR, dG, dB) into shadow CRAM 0x06024098 (1024 colours), flushed by
+  `Pal_FlushToCram` 0x06005C60 when 0x060250A8 != 0. `Pal_Write` 0x060316F4 = raw CRAM write.
+- `Anim_Start` 0x0600648C(state, defTbl, scriptTbl, charBase, anim) / `Anim_Tick` 0x060064C0:
+  script entries {u16 a, u16 b}; a < 0xF000 frame (bit15 → flags|=0x40, bit14 → |=0x20,
+  low 12 = sprite def), b = duration; F900 nop, FA00 SFX, FB00 loop point, FC00 flags|=b,
+  FD00 event nibble, FE00 goto, FF00 end (flags|=0x8000 = PANIM_FINISHED). EFFF = empty.
+  Sprite def = defTbl + u16 offset[def] → {u16 count; count × {char, x, y, flip}} + hitboxes.
+  Player: defTbl 0x060A522C, scriptTbl 0x060CA5AC, anim id = action id.
+- Sprite struct 0x060250AC: +0 char, +2/+4 screen X/Y, +6/+8 part offset, +0x0A/+0x0C/+0x0E
+  colour bank parts (CMDCOLR = (+0x0E&31)<<11 | ((+0x0C+1)&3)<<13 | (+0x0A&0xFFF)<<4),
+  +0x10 flags (0x8000 H-flip, 0x4000 V-flip, 0x2000 explicit colour, 0x1000/0x800 scale,
+  0x400 rotate, 0x200 use +0x18 priority, bits 0-1 part flips), +0x14 angle (256/turn).
+- `Char_Register` 0x06006DE4(id, w, h, mode, vram): char table 0x0601C508, 10 B/entry
+  (+0 VRAM>>3, +2 (w/8)<<8|h, +4 mode: 0x20 8bpp bank, 0x28 RGB, <9 4bpp, +8 size/32).
+- `Player_SubmitSprite` 0x06044AF8: 2 char slots (1/2) for the player, streams the current
+  frame with the LZ decompressor 0x060091C8 straight into VRAM when it changes.
+- `Player_Draw` 0x06043FDA: Anim_Tick(P+0x58) with flag 0x4000, screen pos = pos − camera
+  (0x060252A0/A4), colour bank 0x400, somersault: Y −0x20 + rotation by 0x060EA434.

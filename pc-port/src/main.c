@@ -18,8 +18,15 @@ int main(int argc, char **argv)
         return 0;
     if (Ram_LoadImage("assets/A.BIN", 0x06004000u))
         printf("[ram] A.BIN loaded\n");
-    if (Ram_LoadImage("assets/SHINOBI.dec.bin", 0x06040000u))
+    int have_game_data = 0;
+    if (Ram_LoadImage("assets/SHINOBI.dec.bin", 0x06040000u)) {
         printf("[ram] SHINOBI.dec.bin loaded\n");
+        have_game_data = 1;
+    }
+    if (Ram_LoadImage("assets/SHOU.CHR", 0x00200000u))
+        printf("[ram] SHOU.CHR loaded (player graphics)\n");
+    else
+        have_game_data = 0;
     Player_Init();
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
@@ -66,11 +73,11 @@ int main(int argc, char **argv)
         Game_LatchPad1(P16(P_FLAGS4));       /* SHINOBI 0x06040CAC */
         {
             static int last_act = -1, frames_in_act = 0;
-            /* No animation system yet: fake "animation finished" after 20
-             * frames in the same action so the state machine keeps moving. */
-            if (frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
-            Player_Tick();                   /* SHINOBI 0x06040B72 */
-            AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
+            /* Without the game data the animation scripts are missing: fake
+             * "animation finished" after 20 frames so the state machine moves. */
+            if (!have_game_data && frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
+            Player_Tick();                   /* SHINOBI 0x06040B72 (draws via Player_Draw) */
+            if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {
                 printf("[player] action %02X -> %02X (pad %04X)\n",
                        last_act & 0xFF, Player_Action(), R16(ADDR_GAME_HELD));
