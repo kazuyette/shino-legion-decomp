@@ -3,6 +3,13 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.5.1 — 2026-10-03
+- Game controller support (SDL GameController: Xbox, PlayStation, Switch Pro and
+  most pads), hot-plug, 2 ports. Keyboard and controller 1 work together.
+  Mapping: A=jump (Saturn C), X=sword/guard (B), B=shuriken (A), Y=ninjutsu (X),
+  LB=guard (Y), RB=Z, LT/RT=L/R, Start, D-pad or left stick.
+- Windows build (MinGW-w64 + SDL2 2.30.9).
+
 ## 0.5.0 — 2026-10-03
 - First on-screen graphics: Sho is drawn from the real game data
   (docs/screenshots/v0.5.0_player.png).

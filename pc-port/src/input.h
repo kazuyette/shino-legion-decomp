@@ -16,8 +16,11 @@ typedef struct {
     uint16_t raw;         /* active-low Saturn pad word */
 } InputPort;
 
-/* Polls SDL keyboard into the port reports (call once per frame). */
+/* Polls keyboard + game controllers (SDL GameController, hot-plug) into the
+ * port reports. Call once per frame. Port 0 = keyboard + controller 1,
+ * port 1 = controller 2. */
 void Input_Update(void);
+void Input_Shutdown(void);
 
 /* Equivalent of PER_GetPer(): current report for a port. */
 const InputPort *Input_GetPort(int port);

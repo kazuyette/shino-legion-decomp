@@ -23,6 +23,18 @@ The port version lives in `CMakeLists.txt` (`project(... VERSION x.y.z)`) and is
 logged in `CHANGELOG.md`. CMake generates `version.h` (version + short git hash);
 it is shown in the window title, printed at startup, and by `--version`.
 
+## Controls
+
+| Action | Keyboard | Controller (Xbox / PlayStation) |
+|---|---|---|
+| Move / crouch | Arrows | D-pad or left stick |
+| Sword (hold = guard) | X | X / Square |
+| Jump (hold = higher) | C | A / Cross |
+| Shuriken | Z | B / Circle |
+| Ninjutsu | A | Y / Triangle |
+| Guard | S | LB / L1 |
+| Start | Enter | Start |
+
 ## Assets
 
 Copy from `extracted/` (see `tools/`) into `assets/` next to the executable:
