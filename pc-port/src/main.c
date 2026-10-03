@@ -1,16 +1,21 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <string.h>
 #include "boot.h"
 #include "render.h"
 #include "input.h"
 #include "pad.h"
 #include "player.h"
 #include "ram.h"
+#include "version.h"
 
 int main(int argc, char **argv)
 {
     (void)argc; (void)argv;
 
+    printf("%s\n", SL_VERSION_FULL);
+    if (argc > 1 && strcmp(argv[1], "--version") == 0)
+        return 0;
     if (Ram_LoadImage("assets/A.BIN", 0x06004000u))
         printf("[ram] A.BIN loaded\n");
     if (Ram_LoadImage("assets/SHINOBI.dec.bin", 0x06040000u))
@@ -23,7 +28,7 @@ int main(int argc, char **argv)
     }
 
     SDL_Window *window = SDL_CreateWindow(
-        "Shinobi Legions - PC port (skeleton)",
+        SL_VERSION_FULL,
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         640, 480, SDL_WINDOW_SHOWN);
 

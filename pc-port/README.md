@@ -17,6 +17,12 @@ cmake -S . -B build
 cmake --build build
 ```
 
+## Version
+
+The port version lives in `CMakeLists.txt` (`project(... VERSION x.y.z)`) and is
+logged in `CHANGELOG.md`. CMake generates `version.h` (version + short git hash);
+it is shown in the window title, printed at startup, and by `--version`.
+
 ## Run
 
 The game expects the extracted disc files under an `assets/` folder next to
