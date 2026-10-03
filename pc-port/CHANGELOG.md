@@ -3,6 +3,20 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.11.0 — 2026-10-03
+- Stage 1-1 is complete as a level: Sho drops in from the sky at the original start
+  (checkpoint table 0x060A8D94), item crates (0x1002, written into the collision map,
+  fall, break into debris and drop items), hanging boxes (0x1000), the 7-piece stone
+  statue (0x1001), trap doors that release guard ninjas (0x1003), water waves (0x1005)
+  and splash (0x1006). Screenshot: docs/screenshots/v0.11.0_stage.png.
+- Stage end: fall death 0x06045EE4, exit zone 0x06045F64 (all stages), end sequence
+  0x06046190 (death -> lives -1 and reload, clear -> next stage). On PC the next stage
+  (1-2), the stage-clear screen, game over and DIRECTOR are not ported yet: the game
+  restarts 1-1 instead.
+- Renderer: map page textures are rebuilt when their cells change (crates).
+- Known gaps: trap door drawing (distorted sprites), sprite scaling (waves, debris),
+  item kind 8, fade in/out, sound.
+
 ## 0.10.0 — 2026-10-03
 - All 1-1 enemies: soldier subtypes 2 (ambusher that respawns), 3/11 (walk-in shooter),
   4 (drops from the top of the screen), 7/8 (squad of four with a leader giving fire

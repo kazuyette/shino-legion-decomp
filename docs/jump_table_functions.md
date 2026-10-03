@@ -1996,3 +1996,18 @@ New semantics learned while porting:
   0x12 0x06077B24, 0x13 0x06077C4C, 0x14 0x060841E4.
 - Atan 0x0600635A(x1, y1, x2, y2) → 8-bit angle (0 = right, 0x40 = up): ratio
   (min << 16) / max in soft-float double, nearest of tan table 0x0600EEFC (step 4).
+
+## Stage objects 0x1000-0x1006, stage end (2026-10-03, pc-port 0.11.0)
+
+- 0x1000 0x06049F0C hanging box (cut in two halves, drops +0x18), 0x1001 0x0604A67C 7-piece
+  statue (master + 6 pieces in the next slots, table 0x060A9794 / order 0x060A97CC),
+  0x1002 0x0604BF3C item crate (map cells 0x3F8-0x3FE via 0x0604C5B2/0x0604C6E8, falls when
+  unsupported, breaks into 6 pieces), 0x1003 0x0604C7C0 trap door (spawns type 4 at x+40),
+  0x1005 0x0604B838 water waves, 0x1006 0x0604CB56 splash. Helpers: 0x06046B14 Map_PutCell,
+  0x0605817C Obj_CarryEnemies, 0x0604B7AC Obj_BlockShurikens, 0x0606078C Obj_SwordClang.
+- Stage state 0x0602529E bits 0-2 (1 death, 2 clear, 3 demo over) + bit 3 request; game mode
+  0x060DAF72 (dispatcher 0x0606B54C: 5 load stage 0x0606B6EC, 6 frames 0x0606B8FA, 7 tally
+  0x0606BA08, 9 game over, 11 DIRECTOR 0x0606BAA4). Exit zones per stage in 0x06045F64.
+- Start: 0x06044E18 Player_InitForStage → 0x0604879C checkpoint (table 0x060A8D94, 4 per
+  stage, 1-1 = world 1120,1488 / 5376 / 9536); first entry (0x060252DC == 0) = drop-in
+  from y 1248, action 0x39; 0x0606E440 ends it on landing.
