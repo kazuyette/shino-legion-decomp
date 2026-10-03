@@ -42,6 +42,7 @@ add_executable(shinobi_legions_pc
     src/collision.c
     src/camera.c
     src/stage.c
+    src/objects.c
 )
 
 find_library(MATH_LIBRARY m)

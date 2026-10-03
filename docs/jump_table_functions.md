@@ -1890,3 +1890,21 @@ New semantics learned while porting:
   0x0603B46C+4. Stage init uses (0,1,2,3): tile colour = CRAM[(bank + layer offset) * 256 + pixel].
 - Stage 1-1 layers: 0 = level (palette MAP+0x1000 via bank 2), 1 = harbour/ships (MAP+0xE00),
   2 = sky, mountains, Hong Kong skyline (MAP+0x1000).
+
+## Stage objects (2026-10-03)
+
+- Stage 1-1 topology (layer 0, 26×2 pages of 512 px): three wall sections — pages 0-1
+  (start), 8-9, 16-25 (temples, exit). Exit zone check 0x06045F64 case 0xC: x 0x37D8-0x3800,
+  y 0x5A0-0x5E0 (world px). The two 3072-px gaps are water crossed on floating platforms.
+- `Stage_LoadObjects` 0x06048BD0: list = 0x060D1074[stage] (1-1: 0x060CEF74), 8-byte records
+  {u16 type, u16 x, u16 y, u8 flagsHi, s8 param} in layer px (+1024 → world), 0xFFFF ends;
+  type < 0x8000 → `Obj_Register` 0x06048B64 (slot via `Obj_FindFree` 0x06048B28, reset by
+  `Obj_ClearSlot` 0x06048A64 incl. anim reset 0x06006464 at +0x58), else Obj_Spawn(type−0x8000).
+  Object table 0x060EC65C, 0xC0 × 0x78 bytes: +0 type (0xFFFF free), +2 state, +8/+0xC X/Y,
+  +0x12 flags (types < 0x1000 OR defaults from 0x060A926C), +0x18 param.
+- 1-1 list (159 entries): 0x0001 ×32 on the ground (enemies?), 0x0003 ×6, 0x1004 ≈50 at y=489
+  (floating platforms on the water), 0x1000/0x1001/0x1003 near the end, 0x1005/0x1006 at x=0
+  (stage controllers). Handlers: `Obj_UpdateAll` 0x06060014 → 0x060AC820[type − 0x1000]
+  (0x1000 → 0x06049F0C, 0x1001 → 0x0604A67C, 0x1002 → 0x0604BF3C, 0x1003 → 0x0604C7C0,
+  0x1004 → 0x0604B9F8 ≈1.3 KB: platform float/ride, uses 0x06060268/0x060606D0/0x0606061C).
+- `STAGEx_y.SPR` = raw enemy/platform sprite graphics → VDP1 VRAM 0x25C04740 (loader 0x0606BB0C).

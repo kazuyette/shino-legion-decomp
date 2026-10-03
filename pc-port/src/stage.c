@@ -5,6 +5,7 @@
 #include "collision.h"
 #include "camera.h"
 #include "player.h"
+#include "objects.h"
 #include <stdio.h>
 
 /* VDP2 register shadow (A.BIN): +4 = CRAOFA, NBGn colour RAM offset in bits 4n..4n+2. */
@@ -85,7 +86,9 @@ int Stage_Load(const char *dir, int idx)
     if (idx == 12) stage1_1_init();
     else printf("[stage] per-stage init for index %d not ported yet\n", idx);
     stage_palettes();
-    printf("[stage] %s loaded\n", kStageNames[idx]);
+    Obj_ClearAll();
+    int n = Stage_LoadObjects();                           /* 0x06048BD0 */
+    printf("[stage] %s loaded, %d objects placed (%d active slots)\n", kStageNames[idx], n, Obj_Count());
     return 1;
 }
 
