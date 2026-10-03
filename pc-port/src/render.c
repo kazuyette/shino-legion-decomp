@@ -34,6 +34,15 @@ int Render_Init(SDL_Window *window)
 #define LAYERS     3
 #define LAYER_DESC 0x060EA588u
 static SDL_Texture *s_pageTex[LAYERS][256];
+static uint32_t s_pageSum[LAYERS][256];   /* PC: checksum of the page's name table (map cells change at runtime) */
+
+static uint32_t page_sum(int l, int pid)
+{
+    uint32_t d = LAYER_DESC + (uint32_t)l * 0x30, a = R32(d + 0x1C) + (uint32_t)pid * 0x800, h = 2166136261u;
+    const uint8_t *p = Ram_Ptr(a);
+    for (int i = 0; i < 0x800; i++) h = (h ^ p[i]) * 16777619u;
+    return h;
+}
 
 void Render_InvalidatePalettes(void)
 {
@@ -101,6 +110,9 @@ static void draw_layer(int l)
         for (int px = floordiv(sx, 512); px * 512 < sx + SCREEN_W; px++) {
             uint8_t pid = Ram_Ptr(lay)[2 + wrap(py, ph) * pw + wrap(px, pw)];
             if (pid == 0xFF) continue;
+            uint32_t sum = page_sum(l, pid);
+            if (s_pageTex[l][pid] && s_pageSum[l][pid] != sum) { SDL_DestroyTexture(s_pageTex[l][pid]); s_pageTex[l][pid] = NULL; }
+            s_pageSum[l][pid] = sum;
             SDL_Texture *t = page_texture(l, pid);
             if (!t) continue;
             SDL_Rect dst = { px * 512 - sx, py * 512 - sy, 512, 512 };

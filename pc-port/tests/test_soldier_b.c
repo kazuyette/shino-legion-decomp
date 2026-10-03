@@ -70,6 +70,10 @@ int main(int argc, char **argv)
     snprintf(p, sizeof p, "%sSHOU.CHR", dir);        assert(Ram_LoadImage(p, 0x00200000u));
     Player_Init();
     assert(Stage_Load(dir, 12));
+    for (int k = 0; k < 0xC0; k++) {                 /* PC test: no crates/boxes/statues/doors in the way */
+        uint32_t ob = 0x060EC65Cu + (uint32_t)k * 0x78;
+        if (R16(ob) >= 0x1000 && R16(ob) <= 0x1003) W16(ob, 0xFFFF);
+    }
     int n[32] = {0};
     for (int s = 0; s < OBJ_SLOTS; s++) {
         uint32_t o = OBJ_TABLE + (uint32_t)s * OBJ_SIZE;
@@ -80,6 +84,7 @@ int main(int argc, char **argv)
     printf("\n");
     for (int k = 0; k < n[4]; k++) { uint32_t o = find_sub(4, k); printf(" sub4 #%d at %.0f,%.0f param %d\n", k, RS32(o + 8) / 65536.0, RS32(o + 0xC) / 65536.0, RS16(o + 0x18)); }
     for (int k = 0; k < n[7]; k++) { uint32_t o = find_sub(7, k); printf(" sub7 #%d at %.0f,%.0f param %d\n", k, RS32(o + 8) / 65536.0, RS32(o + 0xC) / 65536.0, RS16(o + 0x18)); }
+    W16(0x060252DCu, 1);                            /* no drop-in (0x0606E440 not run here) */
     Stage_SpawnPlayer();
 
     /* ---- subtype 4: hidden, drops in, respawns at home when killed */

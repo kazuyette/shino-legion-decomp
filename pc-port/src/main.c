@@ -12,6 +12,7 @@
 #include "objects.h"
 #include "enemy.h"
 #include "fx.h"
+#include "objhandlers_c.h"
 #include "camera.h"
 
 int main(int argc, char **argv)
@@ -33,6 +34,9 @@ int main(int argc, char **argv)
     else
         have_game_data = 0;
     Player_Init();
+    W16(LIVES, 3);                                     /* PC: set by DIRECTOR's game start */
+    W16(0x060252DCu, 0);                               /* first entry: Sho drops in */
+    W16(G_GAME_MODE, 6);                               /* stage frames */
     if (have_game_data && Stage_Load("assets", 12))   /* stage 1-1 */
         Stage_SpawnPlayer();
 
@@ -87,12 +91,21 @@ int main(int argc, char **argv)
             /* Without the game data the animation scripts are missing: fake
              * "animation finished" after 20 frames so the state machine moves. */
             if (!have_game_data && frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
+            int16_t stage_before = RS16(G_STAGE_INDEX);
             Player_Tick();                   /* SHINOBI 0x06040B72 (draws via Player_Draw) */
-            Obj_UpdateEnemies();             /* SHINOBI 0x06048954 */
-            Obj_UpdateAll();                 /* SHINOBI 0x06060014 (frame 0x0606B8FA) */
-            Projectiles_Update();            /* SHINOBI 0x0606088C */
-            Effects_Update();                /* SHINOBI 0x06061FA0 */
-            Items_Update();                  /* SHINOBI 0x06062894 */
+            Stage_UpdateState();             /* SHINOBI 0x06046190: fall death, exit, end sequence */
+            /* PC approximation of 0x0606E440: the drop-in ends when Sho lands */
+            if (R16(0x060252DCu) == 0 && !(P16(P_FLAGS2) & 0x4000)) {
+                W16(0x060252DCu, 1);
+                PW16(P_FLAGS4, P16(P_FLAGS4) & 0xFFEF);
+            }
+            if (RS16(G_STAGE_INDEX) == stage_before) {   /* 0x0606B8FA skips these on a stage change */
+                Obj_UpdateEnemies();         /* SHINOBI 0x06048954 */
+                Obj_UpdateAll();             /* SHINOBI 0x06060014 */
+                Projectiles_Update();        /* SHINOBI 0x0606088C */
+                Effects_Update();            /* SHINOBI 0x06061FA0 */
+                Items_Update();              /* SHINOBI 0x06062894 */
+            }
             if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {
                 printf("[player] action %02X -> %02X (pad %04X)\n",
@@ -104,6 +117,33 @@ int main(int argc, char **argv)
             }
         }
         Boot_RunFrame();
+        /* SHINOBI mode dispatcher 0x0606B54C (only what exists on PC so far) */
+        if (have_game_data && R16(G_GAME_MODE) != 6) {
+            uint16_t mode = R16(G_GAME_MODE);
+            if (mode == 5) {                                  /* 0x0606B6EC: (re)load the stage */
+                int16_t st = RS16(G_STAGE_INDEX);
+                printf("[game] load stage index %d (checkpoint %d, respawn %d, lives %d)\n",
+                       st, R16(G_CHECKPOINT), R16(G_RESPAWN), RS16(LIVES));
+                Player_Init();
+                if (!Stage_Load("assets", st)) {
+                    printf("[game] stage %d not available yet: back to 1-1\n", st);
+                    W16(G_CHECKPOINT, 0);
+                    Stage_Load("assets", 12);
+                }
+                Stage_SpawnPlayer();
+            } else {
+                printf("[game] mode %d (%s) not ported yet: restarting 1-1\n", mode,
+                       mode == 7 ? "stage-clear tally" : mode == 9 ? "game over" : "DIRECTOR");
+                if (mode == 9) W16(LIVES, 3);
+                W16(G_CHECKPOINT, 0);
+                W16(0x060252DCu, 0);
+                Player_Init();
+                Stage_Load("assets", 12);
+                Stage_SpawnPlayer();
+            }
+            W16(G_STAGE_STATE, R16(G_STAGE_STATE) & 0x7FF0);
+            W16(G_GAME_MODE, 6);
+        }
 
         Render_Clear();
         Render_DrawFrame();

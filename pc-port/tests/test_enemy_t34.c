@@ -75,6 +75,10 @@ int main(int argc, char **argv)
     snprintf(p, sizeof p, "%sSHOU.CHR", dir);        assert(Ram_LoadImage(p, 0x00200000u));
     Player_Init();
     assert(Stage_Load(dir, 12));
+    for (int k = 0; k < 0xC0; k++) {                 /* PC test: no crates/boxes/statues/doors in the way */
+        uint32_t ob = 0x060EC65Cu + (uint32_t)k * 0x78;
+        if (R16(ob) >= 0x1000 && R16(ob) <= 0x1003) W16(ob, 0xFFFF);
+    }
     assert(Enemy_FindSlot(3) == 3 && Enemy_FindSlot(4) == 2);
     for (int t = 3; t <= 4; t++) {
         int s = Enemy_FindSlot((int16_t)t);
@@ -85,6 +89,7 @@ int main(int argc, char **argv)
                R16(CHAR_TABLE + cb * 10u), bank, pal ? "loaded" : "EMPTY");
         assert(R16(CHAR_TABLE + cb * 10u) != 0 && pal);
     }
+    W16(0x060252DCu, 1);                            /* no drop-in (0x0606E440 not run here) */
     Stage_SpawnPlayer();
     /* ---- type 3 */
     int n3 = 0;

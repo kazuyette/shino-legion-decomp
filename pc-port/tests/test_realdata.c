@@ -32,6 +32,7 @@ int main(int argc, char **argv)
     snprintf(p, sizeof p, "%sSHOU.CHR", dir);        assert(Ram_LoadImage(p, 0x00200000u));
     Player_Init();
     assert(Stage_Load(dir, 12));
+    W16(0x060252DCu, 1);                            /* no drop-in (0x0606E440 not run here) */
     Stage_SpawnPlayer();
     int fell = 0;
     for (int i = 0; i < 120; i++) { tick(0); if (P16(P_FLAGS2) & 0x4000) fell = 1; }

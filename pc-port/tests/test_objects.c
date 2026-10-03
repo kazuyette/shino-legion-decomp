@@ -50,6 +50,7 @@ int main(int argc, char **argv)
     printf("first platform: slot %d at %.0f,%.0f flags %04X param %04X\n", best,
            RS32(pf + 8) / 65536.0, RS32(pf + 0xC) / 65536.0, R16(pf + 0x12), R16(pf + 0x18));
     /* drop Sho right above it */
+    W16(0x060252DCu, 1);                            /* no drop-in (0x0606E440 not run here) */
     Stage_SpawnPlayer();
     PW32(P_X, (uint32_t)RS32(pf + 8));
     PW32(P_Y, (uint32_t)(RS32(pf + 0xC) - 0x400000));

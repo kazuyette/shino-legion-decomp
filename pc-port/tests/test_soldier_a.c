@@ -46,6 +46,10 @@ int main(int argc, char **argv)
     snprintf(p, sizeof p, "%sSHOU.CHR", dir);        assert(Ram_LoadImage(p, 0x00200000u));
     Player_Init();
     assert(Stage_Load(dir, 12));
+    for (int k = 0; k < 0xC0; k++) {                 /* PC test: no crates/boxes/statues/doors in the way */
+        uint32_t ob = 0x060EC65Cu + (uint32_t)k * 0x78;
+        if (R16(ob) >= 0x1000 && R16(ob) <= 0x1003) W16(ob, 0xFFFF);
+    }
     printf("type-1 subtypes in 1-1:");
     for (int s = 0; s < OBJ_SLOTS; s++) {
         uint32_t o = OBJ_TABLE + (uint32_t)s * OBJ_SIZE;
@@ -56,6 +60,7 @@ int main(int argc, char **argv)
     assert(e);
     int32_t ox = RS32(e + 8), oy = RS32(e + 0xC);
     printf("sub2 at %.0f,%.0f flags12 %04X\n", ox / 65536.0, oy / 65536.0, R16(e + 0x12));
+    W16(0x060252DCu, 1);                            /* no drop-in (0x0606E440 not run here) */
     Stage_SpawnPlayer();
     put_sho(e, -0x00960000, -0x00100000);                 /* 150 px left: inside the 200 px trigger */
     int acts[0x20] = {0}, appear = -1, vanish = -1, shots = 0, back = -1;

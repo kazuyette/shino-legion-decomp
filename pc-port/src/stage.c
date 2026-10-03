@@ -118,12 +118,25 @@ int Stage_Load(const char *dir, int idx)
     return 1;
 }
 
-/* PC: the original start position comes from stage scripts not traced yet.
- * Drop Sho near the start of 1-1 (world origin is 1024,1024). */
+/* 0x0604879C (Player_SetCheckpoint) + the drop-in part of 0x06044E18 (Player_InitForStage):
+ * start at checkpoint *0x060EC658 (table 0x060A8D94[stage*16 + cp*4], layer px + 1024);
+ * on the first entry into a stage (0x060252DC == 0) Sho falls in from y = 1248. */
 void Stage_SpawnPlayer(void)
 {
-    PW32(P_X, (1024u + 120u) << 16);
-    PW32(P_Y, (1024u + 300u) << 16);
+    uint16_t cp = R16(0x060EC658u) & 3;
+    W16(0x060EC658u, cp);
+    uint32_t t = 0x060A8D94u + (uint32_t)RS16(G_STAGE_INDEX) * 16 + cp * 4u;
+    PW32(P_X, (uint32_t)((RS16(t) + 1024) << 16));
+    PW32(P_Y, (uint32_t)((RS16(t + 2) + 1024) << 16));
+    if (R16(0x060252DCu) == 0) {
+        PW32(P_Y, 0x04E00000u);
+        PW16(P_FLAGS4, P16(P_FLAGS4) | 0x10);
+        PW16(P_FLAGS2, P16(P_FLAGS2) | 0x5000);
+        PW32(P_VELY, 0x7000);
+        PW16(P_ACTION, 0x39);
+    }
+    PW32(P_X_PREV, P32(P_X));
+    PW32(P_X_PREV + 4, P32(P_Y));
     W32(CAM_X, (uint32_t)(P32(P_X) - RS32(0x060EA550u)));
     W32(CAM_Y, (uint32_t)(P32(P_Y) - RS32(0x060EA554u)));
     W32(0x060252A8u, R32(CAM_X));

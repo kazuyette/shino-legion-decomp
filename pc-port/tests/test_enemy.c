@@ -30,6 +30,10 @@ int main(int argc, char **argv)
     snprintf(p, sizeof p, "%sSHOU.CHR", dir);        assert(Ram_LoadImage(p, 0x00200000u));
     Player_Init();
     assert(Stage_Load(dir, 12));
+    for (int k = 0; k < 0xC0; k++) {                 /* PC test: no crates/boxes/statues/doors in the way */
+        uint32_t ob = 0x060EC65Cu + (uint32_t)k * 0x78;
+        if (R16(ob) >= 0x1000 && R16(ob) <= 0x1003) W16(ob, 0xFFFF);
+    }
     assert(Enemy_FindSlot(1) == 1 && Enemy_FindSlot(3) == 3 && Enemy_FindSlot(2) == -1);
     assert(R16(CHAR_TABLE + 0x60 * 10) == (0x12000 + 0x4740) >> 3);          /* soldier chars */
     assert(R16(SHADOW_CRAM + 2u * (0x10 * 16 + 1)) != 0 || R16(0x060A9084u + 2) != 0x10);
@@ -41,6 +45,7 @@ int main(int argc, char **argv)
     }
     assert(e);
     printf("soldier at %.0f,%.0f flags %04X\n", RS32(e + 8) / 65536.0, RS32(e + 0xC) / 65536.0, R16(e + 0x12));
+    W16(0x060252DCu, 1);                            /* no drop-in (0x0606E440 not run here) */
     Stage_SpawnPlayer();
     /* stand Sho 200 px left of it, on the same floor */
     PW32(P_X, (uint32_t)(RS32(e + 8) - 0x00C80000));
