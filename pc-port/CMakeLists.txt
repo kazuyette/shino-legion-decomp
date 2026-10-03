@@ -17,6 +17,8 @@ add_executable(shinobi_legions_pc
     src/stream.c
     src/render.c
     src/input.c
+    src/pad.c
+    src/player.c
 )
 
 find_library(MATH_LIBRARY m)

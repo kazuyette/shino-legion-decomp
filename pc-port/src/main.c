@@ -3,6 +3,8 @@
 #include "boot.h"
 #include "render.h"
 #include "input.h"
+#include "pad.h"
+#include "player.h"
 
 int main(int argc, char **argv)
 {
@@ -43,6 +45,15 @@ int main(int argc, char **argv)
         }
 
         Input_Update();
+        Pad_Update(2);                       /* A.BIN 0x0600572A */
+        if (Sys_CheckSoftReset()) {          /* A.BIN 0x060042B8 */
+            printf("[pad] soft reset (A+B+C+Start)\n");
+            Pad_Clear();
+            Stage_ResetAndLoadDirector();
+        }
+        Game_LatchPad1(g_player.flags4);     /* SHINOBI 0x06040CAC */
+        if (g_gamePressed)
+            printf("[pad] pressed %04x held %04x\n", g_gamePressed, g_gameHeld);
         Boot_RunFrame();
 
         Render_Clear();

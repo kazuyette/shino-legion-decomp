@@ -33,11 +33,19 @@ the remainder, rather than a blind `SDL_Delay(16)`).
 Expect a window with two small debug markers moving around (driven by the
 traced object-transform data, see `render.*` below) and a 440Hz test tone
 playing — not real graphics or music yet, just proof the plumbing works.
-Arrow keys / Z-X-C / A-S-D / Q-W / Enter poll as a Saturn-style pad (see
-`input.*`) but nothing consumes that input yet — the real button mapping
-is still unknown (blocked on `DIRECTOR.PPB`, see docs).
+Arrow keys = D-pad, Z/X/C = A/B/C, A/S/D = X/Y/Z, Q/W = L/R, Enter = Start.
+The input chain is the real one (see `pad.*`): pressed buttons are logged to
+the console, and A+B+C+Start triggers the original soft reset.
 
 ## Layout
+
+- `src/input.*` — keyboard -> emulated SMPC report (active-low raw pad word per port),
+  replaces the SMPC/PER library (`PER_GetPer` @ A.BIN 0x0602D076).
+- `src/pad.*` — faithful ports of `Pad_Update` (A.BIN 0x0600572A, table 0x0601C4A0),
+  `Pad_Clear`, `Sys_CheckSoftReset` (A.BIN 0x060042B8) and `Game_LatchPad1`
+  (SHINOBI 0x06040CAC: game pad vars, 6 button layouts, L/R mirroring).
+  Unit test: `gcc -std=c11 -Isrc tests/test_pad.c src/pad.c src/player.c`.
+- `src/player.*` — player struct @ 0x060EA2B4 (partial, offsets static-asserted).
 
 - `src/boot.*` — boot sequence and per-frame loop, mirrors `Boot_And_MainLoop` /
   `Stage_ResetAndLoadDirector` in A.BIN. `Boot_RunFrame` now runs the real
