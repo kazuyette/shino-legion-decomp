@@ -20,7 +20,7 @@
 #define G_DIR_TAP      0x060EA42Eu  /* last direction tap: 0x8000 = side, low = age (double-tap run) */
 #define G_IDLE_CTR     0x060EA430u
 #define G_CMD_BUF      0x060EA432u  /* command-input buffer (0xF00 field) */
-#define G_RUNSPECIAL_V 0x060EA434u
+#define G_SPIN_ANGLE   0x060EA434u  /* sprite rotation angle (somersaults, run special) */
 #define G_JUMP_T1      0x060EA436u  /* jump-buffer timers */
 #define G_JUMP_T0      0x060EA438u
 #define G_WALK_CTR     0x060EA43Au
@@ -103,6 +103,192 @@ static int Player_TryJump(void)
         return 1;
     }
     return 0;
+}
+
+/* 0x0604241E: airborne pose from vertical speed. */
+static int Player_AirPose(void)
+{
+    int a = Player_Action();
+    int in_pose = (a == 0x37 || a == 0x39 || a == 0x35 || a == 0x38 || a == 0x3A);
+    if (!in_pose || P32(P_VELY) < 0) {
+        if (P32(P_VELY) < 0) set_act(0x3A);                                   /* falling */
+        else set_act((P16(P_FLAGS2) & PF2_RUNNING) ? 0x39 : 0x37);            /* rising */
+        int32_t v = P32(P_VELY); if (v < 0) v = -v;
+        if (v < 0x00018000) set_act((P16(P_FLAGS2) & PF2_RUNNING) ? 0x38 : 0x35);   /* apex */
+    }
+    return Player_Action();
+}
+
+static int is_air_pose(int a) { return a == 0x37 || a == 0x39 || a == 0x35 || a == 0x38 || a == 0x3A || a == 0x3D; }
+
+/* Shared by the 3 selectors: start ninjutsu (X) if available. */
+static int try_ninjutsu(int act)
+{
+    if ((R16(G_MAGICFLAGS) & 0x2000) || (R16(G_MAGIC_AVAIL) != 0 && (PRESSED & PAD_X))) {
+        set_act(act);
+        sub_06007CDE(0x116);
+        OR16(G_SYSFLAGS, 0x8000);
+        if (!(R16(G_MAGICFLAGS) & 0x2000))
+            W16(G_MAGICFLAGS, (R16(G_MAGICFLAGS) & 0xFFF0) | 0x2002);
+        return 1;
+    }
+    return 0;
+}
+
+/* 0x06041E48 */
+int Player_SelectAction_Air(void)
+{
+    int a;
+    W16(G_JUMP_T1, P16(P_1A));
+    if (P32(P_VELY) < 0 && (PRESSED & BTN2)) W16(G_JUMP_T0, P16(P_1A));   /* buffer a jump while falling */
+    a = Player_Action();
+    if (!is_air_pose(a) && a != ACT_LAND_ON_ENEMY_Q) p2_and(0xEFFF);
+
+    if (P16(P_FLAGS2) & PF2_HIT) {
+        a = Player_Action();
+        if (a != ACT_HURT && a != ACT_AIR_DEAD && a != ACT_DEAD) {
+            if (!(P16(P_FLAGS4) & 0x40)) PW32(P_VELY, 0x00030000);
+            set_act(ACT_HURT);
+            sub_060410F8();
+        }
+        if (PS16(P_HP) < 1 && Player_Action() != ACT_AIR_DEAD && Player_Action() != ACT_DEAD) {
+            sub_060410F8();
+            set_act(ACT_AIR_DEAD);
+            PW32(P_VELY, 0);
+        }
+        p2_and(0xFBFF);
+        return Player_Action();
+    }
+    if (Player_Action() == ACT_AIR_NINJUTSU) return ACT_AIR_NINJUTSU;
+    if (try_ninjutsu(ACT_AIR_NINJUTSU)) return ACT_AIR_NINJUTSU;
+
+    a = Player_Action();
+    if (a == ACT_WALLJUMP_Q || a == ACT_DOUBLEJUMP_Q) p2_or(PF2_AIR_USED);
+    if (Player_CheckBounce()) return Player_Action();
+    if (Player_Action() == ACT_RUN_SPECIAL) return ACT_RUN_SPECIAL;
+
+    a = Player_Action();
+    if ((P16(P_FLAGS10) & 0x10) && (HELD & DIR_UP) && !(P16(P_FLAGS2) & PF2_POSTURE4) &&
+        (is_air_pose(a) ||
+         (P32(P_VELY) <= -3 && (a == 0x17 || a == 0x06 || a == 0x0C || a == 0x0D || a == 0x0E || a == 0x3C))) &&
+        !(P16(P_FLAGS10) & 0x0100)) {                                       /* grab the ceiling */
+        p2_or(PF2_POSTURE4);
+        p2_and(0xAEFF);
+        set_act(ACT_POSTURE4_IDLE);
+        p2_and(0xFF7F);
+        W16(G_SPIN_ANGLE, 0);
+        return Player_Action();
+    }
+    if (a == ACT_AIR_16_Q || a == ACT_DOUBLEJUMP_Q || a == ACT_AIR_FLIP_ATTACK_Q || a == ACT_LAND_ON_ENEMY_Q)
+        return a;
+    if (PRESSED & 0x30) {                                                   /* Y/Z */
+        set_act(0x3C);
+        W16(G_SPIN_ANGLE, 0);
+        return 0x3C;
+    }
+    if (PRESSED & BTN1) {                                                   /* air slash */
+        if (!(P16(P_FLAGS2) & PF2_AIR_USED)) {
+            set_act(ACT_AIR_SLASH);
+            if (HELD & DIR_UP) set_act(ACT_AIR_SLASH_UP);
+            if ((HELD & DIR_LR) && (HELD & DIR_UP)) set_act(0x3C);
+            uint16_t f = P16(P_FLAGS2);
+            if ((f & PF2_AIR_USED) || (f & PF2_POSTURE4) || !(HELD & DIR_DOWN) || P32(P_VELY) >= 0)
+                return (int16_t)f;
+            set_act(ACT_AIR_16_Q);                                          /* Down+B while falling: down stab */
+            return ACT_AIR_16_Q;
+        }
+        if (!(P16(P_ANIM) & 8)) { set_act(ACT_DOUBLEJUMP_Q); return ACT_DOUBLEJUMP_Q; }
+    }
+    if ((PRESSED & BTN0) && R16(G_SHURIKENS) != 0) {                        /* air shuriken */
+        if (!(P16(P_FLAGS2) & PF2_AIR_USED)) { set_act(ACT_AIR_SHURIKEN); return ACT_AIR_SHURIKEN; }
+        if (!(P16(P_ANIM) & 8)) { sub_06042C88(); OR16(PLAYER + P_ANIM, 8); return Player_Action(); }
+        return 0x58;
+    }
+    if ((PRESSED & BTN2) && (P16(P_FLAGS2) & PF2_AIRBORNE) && is_air_pose(Player_Action()) &&
+        (((HELD & PAD_LEFT) && ((P16(P_FLAGS10) & 4) || P32(0x40) >= 1)) ||
+         ((HELD & PAD_RIGHT) && ((P16(P_FLAGS10) & 8) || P32(0x40) < 0)))) {  /* jump off a wall */
+        set_act(ACT_AIR_FLIP_ATTACK_Q);
+        PW32(P_VELY, 0x5000);
+        return ACT_AIR_FLIP_ATTACK_Q;
+    }
+    if (PRESSED & BTN2) {                                                   /* double jump near the apex */
+        int32_t v = P32(P_VELY); if (v < 0) v = -v;
+        if (v < 0x00020000 && (P16(P_FLAGS2) & 0x1000) && is_air_pose(Player_Action()) &&
+            !(P16(P_FLAGS2) & PF2_AIR_USED) && (P16(P_FLAGS2) & PF2_AIRBORNE)) {
+            set_act(ACT_WALLJUMP_Q);
+            p2_or(PF2_AIR_USED);
+            PW32(P_VELY, 0x00080000);
+            sub_06007CDE(0x120);
+            return Player_Action();
+        }
+    }
+    a = Player_Action();
+    if (a == ACT_AIR_SHURIKEN) return a;
+    if (P16(P_FLAGS2) & PF2_AIR_USED) return (int16_t)P16(P_FLAGS2);
+    if (a == ACT_AIR_SLASH || a == 0x3C || a == ACT_AIR_SLASH_UP || a == ACT_LANDING_Q) return a;
+    return Player_AirPose();
+}
+
+/* 0x06041B3C */
+int Player_SelectAction_Crouch(void)
+{
+    int a, v, crouch_idle;
+    Player_SlopePush();
+    if (Player_Action() == ACT_CROUCH) {
+        crouch_idle = 1;
+        if (R16(G_IDLE_CTR) < 0x7FFF) W16(G_IDLE_CTR, R16(G_IDLE_CTR) + 1);
+    } else {
+        crouch_idle = 0;
+        W16(G_IDLE_CTR, 0);
+    }
+    if (P16(P_FLAGS2) & PF2_HIT) {
+        a = Player_Action();
+        if (a != ACT_CROUCH_HURT && a != ACT_CROUCH_DEAD) { set_act(ACT_CROUCH_HURT); sub_060410F8(); }
+        if (PS16(P_HP) < 1 && Player_Action() != ACT_CROUCH_DEAD) { sub_060410F8(); set_act(ACT_CROUCH_DEAD); }
+        p2_and(0xFBFF);
+        return (int16_t)P16(P_FLAGS2);
+    }
+    if (P16(P_FLAGS4) & 0x4000) {
+        set_act(0x2B);
+        p2_and(0xFBFF);
+        return (int16_t)P16(P_FLAGS2);
+    }
+    if (Player_Action() == ACT_CROUCH_NINJUTSU) return ACT_CROUCH_NINJUTSU;
+    if (try_ninjutsu(ACT_CROUCH_NINJUTSU)) return ACT_CROUCH_NINJUTSU;
+
+    a = Player_Action();
+    if ((a == ACT_CROUCH_GUARD || a == ACT_CROUCH_GUARD_WALK) && (P16(P_FLAGS4) & 0x1000)) {
+        v = ACT_CROUCH_GUARD_RECOIL;
+    } else {
+        if (a == ACT_CROUCH_GUARD_RECOIL || a == ACT_CROUCH_TRANS) return a;
+        if ((v = Player_TryJump()) != 0) return v;
+        a = Player_Action();
+        if ((HELD & DIR_LR) && a == ACT_CROUCH_GUARD && ((BTN1 + 0x30) & HELD)) v = ACT_CROUCH_GUARD_WALK;
+        else if ((PRESSED & BTN0) && R16(G_SHURIKENS) != 0) v = ACT_CROUCH_SHURIKEN;
+        else if (((HELD & 0x30) && (crouch_idle || a == ACT_CROUCH_IDLE2 || a == 8)) || (PRESSED & 0x30))
+            v = ACT_CROUCH_GUARD_START;
+        else {
+            if (a == 0x32 || a == ACT_CROUCH_SLASH_HELD || a == ACT_CROUCH_SLASH) return a;
+            if (((PRESSED | PPREV) & DIR_LR) && (BTN1 & (PRESSED | PPREV))) v = ACT_CROUCH_SLASH_HELD;
+            else if (PRESSED & BTN1) {
+                set_act(ACT_CROUCH_SLASH);
+                if (!(HELD & DIR_LR) || !(HELD & DIR_UP)) return ACT_CROUCH_SLASH;
+                set_act(ACT_CROUCH_SLASH_HELD);
+                return ACT_CROUCH_SLASH_HELD;
+            }
+            else if ((HELD & BTN1) && (crouch_idle || a == ACT_CROUCH_IDLE2 || a == 8))
+                v = ACT_CROUCH_GUARD_START;
+            else if (!(HELD & DIR_DOWN) && !(P16(P_FLAGS10) & 0x8000))
+                v = ACT_CROUCH_TRANS;                                           /* stand up */
+            else {
+                if (!(HELD & DIR_LR)) return a;
+                if (!crouch_idle && Player_Action() != ACT_CROUCH_IDLE2) return Player_Action();
+                v = 0x08;                                                       /* crawl */
+            }
+        }
+    }
+    set_act(v);
+    return v;
 }
 
 /* 0x060411FC */
@@ -332,6 +518,30 @@ static void Player_WalkExec(void)
     }
 }
 
+/* 0x06043C58: somersault (double jump 0x06 / 0x17): spin the sprite. */
+static void Player_SomersaultExec(void)
+{
+    int16_t step = (Player_Action() == ACT_DOUBLEJUMP_Q) ? 0x14 : 10;
+    if (!(P16(P_ANIM) & 1)) W16(G_SPIN_ANGLE, 0);
+    else W16(G_SPIN_ANGLE, (uint16_t)(RS16(G_SPIN_ANGLE) - step));
+    if (anim_done()) {
+        set_act(ACT_IDLE);                       /* -> air pose via the post-switch check */
+        p2_and(0xFF7F);
+        W16(G_SPIN_ANGLE, 0);
+    }
+}
+
+/* 0x06043BC8: crouch slash (9) with combo into 0x32, ends in 0x30. */
+static void Player_CrouchSlashExec(void)
+{
+    if (!(P16(P_ANIM) & 1) && (PRESSED & BTN1) && (uint32_t)P16(0x72) + (uint32_t)P16(P_5A) != 0)
+        OR16(PLAYER + P_FLAGS4, 1);
+    if (anim_done() || (P16(P_FLAGS4) & 0x20)) {
+        set_act((P16(P_FLAGS4) & 1) ? 0x32 : ACT_CROUCH_IDLE2);
+        if (Player_Action() == ACT_CROUCH_IDLE2) AND16(PLAYER + P_FLAGS4, 0xFFFC);
+    }
+}
+
 /* 0x06043AA0: standing slash execution + combo chaining (4 -> 5 -> 0x1C). */
 static void Player_SlashExec(void)
 {
@@ -395,9 +605,9 @@ void Player_UpdateAction(void)
         break;
     case 0x03: case 0x34: case 0x36: Player_JumpExec(); break;
     case 0x04: case 0x05: Player_SlashExec(); sub_06046782(); break;
-    case 0x06: case 0x17: sub_06046782(); sub_06043C58(); break;
+    case 0x06: case 0x17: sub_06046782(); Player_SomersaultExec(); break;
     case 0x07: case 0x0B: case 0x0E: case 0x19: Player_ShurikenExec(); break;
-    case 0x09: sub_06046782(); sub_06043BC8(); break;
+    case 0x09: sub_06046782(); Player_CrouchSlashExec(); break;
     case 0x0C: case 0x0D: case 0x3C:
         sub_06046782();
         if (anim_done() || (P16(P_FLAGS4) & 0x20)) set_act(ACT_LANDING_Q);
@@ -542,12 +752,12 @@ void Player_UpdateAction(void)
             PW32(P_VELY, (uint32_t)(P32(P_VELY) + 0x3400));
             PW32(P_VELX, (uint32_t)(P32(P_VELX) + ((P16(P_FLAGS2) & PF2_FACE_LEFT) ? -0x70000 : 0x70000)));
         }
-        if (!(P16(P_ANIM) & 1)) W16(G_RUNSPECIAL_V, 0);
-        else W16(G_RUNSPECIAL_V, R16(G_RUNSPECIAL_V) - 0xF);
+        if (!(P16(P_ANIM) & 1)) W16(G_SPIN_ANGLE, 0);
+        else W16(G_SPIN_ANGLE, R16(G_SPIN_ANGLE) - 0xF);
         if (anim_done()) {
             set_act(ACT_IDLE);
             p2_and(0xFF7F);
-            W16(G_RUNSPECIAL_V, 0);
+            W16(G_SPIN_ANGLE, 0);
         }
         break;
     default:
@@ -557,7 +767,7 @@ void Player_UpdateAction(void)
 
     if (Player_Action() == ACT_IDLE) {
         if (P16(P_FLAGS2) & PF2_CROUCHED) set_act(ACT_CROUCH);
-        if (P16(P_FLAGS2) & PF2_AIRBORNE) sub_0604241E();
+        if (P16(P_FLAGS2) & PF2_AIRBORNE) Player_AirPose();
         if (P16(P_FLAGS2) & PF2_POSTURE4) set_act(ACT_POSTURE4_IDLE);
     }
     if (Player_Action() == ACT_IDLE &&

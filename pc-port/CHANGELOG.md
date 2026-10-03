@@ -3,6 +3,18 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.4.0 — 2026-10-03
+- Air selector ported (0x06041E48): air slash (B, +Up, diagonal), Down+B down-stab
+  (0x16, bounces off enemies -> 0x4D), air shuriken, Y/Z air attack 0x3C, double
+  jump/somersault near the apex (0x06, velY 8.0, SFX 0x120), wall-jump flip attack
+  (0x1A, C toward a wall), ceiling grab (Up against a ceiling -> posture 4, 0x40),
+  jump buffering while falling, air hurt/death.
+- Air pose from vertical speed (0x0604241E): rise 0x37/0x39, apex 0x35/0x38, fall 0x3A.
+- Crouch selector ported (0x06041B3C): crouch slash + combo (9 -> 0x32), crouch
+  shuriken, crouch guard, crawl (0x08), stand up, crouch hurt/death.
+- Somersault exec (0x06043C58) and crouch slash exec (0x06043BC8).
+- Flat-floor placeholder now lands into 0x3D and raises the "landed" flag (flags4 & 0x20).
+
 ## 0.3.0 — 2026-10-03
 - Physics ported: generic object integrator (0x060452A4: gravity 0x5000/frame,
   terminal fall -0x7A000, inverted gravity in posture 4), ground speed/facing

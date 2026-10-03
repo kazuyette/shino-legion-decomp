@@ -44,7 +44,7 @@ enum {
     ACT_AIR_SLASH = 0x0C, ACT_AIR_SLASH_UP = 0x0D, ACT_AIR_SHURIKEN = 0x0E,
     ACT_GUARD_WALK = 0x0F, ACT_CROUCH_GUARD_WALK = 0x10,
     ACT_HURT = 0x12, ACT_DEAD = 0x13, ACT_REACT_Q = 0x14, ACT_NINJUTSU = 0x15,
-    ACT_AIR_16_Q = 0x16, ACT_DOUBLEJUMP_Q = 0x17, ACT_AIR_FLIP_ATTACK_Q = 0x1A,
+    ACT_CRAWL = 0x08, ACT_AIR_16_Q = 0x16, ACT_DOUBLEJUMP_Q = 0x17, ACT_AIR_FLIP_ATTACK_Q = 0x1A,
     ACT_RUN_SLASH = 0x1B, ACT_IDLE_FIDGET1 = 0x1D, ACT_IDLE_FIDGET2 = 0x1E,
     ACT_RECOVER = 0x1F, ACT_GUARD_START = 0x20, ACT_GUARD = 0x21,
     ACT_LUNGE_Q = 0x23, ACT_SLASH_DIAG = 0x24, ACT_COMMAND_Q = 0x25,
@@ -72,6 +72,8 @@ void Player_Init(void);               /* PC-side */
 void Player_Tick(void);               /* 0x06040B72 */
 void Player_SelectPosture(void);      /* 0x06042910 */
 int  Player_SelectAction_Stand(void); /* 0x060411FC */
+int  Player_SelectAction_Crouch(void); /* 0x06041B3C */
+int  Player_SelectAction_Air(void);   /* 0x06041E48 */
 void Player_UpdateAction(void);       /* 0x06042E66 */
 /* physics.c */
 void Obj_Integrate(uint32_t obj);     /* 0x060452A4 */

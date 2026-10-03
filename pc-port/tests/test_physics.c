@@ -28,12 +28,14 @@ static int32_t jump_peak(int hold_frames)
         if (i > 10 && !(P16(P_FLAGS2) & PF2_AIRBORNE) && P32(P_Y) == floor_y) break;
     }
     assert(P32(P_Y) == floor_y);                       /* landed back */
-    assert(Player_Action() == ACT_IDLE);
+    assert(Player_Action() == ACT_LANDING_Q);          /* landing pose */
     for (int i = 0; i < 10; i++) tick(0);
+    assert(Player_Action() == ACT_IDLE);
     return floor_y - peak;
 }
 int main(void)
 {
+    setvbuf(stdout, NULL, _IONBF, 0);
     Player_Init();
     for (int i = 0; i < 5; i++) tick(0);               /* settle on the floor */
     int32_t x0 = P32(P_X);
@@ -50,6 +52,42 @@ int main(void)
     int32_t lo = jump_peak(0), hi = jump_peak(30);
     printf("jump peak: tap %.1f px, held %.1f px\n", lo / 65536.0, hi / 65536.0);
     assert(lo > 0 && hi > lo);                         /* variable jump height */
+
+    /* air poses + double jump near the apex */
+    int saw_rise = 0, saw_apex = 0, saw_fall = 0, dj = 0;
+    tick(PAD_C);
+    for (int i = 0; i < 120; i++) {
+        int a = Player_Action();
+        saw_rise |= a == 0x37; saw_apex |= a == 0x35; saw_fall |= a == 0x3A;
+        uint16_t in = PAD_C;
+        if (a == 0x35 && !dj) { tick(0); tick(PAD_C); dj = Player_Action() == ACT_WALLJUMP_Q; continue; }
+        tick(i < 30 ? in : 0);
+        if (!(P16(P_FLAGS2) & PF2_AIRBORNE) && i > 10) break;
+    }
+    if (!(saw_rise && saw_apex && saw_fall && dj)) printf("rise %d apex %d fall %d dj %d act %02X\n", saw_rise, saw_apex, saw_fall, dj, Player_Action());
+    assert(saw_rise && saw_apex && saw_fall && dj);
+    for (int i = 0; i < 10; i++) tick(0);
+
+    /* Down+B while falling = down stab (0x16) */
+    tick(PAD_C);
+    int stab = 0;
+    for (int i = 0; i < 120 && !stab; i++) {
+        if (P32(P_VELY) < 0 && (P16(P_FLAGS2) & PF2_AIRBORNE)) { tick(PAD_DOWN | PAD_B); stab = Player_Action() == ACT_AIR_16_Q; }
+        else tick(0);
+    }
+    assert(stab);
+    for (int i = 0; i < 120; i++) tick(0);
+
+    /* crouch: Down -> crouch, B -> crouch slash, release -> stand up */
+    tick(PAD_DOWN); for (int i = 0; i < 6; i++) tick(PAD_DOWN);
+    assert(Player_Action() == ACT_CROUCH);
+    tick(PAD_DOWN | PAD_B); assert(Player_Action() == ACT_CROUCH_SLASH);
+    for (int i = 0; i < 6; i++) tick(PAD_DOWN);
+    assert(Player_Action() == ACT_CROUCH_IDLE2);       /* crouch slash recovers */
+    for (int i = 0; i < 6; i++) tick(PAD_DOWN);
+    tick(0); assert(Player_Action() == ACT_CROUCH_TRANS);   /* release Down: stand up */
+    for (int i = 0; i < 6; i++) tick(0);
+    assert(Player_Action() == ACT_IDLE && !(P16(P_FLAGS2) & PF2_CROUCHED));
     printf("all physics tests OK\n");
     return 0;
 }

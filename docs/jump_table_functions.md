@@ -1806,3 +1806,19 @@ New semantics learned while porting:
   setup = pos - camera), `Player_DrawAfterimages` 0x06044280 (6 ghosts),
   `Player_ParseCommandInput` 0x06042B90 (motion input → 0x060EA432, e.g. 0x300 → action 0x25),
   `Player_CheckItemPickup` 0x0604592E (spawns obj type 5).
+
+## Air & crouch (2026-10-03, pc-port 0.4.0)
+
+- `Player_SelectAction_Air` 0x06041E48 and `Player_SelectAction_Crouch` 0x06041B3C ported.
+- `Player_AirPose` 0x0604241E: velY ≥ 0 → 0x37 (0x39 running); |velY| < 0x18000 → apex 0x35
+  (0x38); velY < 0 → fall 0x3A. Landing pose 0x3D is set by terrain collision (not traced yet).
+- Air moves: B → 0x0C (+Up 0x0D, Up+L/R 0x3C); Down+B while falling → 0x16 down-stab
+  (`Player_CheckBounce` → 0x4D); Y/Z → 0x3C; A → 0x0E; C near the apex (|velY| < 2.0, jumping
+  flag 0x1000) → double jump/somersault 0x06 (velY 0x80000, SFX 0x120, flags2 |= 0x80);
+  C while pushing into a wall (flags10 & 4/8 or +0x40 push) → 0x1A wall flip-attack;
+  Up against a ceiling (flags10 & 0x10) → posture 4 (flags2 |= 0x400), action 0x40.
+- Jump buffer: 0x060EA436 = air frames, 0x060EA438 = frame C was pressed while falling.
+- `Player_SomersaultExec` 0x06043C58: spin angle 0x060EA434 -= 10 (20 for 0x17) per frame.
+- `Player_CrouchSlashExec` 0x06043BC8: combo 9 → 0x32, else → 0x30.
+- Crouch: crawl 0x08 (L/R while crouched), stand up 0x27 when Down released (unless low
+  ceiling flags10 & 0x8000), crouch guard 0x2D/0x2E/0x2F, recoil 0x33, hurt/dead 0x29/0x2A.
