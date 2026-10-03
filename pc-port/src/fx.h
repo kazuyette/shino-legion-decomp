@@ -24,4 +24,14 @@ void Projectiles_Update(void);                                          /* 0x060
 int  Projectile_InBox(int32_t x0, int32_t y0, int32_t x1, int32_t y1);  /* 0x060612C2 */
 int  Projectile_Collide(int16_t dmg, uint16_t mode);                    /* 0x06060A7C */
 int  Atan8(int16_t x1, int16_t y1, int16_t x2, int16_t y2);             /* A.BIN 0x0600635A */
+
+/* Items dropped by enemies / objects (64 x 0x30 at 0x060F3FDC, current one 0x060F4BDC):
+ *  +0 kind (low byte: 0/1 shurikens +1/+5, 2 health, 3 full health, 4 1-up token,
+ *  5 magic, 6/7 magic type, 8 other), +2 timer (0x8000 = collected), +4/+8 X/Y,
+ *  +0xC animation, +0x2C spawn flag. Gone after 10 s (blinking from 7 s). */
+#define ITEMS     0x060F3FDCu
+#define ITEM_CUR  0x060F4BDCu
+void Items_Clear(void);                                                 /* 0x0606294E */
+int  Item_Drop(int16_t kind, int32_t x, int32_t y);                     /* 0x06062A14 */
+void Items_Update(void);                                                /* 0x06062894 */
 #endif

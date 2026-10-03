@@ -92,6 +92,7 @@ void Enemy_ResetTables(void)
 {
     Projectiles_Clear();                                            /* 0x06060904 */
     Effects_Clear();                                                /* 0x0606210A */
+    Items_Clear();                                                  /* 0x0606294E */
     W16(0x060EA32Cu, 0xFFFF); W16(0x060EA32Cu + 0x78, 0xFFFF);     /* Sho's shurikens */
 }
 
@@ -317,7 +318,7 @@ void Enemy_DeathBurst(uint32_t o)
         uint32_t d = 0x060A93E0u + i * 8;
         Obj_Spawn(kind, RS16(d) * 0x10000 + RS32(o + 8), RS16(d + 2) * 0x10000 + RS32(o + 0xC), RS16(d + 6), RS16(d + 4));
     }
-    if (R16(o + 0x18) != 0xFFFF) once("item drop 0x06062A14, param", R16(o + 0x18));
+    if (R16(o + 0x18) != 0xFFFF) Item_Drop(RS16(o + 0x18), RS32(o + 8), RS32(o + 0xC));   /* 0x06062A14 */
 }
 
 /* ------------------------------------------------ type 0x0001: soldier */

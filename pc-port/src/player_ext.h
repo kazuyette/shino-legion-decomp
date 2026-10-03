@@ -21,6 +21,6 @@ void     sub_06044280(void);
 void     sub_0604592E(void);
 void     sub_06046782(void);        /* anim-driven effect trigger */
 int      Obj_Spawn(int type, int32_t x, int32_t y, int flags, int param);    /* 0x060621B2 (effects) */
-void     sub_0602DDD2(void);
+int32_t  sub_0602DDD2(void);          /* A.BIN random: seed 0x0603A4B0 = seed*5 + 0x3573 */
 void     sub_06007D60(int sfx, int bank);  /* play banked sound */
 #endif

@@ -92,6 +92,7 @@ int main(int argc, char **argv)
             Obj_UpdateAll();                 /* SHINOBI 0x06060014 (frame 0x0606B8FA) */
             Projectiles_Update();            /* SHINOBI 0x0606088C */
             Effects_Update();                /* SHINOBI 0x06061FA0 */
+            Items_Update();                  /* SHINOBI 0x06062894 */
             if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {
                 printf("[player] action %02X -> %02X (pad %04X)\n",

@@ -51,7 +51,7 @@ int Stage_LoadObjects(void)
         int32_t x = (int16_t)R16(e + 2) * 0x10000 + 0x04000000;     /* layer px -> world */
         int32_t y = (int16_t)R16(e + 4) * 0x10000 + 0x04000000;
         if (type < 0x8000)
-            Obj_Register(type, x, y, (uint16_t)(Ram_Ptr(e + 6)[0] << 8), Ram_Ptr(e + 6)[1]);
+            Obj_Register(type, x, y, Ram_Ptr(e + 6)[0], (uint16_t)(int8_t)Ram_Ptr(e + 6)[1]);
         else
             Obj_Spawn(type - 0x8000, x, y, Ram_Ptr(e + 6)[0] << 8, (int8_t)Ram_Ptr(e + 7)[0]);
     }

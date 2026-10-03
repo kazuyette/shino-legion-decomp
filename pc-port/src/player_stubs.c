@@ -22,6 +22,5 @@ void     sub_06043A44(void)     { ONCE("06043A44"); }
 void     sub_06044280(void)     { ONCE("06044280"); }
 void     sub_0604592E(void)     { ONCE("0604592E"); }
 void     sub_06046782(void)     { ONCE("06046782"); }
-void     sub_0602DDD2(void)     { ONCE("0602DDD2"); }
 
 void     sub_06007D60(int sfx, int bank) { printf("[sfx] bank %d %03X\n", bank, sfx); }

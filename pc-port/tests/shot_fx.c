@@ -17,7 +17,7 @@ static void frame(uint16_t held, const char *shot)
 {
     fake[0].connected = 1; fake[0].raw = (uint16_t)~held;
     W16(0x060143EAu, R16(0x060143EAu) + 1u); W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);
-    Pad_Update(2); Scroll_Update(); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Obj_UpdateEnemies(); Obj_UpdateAll(); Projectiles_Update(); Effects_Update();
+    Pad_Update(2); Scroll_Update(); Game_LatchPad1(P16(P_FLAGS4)); Player_Tick(); Obj_UpdateEnemies(); Obj_UpdateAll(); Projectiles_Update(); Effects_Update(); Items_Update();
     Render_Clear(); Render_DrawFrame();
     if (shot) {
         SDL_Renderer *r = SDL_GetRenderer(win);

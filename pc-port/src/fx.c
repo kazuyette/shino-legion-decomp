@@ -9,6 +9,7 @@
 #include "collision.h"
 #include "fixmath.h"
 #include "player_ext.h"
+#include "render.h"
 #include <stdio.h>
 
 #define PL     0x060EA2B4u
@@ -466,4 +467,157 @@ void sub_06042D80(int32_t dx, int32_t dy, int angle, int32_t speed)
     if (RS16(0x0602526Au) == 8 && (R16(PL + 0x10) & 0x2000))
         W32(proj_addr(s) + 0x18, (uint32_t)(RS32(proj_addr(s) + 0x18) + RS32(PL + 0x38)));
     W32(0x060252D4u, 0);
+}
+
+/* ------------------------------------------------------------------- items */
+
+int32_t sub_0602DDD2(void)
+{
+    int32_t v = RS32(0x0603A4B0u) * 5 + 0x3573;
+    W32(0x0603A4B0u, (uint32_t)v);
+    return v;
+}
+
+void Items_Clear(void)
+{
+    for (uint32_t i = 0; i < 64; i++) W16(ITEMS + i * 0x30, 0xFFFF);
+}
+
+int Item_Drop(int16_t kind, int32_t x, int32_t y)
+{
+    if (R16(0x060252BEu) != 0 && kind == 5)                             /* already have magic */
+        kind = RS16(0x060AD2F4u + 2u * ((uint32_t)sub_0602DDD2() & 3));
+    int s;
+    for (s = 0; s < 64; s++) if (R16(ITEMS + (uint32_t)s * 0x30) == 0xFFFF) break;   /* 0x060629D4 */
+    if (s == 64) return -1;
+    uint32_t it = ITEMS + (uint32_t)(int16_t)(s * 0x30);
+    W16(it, (uint32_t)kind);
+    W32(it + 4, (uint32_t)x);
+    W32(it + 8, (uint32_t)y);
+    W16(it + 2, 0);
+    W16(it + 0x2C, 1);
+    Anim_Reset(it + 0xC);
+    return s;
+}
+
+static int16_t add_clamped(uint32_t a, int16_t n, int16_t max)       /* 0x06062AA4 style */
+{
+    int16_t old = RS16(a);
+    W16(a, (uint32_t)(old + n));
+    if (RS16(a) > max) W16(a, (uint32_t)max);
+    if (RS16(a) < 0) W16(a, 0);
+    return (int16_t)(RS16(a) - old);
+}
+
+static void Player_Heal(int16_t n)                                     /* 0x06062AD0 */
+{
+    W16(PL + 0x16, (uint32_t)(RS16(PL + 0x16) + n));
+    if (RS16(PL + 0x16) > RS16(0x060252B0u)) W16(PL + 0x16, R16(0x060252B0u));
+}
+
+static void OneUp_Token(int16_t n)                                     /* 0x06062BC6 */
+{
+    W16(0x060252B2u, (uint32_t)(RS16(0x060252B2u) + n));
+    if (RS16(0x060252B2u) >= 10) {
+        Lives_Add(1);
+        W16(0x060252B2u, (uint32_t)(RS16(0x060252B2u) - 10));
+        sub_06007CDE(0x107);
+    }
+}
+
+static void Item_Apply(uint16_t kind)                                  /* 0x06062BFC */
+{
+    int sfx = 0x106;
+    switch (kind & 0xFF) {
+    case 0: add_clamped(0x060252B6u, 1, 999); Score_Add(100); break;
+    case 1: add_clamped(0x060252B6u, 5, 999); Score_Add(200); break;
+    case 2: Player_Heal(RS16(0x060AD2FCu + 2u * (uint32_t)RS16(0x060252C4u))); Score_Add(100); sfx = 0x108; break;
+    case 3: Player_Heal(RS16(0x060252B0u)); Score_Add(200); sfx = 0x108; break;
+    case 4: OneUp_Token(1); Score_Add(200); break;
+    case 5: W16(0x060252BEu, 1); Score_Add(500); break;
+    case 6: W16(0x060252BAu, (R16(0x060252BAu) & 0xFFF0) | 0x2004); Score_Add(500); break;
+    case 7: W16(0x060252BAu, (R16(0x060252BAu) & 0xFFF0) | 0x2000); Score_Add(500); break;
+    default: return;
+    }
+    sub_06007CDE(sfx);
+}
+
+static void Item_Update(uint32_t it)                                   /* 0x06062CFC */
+{
+    if (R16(it + 0x2C) & 1) {
+        Anim_Start(it + 0xC, 0x060AD302u, 0x060D8040u, 0x4B0, RS16(0x060AE2DAu + 2u * (R16(it) & 0xFF)));
+        AND16(it + 0x2C, 0xFFFE);
+    }
+    int show = 1;
+    if (!(R16(it + 2) & 0x8000)) {
+        if (RS16(0x0602526Au) == 8) {
+            int32_t d = RS32(CAM_X) - RS32(it + 4) + 0x00A00000;
+            if (d < 0) d = RS32(it + 4) - RS32(CAM_X) + (int32_t)0xFF600000;
+            if (d > 0x01000000) return;
+        }
+        if (!FROZEN) W16(it + 2, R16(it + 2) + 1);
+        if (RS16(0x0602526Au) == 8) AND16(it + 2, 0x3F);
+        switch ((int32_t)R16(it + 2) / 60) {
+        case 7:  if (!(R16(it + 2) & 2)) show = 0; break;
+        case 8:  if (!(R16(it + 2) & 4)) show = 0; break;
+        case 9:  if (!(R16(it + 2) & 8)) show = 0; break;
+        case 10: W16(it, 0xFFFF); return;
+        }
+        int32_t x = RS32(it + 4), y = RS32(it + 8);
+        if (!(R16(0x060252BAu) & 0xA000) && !(R16(PL + 2) & 8)) {
+            int32_t dx = iabs(x - RS32(PL + 8)), dy = y - RS32(PL + 0xC);
+            if (dx <= 0x00180000 && dy <= 0x00180000 && dy >= (int32_t)0xFFC00000) {   /* picked up */
+                W16(it + 2, 0x8000);
+                Item_Apply(R16(it));
+                W32(it + 4, (uint32_t)x); W32(it + 8, (uint32_t)y);
+            }
+        }
+    } else {                                                            /* rising after pickup */
+        W32(it + 8, (uint32_t)(RS32(it + 8) - 0x10000));
+        W16(it + 2, R16(it + 2) + 1);
+        if ((R16(it + 2) & 0x7FFF) > 0x20) { W16(it, 0xFFFF); return; }
+        if ((R16(it + 2) & 0x7FFF) > 0x18 && (R16(it + 2) & 2)) show = 0;
+    }
+    W16(SPR + 0x10, 0x0200);
+    W32(SPR + 0x18, 0x81);
+    W16(SPR + 0x0A, (uint32_t)(RS16(0x060AE2CAu + 2u * (R16(it) & 0xFF)) + 0x70));
+    W16(SPR + 0x0C, 0);
+    W16(SPR + 0x0E, 0);
+    AND16(it + 0xC, 0xBFFF);
+    if (!show) OR16(it + 0xC, 0x4000);
+    W16(SPR + 2, (uint32_t)((RS32(it + 4) - RS32(CAM_X)) >> 16));
+    W16(SPR + 4, (uint32_t)((RS32(it + 8) - RS32(CAM_Y)) >> 16));
+    Anim_Tick(it + 0xC);
+}
+
+/* 0x06063350 / 0x06063428: animated common characters (one of three updated per frame). */
+static void char_frame(uint16_t chr, uint32_t src)
+{
+    uint32_t dst = VDP1_VRAM_BASE + (uint32_t)R16(CHAR_TABLE + (uint32_t)(int16_t)(chr * 10)) * 8;
+    for (uint32_t i = 0; i < 9 * 32; i += 2) W16(dst + i, R16(src + i));
+    Render_InvalidateVram(dst, 9 * 32);
+}
+static void Common_AnimateChars(void)
+{
+    switch (R16(0x060143EAu) & 3) {
+    case 0: char_frame(0x4EE, 0x060D3B4Cu + R32(0x060F4BE8u) * 0x120);
+            W32(0x060F4BE8u, R32(0x060F4BE8u) + 1 > 0x1D ? 0 : R32(0x060F4BE8u) + 1); break;
+    case 1: char_frame(0x4DF, 0x060D5D0Cu + R32(0x060F4BE4u) * 0x120);
+            W32(0x060F4BE4u, R32(0x060F4BE4u) + 1 > 0x1D ? 0 : R32(0x060F4BE4u) + 1); break;
+    case 2: char_frame(0x4DE, 0x060D300Cu + R32(0x060F4BECu) * 0x120);
+            W32(0x060F4BECu, R32(0x060F4BECu) + 1 > 9 ? 0 : R32(0x060F4BECu) + 1); break;
+    }
+}
+
+void Items_Update(void)
+{
+    Common_AnimateChars();
+    for (uint32_t i = 0; i < 64; i++) {
+        uint32_t it = ITEMS + (uint32_t)(int16_t)(i * 0x30);
+        W32(ITEM_CUR, it);
+        if (R16(it) == 0xFFFF) continue;
+        uint16_t k = R16(it) & 0xFF;
+        if (k <= 7) Item_Update(it);
+        else if (k == 8) once("item kind", k);
+    }
 }
