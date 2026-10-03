@@ -5,6 +5,7 @@
 
 uint8_t g_hwram[HWRAM_SIZE];
 uint8_t g_lwram[LWRAM_SIZE];
+uint8_t g_vdp1vram[VDP1_VRAM_SIZE];
 uint8_t g_vdp2vram[VDP2_VRAM_SIZE];
 
 size_t Ram_LoadImage(const char *path, uint32_t addr)

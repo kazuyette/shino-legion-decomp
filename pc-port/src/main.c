@@ -9,6 +9,7 @@
 #include "ram.h"
 #include "version.h"
 #include "stage.h"
+#include "objects.h"
 #include "camera.h"
 
 int main(int argc, char **argv)
@@ -74,6 +75,10 @@ int main(int argc, char **argv)
             Pad_Clear();
             Stage_ResetAndLoadDirector();
         }
+        W16(0x060143EAu, R16(0x060143EAu) + 1u);   /* frame counters (A.BIN vblank / SHINOBI 0x06066958) */
+        W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);
+        /* SHINOBI 0x06040B44 (stage tick): Scroll_Update, ..., Game_LatchPad1, ..., Player_Tick */
+        Scroll_Update();                     /* SHINOBI 0x060443D8 */
         Game_LatchPad1(P16(P_FLAGS4));       /* SHINOBI 0x06040CAC */
         {
             static int last_act = -1, frames_in_act = 0;
@@ -81,7 +86,7 @@ int main(int argc, char **argv)
              * "animation finished" after 20 frames so the state machine moves. */
             if (!have_game_data && frames_in_act >= 20) OR16(PLAYER + P_ANIM, PANIM_FINISHED);
             Player_Tick();                   /* SHINOBI 0x06040B72 (draws via Player_Draw) */
-            Scroll_Update();                 /* SHINOBI 0x060443D8 */
+            Obj_UpdateAll();                 /* SHINOBI 0x06060014 (frame 0x0606B8FA) */
             if (!have_game_data) AND16(PLAYER + P_ANIM, (uint16_t)~PANIM_FINISHED);
             if (Player_Action() != last_act) {
                 printf("[player] action %02X -> %02X (pad %04X)\n",

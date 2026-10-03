@@ -903,7 +903,7 @@ void Player_Init(void)
     W16(G_HP_MAX, 0x10);
     W16(G_SHURIKENS, 20);
     W16(0x060EA426u, 0xFFFF);                                   /* force first palette load */
-    W16(0x060EA422u, 0xFFFF); W16(0x060EA424u, 0xFFFF);          /* streamed char slots empty */
+    Player_InitChars();                                         /* 0x06044A78: streamed char slots */
     PW16(P_PREVACT, 0xFFFF);                                    /* start the idle anim */
     if (R32(0x0601440Cu) == 0) W32(0x0601440Cu, 0x00024000);   /* walk speed if A.BIN not loaded */
     PW32(P_X, 0x00A00000);                                      /* overwritten by Stage_SpawnPlayer */

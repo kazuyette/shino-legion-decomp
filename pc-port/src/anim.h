@@ -17,6 +17,7 @@
  *  EFFF = empty frame (no parts). */
 #define ANIM_SPRITE 0x060250ACu     /* shared sprite command struct */
 
+void Anim_Reset(uint32_t st);                                                               /* 0x06006464 */
 void Anim_Start(uint32_t st, uint32_t defTbl, uint32_t scriptTbl, int charBase, int anim);  /* 0x0600648C */
 void Anim_Tick(uint32_t st);                                                               /* 0x060064C0 */
 #endif

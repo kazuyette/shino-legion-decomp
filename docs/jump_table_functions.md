@@ -1908,3 +1908,36 @@ New semantics learned while porting:
   (0x1000 → 0x06049F0C, 0x1001 → 0x0604A67C, 0x1002 → 0x0604BF3C, 0x1003 → 0x0604C7C0,
   0x1004 → 0x0604B9F8 ≈1.3 KB: platform float/ride, uses 0x06060268/0x060606D0/0x0606061C).
 - `STAGEx_y.SPR` = raw enemy/platform sprite graphics → VDP1 VRAM 0x25C04740 (loader 0x0606BB0C).
+
+## Object handlers & VDP1 characters (2026-10-03, pc-port 0.7.0)
+
+- Frame (SHINOBI 0x0606B8FA): 0x06066958 (pause / frame counter 0x060F4CCC), 0x06061A10,
+  stage tick 0x06040B44 {Scroll_Update, 0x06046E54, Game_LatchPad1, Player_UpdatePalette,
+  Player_Tick, 0x060465B8, 0x060487FC, 0x06046190}, then enemies 0x06048954 (types
+  < 0x1000, activation via 0x06048D00), `Obj_UpdateAll` 0x06060014, 0x0606088C, 0x06061FA0,
+  0x06062894, 0x0606BCD0, 0x06063554.
+- `Obj_UpdateAll`: current object ptr 0x060F21F0, slot 0x060F21F4; for types
+  0x1000-0x1FFF with a handler: unless frozen, +0x24 = +0x10, +0x10 &= ~0x1080.
+- Ghidra: `CreateObjectHandlers.java` creates ObjHandler_1000..1049 (74 entries).
+- Contact helpers: `Obj_Push` 0x0606061C accumulates into +0x40/+0x44 (opposite pushes
+  -> +0x10 |= 0x400, crushed); `Rect_Overlap` 0x06048E84; `Rect_Intersect` 0x060606D0
+  (smallest one-axis separation); `Obj_PlayerContact` 0x06060268(mode): player box
+  w*8 × h*8 (+0x1E/+0x20) vs object hitbox (*(obj+0x68) = anim hitbox {?, l, t, r, b}),
+  mode 0x8000/2 mirror, 1 one-way, 4 stomp, 8 no push; returns 1 touch, 2 on top
+  (player +0x10 |= 0x2000 -> grounded in Obj_CollideMap), 3 stomp. `Obj_CarryContact`
+  0x0604BE64(self, other, w, h).
+- `ObjHandler_1004` 0x0604B9F8 floating platform: Anim_Start(+0x58, 0x060A9400,
+  0x060D1B18, chars 0x10, anim 3); +0x12 & 0x10 -> spawns an enemy (type 1) on it
+  (slot in +0x1E); idle when |x − camX − 160| > 384; bob amplitude +0x48 (4 px) and tilt
+  +0x4C (3) restarted on landing/leaving, damped ×0.625 per 64-frame cycle; idle swell
+  from cos(frame counter); sinks 3 px and tilts toward Sho (FixDiv(dx, 48 px)); carries
+  Sho via player +0x3C. Sprite banks 0x2E (+ 0x2F second part if +0x12 & 1), rotation +0x56.
+- Math: Sin8 0x0600621C (quarter table A.BIN 0x0600EDF8, 16.16), Cos8 0x06006286,
+  FixMul 0x0602DD54, FixDiv 0x0602DD68 (DIVU).
+- VDP1 chars: `Char_Register` 0x06006DE4(id, w, h, mode, off): CMDSRCA = (off + 0x4740)/8,
+  mode = CMDPMOD colour bits (0 4bpp bank, 0x20 8bpp, 0x28 RGB). `STAGEx_y.SPR` = VDP1 VRAM
+  image of 0x25C04740..end (0x7B8C0 bytes). Stage chars 0x10+: 0x06060108, table
+  0x060D2E88[stage] (u32 n, {u16, u16 size/32, u16 mode, u8 w/8, u8 h}) from offset
+  0x8000. Sho: 0x06044A78 two 128×128 8bpp slots at offsets 0 / 0x4000 (0x060EA2AC),
+  0x06044AF8 decompresses SHOU.CHR frames into them; common chars 0x4B0+ at 0x72000
+  (0x06040A90, table 0x060C9794).

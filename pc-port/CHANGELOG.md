@@ -3,6 +3,23 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.7.0 — 2026-10-03
+- Stage objects come alive: the floating platforms of 1-1 (type 0x1004) bob on the
+  water, sink and tilt under Sho and carry him (docs/screenshots/v0.7.0_platforms.png).
+- Ported: object update loop 0x06060014 (handler table 0x060AC820), platform handler
+  0x0604B9F8, player/object contact 0x06060268, box intersection 0x060606D0 /
+  0x06048E84, push accumulator 0x0606061C (also used by the screen clamp now),
+  carried-object contact 0x0604BE64, anim reset 0x06006464, sine/cosine 0x0600621C /
+  0x06006286, FixMul 0x0602DD54, FixDiv 0x0602DD68.
+- Emulated VDP1 VRAM (0x25C00000): STAGEx_y.SPR is loaded at 0x25C04740 like the
+  original, stage sprite characters 0x10+ registered by 0x06060108; Char_Register
+  0x06006DE4 is now exact (VRAM offsets) and Sho's frames are decompressed into his
+  two VRAM slots (0x06044A78 / 0x06044AF8, with the post-hit blink).
+- Renderer decodes VDP1 colour modes (4bpp bank/LUT, 64/128/256 colours, RGB).
+- Frame order follows the original (Scroll_Update -> pad latch -> Player_Tick ->
+  objects); frame counters 0x060143EA / 0x060F4CCC advance.
+- Other object types (0x1000-0x1003, 0x1005, 0x1006, enemies) are placed but not run yet.
+
 ## 0.6.1 — 2026-10-03
 - Backgrounds fixed (docs/screenshots/v0.6.1_stage1_1.png):
   - per-layer colour RAM offsets (VDP2 CRAOFA, 0x06005EAC(0,1,2,3)): the "sunset"

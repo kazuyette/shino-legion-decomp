@@ -4,19 +4,21 @@
 #include "ram.h"
 #include "render.h"
 #include "player.h"
+#include "lz.h"
 
 #define SPR16(spr, f) RS16((spr) + 2u * (f))
 
-void Char_Register(int id, int w, int h, int mode, uint32_t src)
+/* 0x06006DE4: `off` = VDP1 VRAM offset relative to the character area 0x25C04740. */
+void Char_Register(int id, int w, int h, int mode, uint32_t off)
 {
-    uint32_t e = CHAR_TABLE + (uint32_t)id * 10;
-    W16(e + 0, src >> 16);                       /* PC: source address hi */
-    W16(e + 2, ((uint32_t)(w << 5) & 0x3F00) + (uint32_t)h);
+    uint32_t e = CHAR_TABLE + (uint32_t)(int16_t)id * 10;
+    W16(e + 0, (off + 0x4740u) >> 3);            /* CMDSRCA (VRAM address / 8) */
+    W16(e + 2, ((uint32_t)(w << 5) & 0xFF00) + (uint32_t)(h & 0xFFFF));
     W16(e + 4, (uint32_t)mode);
-    W16(e + 6, src & 0xFFFF);                    /* PC: source address lo */
-    int sz = w * h;
-    if (mode == 0x28) sz *= 2;
-    if (mode < 9) sz >>= 1;
+    int sz = (uint16_t)h * (uint16_t)w;
+    if ((mode & 0xFFFF) == 0x28) sz <<= 1;       /* RGB: 2 bytes per dot */
+    if ((mode & 0xFFFF) <= 8) sz >>= 1;          /* 4bpp: 2 dots per byte */
+    W16(e + 6, 0);
     W16(e + 8, (uint32_t)((sz + 0x1F) >> 5));
 }
 
@@ -24,9 +26,9 @@ void Sprite_Draw(uint32_t spr)
 {
     uint16_t fl = R16(spr + 0x10);
     int16_t chr = SPR16(spr, 0);
-    if (fl & 0x0004) return;                     /* pre-transformed quad path: not used by the player */
+    if (fl & 0x0004) return;                     /* pre-transformed quad path: not ported yet */
     uint32_t e = CHAR_TABLE + (uint32_t)chr * 10;
-    int w = (R16(e + 2) >> 5) & 0xFFF8, h = R16(e + 2) & 0xFF;
+    int w = (R16(e + 2) >> 5) & 0x7F8, h = R16(e + 2) & 0xFF;
     int sx = SPR16(spr, 1), sy = SPR16(spr, 2), ox = SPR16(spr, 3), oy = SPR16(spr, 4);
     int flipH = 0, flipV = 0, x0, y0;
     if (fl & 0x8000) { flipH = 1; x0 = sx - ox - w; } else x0 = sx + ox;
@@ -38,10 +40,11 @@ void Sprite_Draw(uint32_t spr)
                   : (uint16_t)((R16(spr + 0x0E) & 0x1F) << 11 | ((R16(spr + 0x0C) + 1u) & 3) << 13 |
                                (R16(spr + 0x0A) & 0xFFF) << 4);
     RenderSprite rs;
-    rs.src = (uint32_t)R16(e + 0) << 16 | R16(e + 6);
+    rs.src = VDP1_VRAM_BASE + ((uint32_t)R16(e + 0) << 3);
+    rs.mode = R16(e + 4);
+    rs.colr = colr;
     rs.w = w; rs.h = h; rs.x = x0; rs.y = y0;
     rs.flipH = flipH; rs.flipV = flipV;
-    rs.palette = SHADOW_CRAM + 2u * (colr & 0x0700);
     rs.rotate = (fl & 0x0400) != 0;
     rs.angle = SPR16(spr, 10);
     rs.cx = sx; rs.cy = sy;
@@ -50,8 +53,21 @@ void Sprite_Draw(uint32_t spr)
 
 #define SHOU_FRAMES  0x060CB020u   /* {u32 offset in SHOU.CHR, s16 w, s16 h} */
 #define SHOU_BASE    0x00200000u   /* SHOU.CHR loaded in LWRAM */
+#define SLOT_OFFS    0x060EA2ACu   /* VRAM offset of slot 0/1 (u32) */
 #define SLOT_CHARS   0x060EA422u   /* char currently in slot 0/1 */
 #define SLOT_CUR     0x060EA420u
+
+/* 0x06044A78: the two 128x128 8bpp slots Sho's frames are streamed into. */
+void Player_InitChars(void)
+{
+    W32(SLOT_OFFS, 0);
+    Char_Register(1, 0x80, 0x80, 0x20, R32(SLOT_OFFS));
+    W32(SLOT_OFFS + 4, 0x4000);
+    Char_Register(2, 0x80, 0x80, 0x20, R32(SLOT_OFFS + 4));
+    W16(SLOT_CHARS, 0xFFFF); W16(SLOT_CHARS + 2, 0xFFFF);
+    W16(0x060EA426u, 0xFFFF);
+    Player_UpdatePalette();
+}
 
 void Player_SubmitSprite(uint32_t spr)
 {
@@ -59,15 +75,25 @@ void Player_SubmitSprite(uint32_t spr)
     unsigned slot = 0xFFFF;
     if (R16(SLOT_CHARS) == c) slot = 0;
     if (R16(SLOT_CHARS + 2) == c) slot = 1;
-    if (slot == 0xFFFF) {                        /* not resident: upload to the other slot */
+    uint32_t f = SHOU_FRAMES + (uint32_t)c * 8;
+    if (slot == 0xFFFF) {                        /* not resident: decompress into the other slot */
         W16(SLOT_CUR, (R16(SLOT_CUR) + 1) & 1);
+        uint32_t dst = VDP1_VRAM_BASE + 0x4740u + R32(SLOT_OFFS + 4u * R16(SLOT_CUR));
+        uint32_t src = SHOU_BASE + R32(f);
+        size_t n = Lz_Decompress(Ram_Ptr(src), 0x00100000u - (src & 0xFFFFFu), Ram_Ptr(dst), 0x4000);
+        Render_InvalidateVram(dst, n ? n : 0x4000);
         W16(SLOT_CHARS + 2u * R16(SLOT_CUR), c);
     } else {
         W16(SLOT_CUR, slot);
     }
     uint16_t cur = R16(SLOT_CUR);
-    uint32_t f = SHOU_FRAMES + (uint32_t)c * 8;
-    Char_Register(cur + 1, RS16(f + 4), RS16(f + 6), 0x20, SHOU_BASE + R32(f));
+    Char_Register(cur + 1, RS16(f + 4), RS16(f + 6), 0x20, R32(SLOT_OFFS + 4u * cur));
+    uint32_t hz = R32(0x060EA41Cu);              /* post-hit invulnerability: blink */
+    if (R16(hz)) {
+        if (!(R16(0x0602529Eu) & 0x8000)) W16(hz, R16(hz) - 1);
+        if (R16(0x060143EAu) & 1) return;
+    }
+    if (R16(0x060EA2B8u) & 0x80) return;         /* flags4 & 0x80: hidden */
     W16(spr, cur + 1u);
     Sprite_Draw(spr);
 }

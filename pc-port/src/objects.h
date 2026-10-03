@@ -13,6 +13,8 @@
 #define OBJ_SIZE   0x78u
 #define OBJ_SLOTS  0xC0
 #define OBJ_FREE   0xFFFF
+#define OBJ_CUR     0x060F21F0u   /* u32: object being updated */
+#define OBJ_CUR_IDX 0x060F21F4u   /* u16: its slot */
 
 void Obj_ClearSlot(int slot);                                         /* 0x06048A64 */
 int  Obj_FindFree(void);                                              /* 0x06048B28 */
@@ -20,4 +22,5 @@ int  Obj_Register(uint16_t type, int32_t x, int32_t y, uint16_t flags, uint16_t 
 int  Stage_LoadObjects(void);                                         /* 0x06048BD0 */
 void Obj_ClearAll(void);
 int  Obj_Count(void);
+void Obj_UpdateAll(void);                                             /* 0x06060014 */
 #endif

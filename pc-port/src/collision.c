@@ -1,4 +1,5 @@
 #include "collision.h"
+#include "objhandlers.h"
 #include "ram.h"
 
 static uint32_t layer_desc(int16_t layer) { return LAYER_DESC + (uint32_t)(((uint8_t)layer * 0x30) & 0xFF); }
@@ -183,26 +184,19 @@ void Obj_CollideMap(uint32_t o, int w, int h)
     }
 }
 
-/* 0x0606061C: move an object (dy > 0 = up, like velY). */
-static void obj_move(uint32_t o, int32_t dx, int32_t dy)
-{
-    W32(o + 8, (uint32_t)(RS32(o + 8) + dx));
-    W32(o + 0xC, (uint32_t)(RS32(o + 0xC) - dy));
-}
-
 /* 0x060451C8: keep the player inside the screen margins (0x060EA618+0x10..0x16). */
 void Player_ClampToScreen(void)
 {
     const uint32_t c = 0x060EA618u, P = 0x060EA2B4u;
     int32_t d;
     if (RS16(c + 0x16) != 0x7FFF && (d = RS16(c + 0x16) * 0x10000 + RS32(0x060252A0u) - RS32(P + 8)) > 0)
-        obj_move(P, d, 0);
+        Obj_Push(P, d, 0);
     if (RS16(c + 0x14) != 0x7FFF && (d = RS16(c + 0x14) * 0x10000 + RS32(0x060252A0u) - RS32(P + 8)) < 0)
-        obj_move(P, d, 0);
+        Obj_Push(P, d, 0);
     if (RS16(c + 0x12) != 0x7FFF && (d = RS32(P + 0xC) - RS32(0x060252A4u) + RS16(c + 0x12) * -0x10000) > 0)
-        obj_move(P, 0, d);
+        Obj_Push(P, 0, d);
     if (RS16(c + 0x10) != 0x7FFF && (d = RS32(P + 0xC) - RS32(0x060252A4u) + RS16(c + 0x10) * -0x10000) < 0) {
-        obj_move(P, 0, d);
+        Obj_Push(P, 0, d);
         W32(P + 0x34, 0xFFFFFFFFu);
     }
 }

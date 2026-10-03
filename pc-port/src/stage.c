@@ -6,6 +6,7 @@
 #include "camera.h"
 #include "player.h"
 #include "objects.h"
+#include "render.h"
 #include <stdio.h>
 
 /* VDP2 register shadow (A.BIN): +4 = CRAOFA, NBGn colour RAM offset in bits 4n..4n+2. */
@@ -55,6 +56,21 @@ static void stage_palettes(void)
     W16(0x060250A8u, 1);
 }
 
+/* 0x06060108: register the stage sprite characters 0x10+ (table 0x060D2E88[stage]:
+ * u32 count, then {u16 ?, u16 size/32, u16 colour mode, u8 w/8, u8 h}), packed in
+ * VDP1 VRAM from offset 0x8000 of the character area (= offset 0x8000 of the SPR file). */
+void Stage_RegisterSpriteChars(void)
+{
+    uint32_t t = R32(0x060D2E88u + 4u * R16(G_STAGE_INDEX));
+    if (!t) return;
+    uint32_t n = R32(t), off = 0x8000;
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t r = t + 4 + i * 8;
+        Char_Register((int)(i + 16), Ram_Ptr(r + 6)[0] * 8, Ram_Ptr(r + 7)[0], RS16(r + 4), off);
+        off += (uint32_t)R16(r + 2) * 32;
+    }
+}
+
 int Stage_Load(const char *dir, int idx)
 {
     char p[512];
@@ -65,6 +81,10 @@ int Stage_Load(const char *dir, int idx)
     snprintf(p, sizeof p, "%s/%s.MAP", dir, kStageNames[idx]);
     if (!Ram_LoadCompressed(p, MAP_ADDR, 0x20000)) { printf("[stage] missing %s\n", p); return 0; }
     W32(0x060EA650u, MAP_ADDR);
+    snprintf(p, sizeof p, "%s/%s.SPR", dir, kStageNames[idx]);       /* loader 0x0606BB0C */
+    if (!Ram_LoadCompressed(p, VDP1_VRAM_BASE + 0x4740u, VDP1_VRAM_SIZE - 0x4740u))
+        printf("[stage] missing %s (no enemy/platform graphics)\n", p);
+    Render_InvalidateVram(VDP1_VRAM_BASE, VDP1_VRAM_SIZE);
 
     /* 0x0604861C (common part) */
     uint32_t m = MAP_ADDR;
@@ -86,6 +106,7 @@ int Stage_Load(const char *dir, int idx)
     if (idx == 12) stage1_1_init();
     else printf("[stage] per-stage init for index %d not ported yet\n", idx);
     stage_palettes();
+    Stage_RegisterSpriteChars();                           /* 0x06060108 */
     Obj_ClearAll();
     int n = Stage_LoadObjects();                           /* 0x06048BD0 */
     printf("[stage] %s loaded, %d objects placed (%d active slots)\n", kStageNames[idx], n, Obj_Count());

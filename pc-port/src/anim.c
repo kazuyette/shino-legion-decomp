@@ -7,6 +7,16 @@
 #define S16(i)      R16(st + 2u * (i))
 #define SW16(i, v)  W16(st + 2u * (i), (uint32_t)(v))
 
+/* 0x06006464 */
+void Anim_Reset(uint32_t st)
+{
+    SW16(12, 0xFFFF);
+    SW16(0, 0x8000);
+    SW16(10, 0);
+    W32(st + 12, 0); W32(st + 16, 0); W32(st + 4, 0); W32(st + 8, 0);
+    SW16(13, 0); SW16(1, 0); SW16(14, 0); SW16(11, 0);
+}
+
 /* 0x0600648C */
 void Anim_Start(uint32_t st, uint32_t defTbl, uint32_t scriptTbl, int charBase, int anim)
 {

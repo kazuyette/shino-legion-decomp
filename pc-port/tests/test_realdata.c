@@ -9,6 +9,7 @@
 #include "render.h"
 #include "stage.h"
 #include "camera.h"
+#include "sprite.h"
 extern RenderSprite g_lastSprite; extern int g_spriteCount;
 static InputPort fake[2];
 const InputPort *Input_GetPort(int p) { return &fake[p]; }
@@ -38,10 +39,16 @@ int main(int argc, char **argv)
            P32(P_X) / 65536.0, P32(P_Y) / 65536.0, P32(P_Y) / 65536.0 - 1024, fell ? "yes" : "no");
     assert(!(P16(P_FLAGS2) & 0x4000));                             /* standing on the map */
     assert(g_spriteCount > 0);
-    printf("idle sprite: %dx%d at %d,%d src %08X pal %08X\n", g_lastSprite.w, g_lastSprite.h,
-           g_lastSprite.x, g_lastSprite.y, (unsigned)g_lastSprite.src, (unsigned)g_lastSprite.palette);
-    assert(g_lastSprite.w > 0 && g_lastSprite.h > 0 && (g_lastSprite.src >> 20) == 2);
-    assert(R16(g_lastSprite.palette + 2) != 0);                    /* palette loaded */
+    printf("idle sprite: %dx%d at %d,%d src %08X mode %02X colr %04X\n", g_lastSprite.w, g_lastSprite.h,
+           g_lastSprite.x, g_lastSprite.y, (unsigned)g_lastSprite.src, g_lastSprite.mode, g_lastSprite.colr);
+    assert(g_lastSprite.w > 0 && g_lastSprite.h > 0 && (g_lastSprite.src & 0xFFF80000u) == VDP1_VRAM_BASE);
+    assert(g_lastSprite.mode == 0x20);
+    assert(R16(SHADOW_CRAM + 2u * ((g_lastSprite.colr & 0x700u) + 2)) != 0);   /* palette loaded */
+    {   /* the frame was decompressed into VRAM */
+        int nz = 0;
+        for (int i = 0; i < g_lastSprite.w * g_lastSprite.h; i++) nz += Ram_Ptr(g_lastSprite.src)[i] != 0;
+        assert(nz > 100);
+    }
     int n = run_until(PAD_B, ACT_SLASH, 3);                        assert(n > 0);
     n = run_until(0, ACT_RECOVER, 120); printf("slash anim ends after %d frames\n", n); assert(n > 0);
     n = run_until(0, ACT_IDLE, 120);    printf("recover -> idle after %d frames\n", n); assert(n > 0);

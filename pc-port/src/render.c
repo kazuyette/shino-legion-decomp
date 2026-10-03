@@ -1,7 +1,6 @@
 #include <SDL2/SDL.h>
 #include "render.h"
 #include "ram.h"
-#include "lz.h"
 #include "sprite.h"
 #include "stage.h"
 #include <stdio.h>
@@ -13,9 +12,9 @@ static SDL_Renderer *s_renderer = NULL;
 static RenderSprite s_queue[MAX_QUEUE];
 static int s_queued;
 
-/* Texture cache keyed by (src, palette). */
+/* Texture cache keyed by (src, mode, colr, size). */
 #define CACHE_SIZE 1024
-typedef struct { uint32_t src, pal; SDL_Texture *tex; } CacheEntry;
+typedef struct { uint32_t src, key; int w, h; SDL_Texture *tex; } CacheEntry;
 static CacheEntry s_cache[CACHE_SIZE];
 
 int Render_Init(SDL_Window *window)
@@ -109,35 +108,90 @@ static void draw_layer(int l)
         }
 }
 
+static uint32_t sprite_key(const RenderSprite *s) { return (uint32_t)s->mode << 16 | s->colr; }
+
+static uint32_t cram_argb(unsigned idx)
+{
+    uint16_t c = R16(SHADOW_CRAM + 2u * (idx & 0x7FF));
+    uint32_t r = (c & 31) * 255 / 31, g = ((c >> 5) & 31) * 255 / 31, b = ((c >> 10) & 31) * 255 / 31;
+    return 0xFF000000u | r << 16 | g << 8 | b;
+}
+
+/* Decode a VDP1 character (CMDPMOD colour modes 0-5) from the emulated VRAM. */
+static void decode_char(const RenderSprite *s, uint32_t *argb)
+{
+    const uint8_t *v = Ram_Ptr(s->src);
+    int n = s->w * s->h;
+    for (int i = 0; i < n; i++) {
+        unsigned dot;
+        switch ((s->mode >> 3) & 7) {
+        case 0:                                     /* 4bpp colour bank */
+            dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
+            argb[i] = dot ? cram_argb((s->colr & 0xFFF0u) | dot) : 0;
+            break;
+        case 1: {                                   /* 4bpp lookup table at VRAM colr*8 */
+            dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
+            uint16_t e = R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + dot * 2u);
+            if (!dot) argb[i] = 0;
+            else if (e & 0x8000) {
+                uint32_t r = (e & 31) * 255 / 31, g = ((e >> 5) & 31) * 255 / 31, b = ((e >> 10) & 31) * 255 / 31;
+                argb[i] = 0xFF000000u | r << 16 | g << 8 | b;
+            } else argb[i] = cram_argb(e);
+            break; }
+        case 2: dot = v[i] & 0x3F; argb[i] = dot ? cram_argb((s->colr & 0xFFC0u) | dot) : 0; break;
+        case 3: dot = v[i] & 0x7F; argb[i] = dot ? cram_argb((s->colr & 0xFF80u) | dot) : 0; break;
+        case 4: dot = v[i];        argb[i] = dot ? cram_argb((s->colr & 0xFF00u) | dot) : 0; break;
+        default: {                                  /* RGB */
+            uint16_t e = (uint16_t)(v[2 * i] << 8 | v[2 * i + 1]);
+            if (!(e & 0x8000)) { argb[i] = 0; break; }
+            uint32_t r = (e & 31) * 255 / 31, g = ((e >> 5) & 31) * 255 / 31, b = ((e >> 10) & 31) * 255 / 31;
+            argb[i] = 0xFF000000u | r << 16 | g << 8 | b;
+            break; }
+        }
+    }
+}
+
 static SDL_Texture *get_texture(const RenderSprite *s)
 {
-    unsigned h = (s->src * 2654435761u ^ s->palette * 40503u) % CACHE_SIZE;
+    uint32_t key = sprite_key(s);
+    unsigned h = (s->src * 2654435761u ^ key * 40503u) % CACHE_SIZE;
     for (int probe = 0; probe < CACHE_SIZE; probe++, h = (h + 1) % CACHE_SIZE) {
         CacheEntry *e = &s_cache[h];
-        if (e->tex && e->src == s->src && e->pal == s->palette) return e->tex;
+        if (e->tex && e->src == s->src && e->key == key && e->w == s->w && e->h == s->h) return e->tex;
         if (!e->tex) {
-            static uint8_t px[512 * 512];
             static uint32_t argb[512 * 512];
-            size_t n = (size_t)s->w * (size_t)s->h;
-            if (n == 0 || n > sizeof(px)) return NULL;
-            size_t avail = 0x00100000u - (s->src & 0x000FFFFFu);
-            if (!Lz_Decompress(Ram_Ptr(s->src), avail, px, sizeof(px))) return NULL;
-            for (size_t i = 0; i < n; i++) {
-                if (px[i] == 0) { argb[i] = 0; continue; }           /* index 0 = transparent */
-                uint16_t c = R16(s->palette + 2u * px[i]);
-                uint32_t r = (c & 31) * 255 / 31, g = ((c >> 5) & 31) * 255 / 31, b = ((c >> 10) & 31) * 255 / 31;
-                argb[i] = 0xFF000000u | r << 16 | g << 8 | b;
-            }
+            if (s->w <= 0 || s->h <= 0 || s->w * s->h > 512 * 512) return NULL;
+            decode_char(s, argb);
             SDL_Texture *t = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888,
                                                SDL_TEXTUREACCESS_STATIC, s->w, s->h);
             if (!t) return NULL;
             SDL_UpdateTexture(t, NULL, argb, s->w * 4);
             SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-            e->src = s->src; e->pal = s->palette; e->tex = t;
+            e->src = s->src; e->key = key; e->w = s->w; e->h = s->h; e->tex = t;
             return t;
         }
     }
     return NULL;
+}
+
+void Render_InvalidateVram(uint32_t addr, size_t len)
+{
+    /* Open addressing: rebuild the table without the overlapping entries. */
+    static CacheEntry keep[CACHE_SIZE];
+    int nk = 0;
+    for (int i = 0; i < CACHE_SIZE; i++) {
+        CacheEntry *e = &s_cache[i];
+        if (!e->tex) continue;
+        uint32_t bytes = (uint32_t)(e->w * e->h * 2);           /* upper bound (RGB) */
+        if (e->src < addr + len && addr < e->src + bytes) SDL_DestroyTexture(e->tex);
+        else keep[nk++] = *e;
+        e->tex = NULL;
+    }
+    for (int i = 0; i < nk; i++) {
+        unsigned h = (keep[i].src * 2654435761u ^ keep[i].key * 40503u) % CACHE_SIZE;
+        while (s_cache[h].tex) h = (h + 1) % CACHE_SIZE;
+        s_cache[h] = keep[i];
+    }
 }
 
 void Render_QueueSprite(const RenderSprite *s)

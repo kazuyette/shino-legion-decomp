@@ -14,16 +14,20 @@
 #define LWRAM_BASE 0x00200000u   /* Work RAM Low: SHOU.CHR etc. are loaded here */
 #define LWRAM_SIZE 0x00100000u
 
+#define VDP1_VRAM_BASE 0x25C00000u   /* VDP1 VRAM: sprite characters (STAGEx_y.SPR, Sho) */
+#define VDP1_VRAM_SIZE 0x00080000u
 #define VDP2_VRAM_BASE 0x25E00000u   /* VDP2 VRAM: stage tiles (STAGEx_y.CHR) */
 #define VDP2_VRAM_SIZE 0x00080000u
 
 extern uint8_t g_hwram[HWRAM_SIZE];
 extern uint8_t g_lwram[LWRAM_SIZE];
+extern uint8_t g_vdp1vram[VDP1_VRAM_SIZE];
 extern uint8_t g_vdp2vram[VDP2_VRAM_SIZE];
 
 static inline uint8_t *Ram_Ptr(uint32_t a)
 {
     if ((a & 0x0FF00000u) == LWRAM_BASE) return &g_lwram[a & (LWRAM_SIZE - 1)];
+    if ((a & 0xFFF80000u) == VDP1_VRAM_BASE) return &g_vdp1vram[a & (VDP1_VRAM_SIZE - 1)];
     if ((a & 0xFFF80000u) == VDP2_VRAM_BASE) return &g_vdp2vram[a & (VDP2_VRAM_SIZE - 1)];
     return &g_hwram[(a - HWRAM_BASE) & (HWRAM_SIZE - 1)];
 }
