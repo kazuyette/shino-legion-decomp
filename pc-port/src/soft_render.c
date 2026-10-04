@@ -106,7 +106,9 @@ int Vdp2_SpriteColorCalc(const RenderSprite *s, int prio)
 
 /* Decode a VDP1 character (CMDPMOD colour modes 0-5) from the emulated VRAM.
  * Dot 0 is transparent unless SPD (CMDPMOD bit 6) is set. */
-void Vdp1_DecodeChar(const RenderSprite *s, uint32_t *argb)
+static uint32_t cram_col(const uint32_t *lut, unsigned idx) { return lut ? lut[idx & 0x7FF] : Vdp2_CramArgb(idx); }
+
+void Vdp1_DecodeCharPal(const RenderSprite *s, uint32_t *argb, const uint32_t *lut)
 {
     const uint8_t *v = Ram_Ptr(s->src);
     int n = s->w * s->h, spd = (s->mode & 0x40) != 0;
@@ -115,18 +117,18 @@ void Vdp1_DecodeChar(const RenderSprite *s, uint32_t *argb)
         switch ((s->mode >> 3) & 7) {
         case 0:                                     /* 4bpp colour bank */
             dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
-            argb[i] = (dot || spd) ? Vdp2_CramArgb((s->colr & 0xFFF0u) | dot) : 0;
+            argb[i] = (dot || spd) ? cram_col(lut, (s->colr & 0xFFF0u) | dot) : 0;
             break;
         case 1: {                                   /* 4bpp lookup table at VRAM colr*8 */
             dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
             uint16_t e = R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + dot * 2u);
             if (!dot && !spd) argb[i] = 0;
             else if (e & 0x8000) argb[i] = Vdp_Rgb555ToArgb(e);
-            else argb[i] = Vdp2_CramArgb(e);
+            else argb[i] = cram_col(lut, e);
             break; }
-        case 2: dot = v[i] & 0x3F; argb[i] = (dot || spd) ? Vdp2_CramArgb((s->colr & 0xFFC0u) | dot) : 0; break;
-        case 3: dot = v[i] & 0x7F; argb[i] = (dot || spd) ? Vdp2_CramArgb((s->colr & 0xFF80u) | dot) : 0; break;
-        case 4: dot = v[i];        argb[i] = (dot || spd) ? Vdp2_CramArgb((s->colr & 0xFF00u) | dot) : 0; break;
+        case 2: dot = v[i] & 0x3F; argb[i] = (dot || spd) ? cram_col(lut, (s->colr & 0xFFC0u) | dot) : 0; break;
+        case 3: dot = v[i] & 0x7F; argb[i] = (dot || spd) ? cram_col(lut, (s->colr & 0xFF80u) | dot) : 0; break;
+        case 4: dot = v[i];        argb[i] = (dot || spd) ? cram_col(lut, (s->colr & 0xFF00u) | dot) : 0; break;
         default: {                                  /* RGB */
             uint16_t e = (uint16_t)(v[2 * i] << 8 | v[2 * i + 1]);
             if (!(e & 0x8000) && !(spd && e == 0)) { argb[i] = 0; break; }
@@ -135,6 +137,8 @@ void Vdp1_DecodeChar(const RenderSprite *s, uint32_t *argb)
         }
     }
 }
+
+void Vdp1_DecodeChar(const RenderSprite *s, uint32_t *argb) { Vdp1_DecodeCharPal(s, argb, NULL); }
 
 /* ---- VDP2 background layers ---- */
 
@@ -227,7 +231,20 @@ uint32_t Vdp2_MapPageChecksum(int nbg, int pageId)
 #define PF_CMSB VDP2_PF_CMSB
 static uint8_t cram_msb(unsigned idx) { return (R16(SHADOW_CRAM + 2u * (idx & 0x7FF)) & 0x8000) ? PF_CMSB : 0; }
 
-static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb, uint8_t *fl)
+/* Optional outputs of the decoders for the SDL renderer's page cache (render.c): px = one
+ * VDP2_PIX_* word per pixel (CRAM index + pattern-name flags, 0 = transparent), blk = bit set of
+ * the 2 KB VDP2 VRAM blocks holding the characters read (VDP2_VRAM_SIZE / 2048 bits). */
+static void mark_blocks(uint32_t *blk, uint32_t chr, uint32_t len)
+{
+    if (!blk) return;
+    for (uint32_t a = chr & ~0x7FFu; a < chr + len; a += 0x800u) {
+        uint32_t b = (a & (VDP2_VRAM_SIZE - 1)) >> 11;
+        blk[b >> 5] |= 1u << (b & 31);
+    }
+}
+static uint16_t pix_word(unsigned idx, uint8_t f) { return (uint16_t)(VDP2_PIX_OPAQUE | (idx & 0x7FF) | (unsigned)f << 11); }
+
+static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb, uint8_t *fl, uint16_t *px, uint32_t *blk)
 {
     unsigned off = craof(nbg) << 8;
     for (int ty = 0; ty < 32; ty++)
@@ -237,23 +254,25 @@ static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb, uint8_t *fl
             unsigned pal = off + (((pn >> 20) & 7) << 8);
             int hf = (pn & 0x40000000u) != 0, vf = (pn & 0x80000000u) != 0;
             uint8_t f = (uint8_t)(((pn >> 29) & 1) * PF_SP | ((pn >> 28) & 1) * PF_SCC);
+            mark_blocks(blk, chr, 256);
             for (int y = 0; y < 16; y++) {
                 int yy = vf ? 15 - y : y;
-                uint32_t *row = argb + (ty * 16 + y) * VDP2_PAGE_PX + tx * 16;
+                int o = (ty * 16 + y) * VDP2_PAGE_PX + tx * 16;
                 for (int x = 0; x < 16; x++) {
                     int xx = hf ? 15 - x : x;
                     uint32_t cell = (uint32_t)((yy >> 3) * 2 + (xx >> 3));
                     uint8_t v = Ram_Ptr(chr + cell * 64 + (uint32_t)(yy & 7) * 8 + (uint32_t)(xx & 7))[0];
-                    row[x] = v ? Vdp2_CramArgb(pal + v) : 0;
-                    if (fl) fl[(ty * 16 + y) * VDP2_PAGE_PX + tx * 16 + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
+                    if (argb) argb[o + x] = v ? Vdp2_CramArgb(pal + v) : 0;
+                    if (fl) fl[o + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
+                    if (px) px[o + x] = v ? pix_word(pal + v, f) : 0;
                 }
             }
         }
 }
 
-static void decode_map_page(int nbg, int pageId, uint32_t *argb, uint8_t *fl)
+static void decode_map_page(int nbg, int pageId, uint32_t *argb, uint8_t *fl, uint16_t *px, uint32_t *blk)
 {
-    if (pageId >= VDP2_VRAM_PAGE0) { decode_vram_page(nbg, vram_page_addr(pageId), argb, fl); return; }
+    if (pageId >= VDP2_VRAM_PAGE0) { decode_vram_page(nbg, vram_page_addr(pageId), argb, fl, px, blk); return; }
     uint32_t d = desc_of(nbg);
     uint32_t pages = R32(d + 0x1C) + (uint32_t)pageId * 0x800u;
     uint32_t base = R32(d + 0x2C);
@@ -265,21 +284,23 @@ static void decode_map_page(int nbg, int pageId, uint32_t *argb, uint8_t *fl)
             unsigned pal = off + (((unsigned)pn >> 12 & 1) << 8);
             int hf = (pn & 0x8000) != 0, vf = (pn & 0x4000) != 0;
             uint8_t f = (uint8_t)(((pn >> 13) & 1) * PF_SP | (pn & 1) * PF_SCC);
+            mark_blocks(blk, chr, 256);
             for (int y = 0; y < 16; y++) {
                 int yy = vf ? 15 - y : y;
-                uint32_t *row = argb + (ty * 16 + y) * VDP2_PAGE_PX + tx * 16;
+                int o = (ty * 16 + y) * VDP2_PAGE_PX + tx * 16;
                 for (int x = 0; x < 16; x++) {
                     int xx = hf ? 15 - x : x;
                     uint32_t cell = (uint32_t)((yy >> 3) * 2 + (xx >> 3));
                     uint8_t v = Ram_Ptr(chr + cell * 64 + (uint32_t)(yy & 7) * 8 + (uint32_t)(xx & 7))[0];
-                    row[x] = v ? Vdp2_CramArgb(pal + v) : 0;
-                    if (fl) fl[(ty * 16 + y) * VDP2_PAGE_PX + tx * 16 + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
+                    if (argb) argb[o + x] = v ? Vdp2_CramArgb(pal + v) : 0;
+                    if (fl) fl[o + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
+                    if (px) px[o + x] = v ? pix_word(pal + v, f) : 0;
                 }
             }
         }
 }
 
-void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb) { decode_map_page(nbg, pageId, argb, NULL); }
+void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb) { decode_map_page(nbg, pageId, argb, NULL, NULL, NULL); }
 
 /* NBG3 (SHINOBI's VDP2 init 0x060400B0: 1x1 cells, 16 colours, 2-word pattern names, plane =
  * one page of 64x64 cells, all plates at 0x25E6C000; map written by 0x06047244): pattern name
@@ -294,7 +315,7 @@ uint32_t Vdp2_Nbg3Checksum(void)
     return h;
 }
 
-static void decode_nbg3(uint32_t *argb, uint8_t *fl)
+static void decode_nbg3(uint32_t *argb, uint8_t *fl, uint16_t *px, uint32_t *blk)
 {
     uint32_t page = nbg3_page();
     unsigned off = craof(3) << 8;
@@ -305,28 +326,54 @@ static void decode_nbg3(uint32_t *argb, uint8_t *fl)
             unsigned pal = off + ((pn >> 16) & 0x7F) * 16;
             int hf = (pn & 0x40000000u) != 0, vf = (pn & 0x80000000u) != 0;
             uint8_t f = (uint8_t)(((pn >> 29) & 1) * PF_SP | ((pn >> 28) & 1) * PF_SCC);
+            mark_blocks(blk, chr, 32);
             for (int y = 0; y < 8; y++) {
                 int yy = vf ? 7 - y : y;
-                uint32_t *row = argb + (cy * 8 + y) * VDP2_PAGE_PX + cx * 8;
+                int o = (cy * 8 + y) * VDP2_PAGE_PX + cx * 8;
                 for (int x = 0; x < 8; x++) {
                     int xx = hf ? 7 - x : x;
                     uint8_t b = Ram_Ptr(chr + (uint32_t)yy * 4 + (uint32_t)(xx >> 1))[0];
                     unsigned v = (xx & 1) ? b & 15u : b >> 4;
-                    row[x] = v ? Vdp2_CramArgb(pal + v) : 0;
-                    if (fl) fl[(cy * 8 + y) * VDP2_PAGE_PX + cx * 8 + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
+                    if (argb) argb[o + x] = v ? Vdp2_CramArgb(pal + v) : 0;
+                    if (fl) fl[o + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
+                    if (px) px[o + x] = v ? pix_word(pal + v, f) : 0;
                 }
             }
         }
 }
 
-void Vdp2_DecodeNbg3(uint32_t *argb) { decode_nbg3(argb, NULL); }
+void Vdp2_DecodeNbg3(uint32_t *argb) { decode_nbg3(argb, NULL, NULL, NULL); }
+
+void Vdp2_DecodePagePix(int nbg, int pageId, uint16_t *px, uint32_t *blk)
+{
+    if (nbg == 3) decode_nbg3(NULL, NULL, px, blk); else decode_map_page(nbg, pageId, NULL, NULL, px, blk);
+}
+
+/* Name table of a page and its length in bytes (MAP page: 32x32 words, VDP2 VRAM page: 32x32
+ * longs, NBG3: 64x64 longs). */
+uint32_t Vdp2_PageNameTable(int nbg, int pageId, uint32_t *len)
+{
+    if (nbg == 3) { *len = 0x4000; return nbg3_page(); }
+    if (pageId >= VDP2_VRAM_PAGE0) { *len = 0x1000; return vram_page_addr(pageId); }
+    *len = 0x800;
+    return R32(desc_of(nbg) + 0x1C) + (uint32_t)pageId * 0x800u;
+}
+
+/* What else a decoded page depends on besides its name table, the characters and CRAM: the
+ * layer's CRAM offset (CRAOFA/B) and, for MAP pages, the character base (desc +0x2C). */
+uint64_t Vdp2_PageParams(int nbg, int pageId)
+{
+    uint64_t k = craof(nbg);
+    if (nbg != 3 && pageId < VDP2_VRAM_PAGE0) k |= (uint64_t)R32(desc_of(nbg) + 0x2C) << 3;
+    return k;
+}
 
 int Vdp2_SpecialPrioMode(int nbg) { return nbg >= 0 && nbg < 4 ? (R16(VDP2_SHADOW_ADDR + 0x0A) >> (2 * nbg)) & 3 : 0; }
 
 void Vdp2_DecodePageSel(int nbg, int pageId, uint32_t *argb, unsigned mask, unsigned val)
 {
     static uint8_t fl[VDP2_PAGE_PX * VDP2_PAGE_PX];
-    if (nbg == 3) decode_nbg3(argb, fl); else decode_map_page(nbg, pageId, argb, fl);
+    if (nbg == 3) decode_nbg3(argb, fl, NULL, NULL); else decode_map_page(nbg, pageId, argb, fl, NULL, NULL);
     if (!mask) return;
     for (int i = 0; i < VDP2_PAGE_PX * VDP2_PAGE_PX; i++)
         if ((fl[i] & mask) != (val & mask)) argb[i] = 0;
@@ -440,7 +487,7 @@ static void soft_layer_nbg(int nbg, const Vdp2LineScroll *ls, uint32_t *out, uin
             for (k = 0; k < NC && cpid[k] != pid; k++) ;
             if (k == NC) {
                 k = next; next = (next + 1) % NC;
-                decode_map_page(nbg, pid, cache[k], cfl[k]);
+                decode_map_page(nbg, pid, cache[k], cfl[k], NULL, NULL);
                 cpid[k] = pid;
             }
             int o = (wy - py * VDP2_PAGE_PX) * VDP2_PAGE_PX + (wx - px * VDP2_PAGE_PX);
@@ -464,7 +511,7 @@ static void soft_layer(int nbg, uint32_t *out, uint8_t *ofl)
     }
     int sx, sy;
     Vdp2_LayerScroll(3, &sx, &sy);
-    decode_nbg3(page, pfl);                          /* one 512x512 page repeated over the plane */
+    decode_nbg3(page, pfl, NULL, NULL);              /* one 512x512 page repeated over the plane */
     for (int y = 0; y < SCREEN_H; y++)
         for (int x = 0; x < SCREEN_W; x++) {
             int o = wrapi(sy + y, VDP2_PAGE_PX) * VDP2_PAGE_PX + wrapi(sx + x, VDP2_PAGE_PX);

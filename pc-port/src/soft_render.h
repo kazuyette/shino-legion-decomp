@@ -28,6 +28,9 @@ uint32_t Vdp2_BackColor(void);                    /* VDP2 back screen colour (BK
 
 /* VDP1 character (CMDPMOD colour modes 0-5) -> w*h ARGB, 0 = transparent. */
 void Vdp1_DecodeChar(const RenderSprite *s, uint32_t *argb);
+/* Same with the CRAM colours taken from lut[0x800] (ARGB) instead of the shadow CRAM: the SDL
+ * renderer uses the colours flushed at the last 0x060250A8 flag (render.c). */
+void Vdp1_DecodeCharPal(const RenderSprite *s, uint32_t *argb, const uint32_t *lut);
 
 /* NBG0..NBG2: displayed (SclConfig dispenbl) and set up (layout + pages). NBG3: dispenbl. */
 int  Vdp2_LayerEnabled(int nbg);
@@ -56,6 +59,19 @@ void Vdp2_DecodePageSp(int nbg, int pageId, uint32_t *argb, int sp);
 #define VDP2_PF_SCC  2
 #define VDP2_PF_CMSB 4
 void Vdp2_DecodePageSel(int nbg, int pageId, uint32_t *argb, unsigned mask, unsigned val);
+/* Page pixels for the SDL renderer's cache (render.c): per pixel 0 = transparent, else
+ * VDP2_PIX_OPAQUE | CRAM index (0..0x7FF, colour = Vdp2_CramArgb) | SPR bit << 11 | SCC bit << 12
+ * (the CMSB flag is bit 15 of that CRAM word). blk (may be NULL) gets the bits of the 2 KB VDP2
+ * VRAM blocks the page's characters were read from (256 bits). NBG3: pageId ignored. Same
+ * pixels as Vdp2_DecodeMapPage / Vdp2_DecodeNbg3 / Vdp2_DecodePageSel. */
+#define VDP2_PIX_OPAQUE 0x8000u
+#define VDP2_PIX_INDEX  0x07FFu
+#define VDP2_PIX_FSHIFT 11
+void Vdp2_DecodePagePix(int nbg, int pageId, uint16_t *px, uint32_t *blk);
+/* Address and length (bytes) of a page's name table; other inputs of its decode (CRAM offset,
+ * character base) as one value to compare. */
+uint32_t Vdp2_PageNameTable(int nbg, int pageId, uint32_t *len);
+uint64_t Vdp2_PageParams(int nbg, int pageId);
 /* VDP2 colour calculation of NBGn as the top screen (CCCTL bit n, SFCCMD mode, CCRNA/CCRNB):
  * the ratio register value r (0..31; result = layer * (31 - r) / 32 + second screen * (r + 1)
  * / 32, or layer + second screen when *add, CCCTL bit 8), -1 = off. *sel = the pixel flag that

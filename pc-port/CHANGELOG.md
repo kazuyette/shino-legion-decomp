@@ -3,6 +3,53 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.22.2 — 2026-10-04
+- Renderer performance (bug report: v0.22.1 slows down on Windows, v0.22.0 was fine). In 1-1 the
+  torch palette (Pal_Copy 0x200, two frames out of four) raises the CRAM flag 0x060250A8, and
+  Render_DrawFrame threw away every cached texture on that flag: all page textures, NBG3, the
+  sprite characters and the new v0.22.1 page variants (pages split by SPR bit / colour-calc flag,
+  each a full 512x512 decode of its own), all decoded and created again the next frame
+  (~15 SDL_CreateTexture + ~9 MB uploaded per frame in 1-1, 19 at the temple); and the page
+  checksum (2-16 KB FNV) ran on every blit, i.e. for every line-scroll strip.
+  - render.c: textures now follow what changed. Each page used is decoded once into CRAM indices
+    + pattern-name flags (soft_render.c Vdp2_DecodePagePix) and kept (LRU, 64 pages); the whole
+    page and its variants are built from that. A page is decoded again only when its name table
+    (compared with a copy once per frame), its CRAM offset / character base, or the VDP2 VRAM
+    blocks of its characters change (VDP1 / VDP2 VRAM compared every frame in 2 KB blocks).
+    On the CRAM flag only the colours that changed since the last flag are found; the 64x64
+    tiles of the pages using them are rebuilt (SDL_UpdateTexture of those rectangles) and only
+    the sprite characters using those 16-colour banks are decoded again, into their texture.
+    Textures no longer needed go to a pool and are reused (no destroy / create). Fully
+    transparent tiles of a page / variant are not drawn; in the sprite-layer composite a sprite
+    of another priority is only drawn as an eraser where that layer already has pixels.
+  - Colours: the renderer uses the shadow CRAM as flushed at the last flag (the game's
+    Pal_FlushToCram 0x06005C60 copies it to CRAM only when 0x060250A8 is set), for pages and
+    sprites alike. Before, a character decoded on an unflagged frame read the shadow directly:
+    the 1-2 Hannya hurt flash writes white into the shadow without the flag on even frames
+    (original code, SHINOBI 0x060A02B0) and restores it with the flag on odd frames, so the mask
+    showed fully white on the frames where a new animation cel was first decoded (3 frames in
+    the test run, `Claude outputs/perf_v0.22.2/hannya_f280_*.png`); now it never does, as with
+    the real CRAM. soft_render.c (reference rasteriser) unchanged.
+  - Colour offset with negative components on renderers without REV_SUBTRACT (7-2 / 8-1
+    per-line tint): one read-back for all bands of the frame instead of one per band (~28).
+  - SDL_HINT_RENDER_BATCHING = 1: SDL turns batching off when a driver is named, which the
+    v0.22.1 `[video] renderer =` key does.
+  - tests/perf_render.c: profiling harness (scripted runs of stages / title / menus / movies,
+    ms per frame for logic / DrawFrame / Present, textures created / updated, MB uploaded,
+    decodes, per-frame frame hashes of the SDL frame and of soft_render for before/after
+    comparisons). Linux, Mesa OpenGL, 960x672, 600 frames, draw + present ms per frame
+    (v0.22.0 / v0.22.1 / now) and textures created per frame (v0.22.1 -> now):
+    1-1 9.3 / 26.6 / 6.1 (15.2 -> 0.27), 1-1 temple 11.3 / 31.7 / 6.9 (18.9 -> 0.28),
+    1-2 6.0 / 12.4 / 6.0 (5.9 -> 0.19), 3-2 11.6 / 25.3 / 8.1 (16.9 -> 0.62),
+    6-1 6.7 / 10.2 / 7.0, 7-2 9.5 / 13.0 / 8.9, 8-1 7.8 / 11.3 / 8.1, title + menus + movies
+    4.9 / 5.5 / 5.0. SDL software renderer, 1-1: 21.8 -> 2.5 ms. The remaining creations are
+    first uses (a new page or a new character size).
+  - Checked: frames identical before / after on the scripted runs (1-1, 1-1 temple, 1-2, 3-2,
+    6-1, 7-2, 8-1 x 600 frames, boot + title + demo 2600, menus + stage-start movies 2000) with
+    the SDL software and OpenGL renderers and soft_render, except the 3 Hannya frames above;
+    the 19 BizHawk transplants of docs/ground_truth.md identical (software, OpenGL, soft);
+    all tests/test_*.c pass.
+
 ## 0.22.1 — 2026-10-04
 - VDP2 register setup of the real game (bug report: 1-1 temple wall, Sho's hand / kunai drawn
   over the stone pillar, pillar looking see-through). SHINOBI's VDP2 init 0x060400B0 was only
