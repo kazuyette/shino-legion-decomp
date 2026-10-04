@@ -82,6 +82,7 @@ diff of all game-state regions. "identical" = only the benign words listed below
 | 6-1 (st10) | 374 | identical until Sho dies; then the real game is still loading (mode 5) |
 | 9-1 (st16) | 540 | diverged at 212 (death animation, fixed), then identical until the reload |
 | 7-2 boss (st13b, after the intro's CD lag) | 1300 | diverged at 134 and 553 (both fixed), then identical |
+| 3-1 attract demo (demo31, no input: recorded demo pad) | 1790 | diverged at 764 (bomb blasts, fixed), then identical; the port run from boot through the demo loop gives the same state at 1790 (after v0.21.1) |
 
 Benign differences (not game state, or not modelled on PC): 0x060252E8-F0 (A.BIN VDP1 transfer
 queue 0x06008FE4..), 0x0603A4F8-0x0603A554 / 0x0603BB0C.. (SBL command-list pointers),
@@ -123,7 +124,8 @@ All tests/test_*.c (except test_audio / test_cpk) pass; the SDL executable build
 
 ## Save states (tools/bizhawk/bridge/)
 
-`title.State` (title screen), `title_menu.State` / `menu.State` (GAME START / OPTIONS menu),
+`title.State` (title screen; demo counter 4, idle 313: the 3-1 attract demo starts by itself),
+`demo31.State` (first frame of game mode 6 of that demo, title.State + 2511 frames), `title_menu.State` / `menu.State` (GAME START / OPTIONS menu),
 `s11_mode6.State` (1-1, first frame of game mode 6), `s11_start.State` / `s11a.State` (1-1 start,
 fade-in done), `s11m.State` / `s11_mid.State` (1-1 wall with the moon), `s11cp.State` (1-1 before
 checkpoint 1), `s11c.State` (1-1 city-lights band), `s12.State` (1-2 boss), `s42.State` (4-2

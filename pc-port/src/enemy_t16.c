@@ -431,13 +431,15 @@ void Proj_Bomb13(uint32_t e)
             if (lantern_hit(&p, RS32(e + 8), 0x00300000)) hit = 1;
         }
         if (hit) {
-            int32_t x = RS32(e + 8), y = RS32(e + 0xC);
+            /* the original re-reads x/y from the (now free) slot before each blast; the first
+             * blast takes that slot, so the other four are placed around y - 16 (found with the
+             * 3-1 attract demo lock-step, docs/ground_truth.md) */
             W16(e, 0xFFFF);
-            blast(x, y - 0x00100000, 0, 1);
-            blast(x - 0x00120000, y - 0x00120000, 8, 1);
-            blast(x + 0x00120000, y - 0x00120000, 8, 1);
-            blast(x - 0x00120000, y + 0x00100000, 8, 0);
-            blast(x + 0x00120000, y + 0x00100000, 8, 0);
+            blast(RS32(e + 8), RS32(e + 0xC) - 0x00100000, 0, 1);
+            blast(RS32(e + 8) - 0x00120000, RS32(e + 0xC) - 0x00120000, 8, 1);
+            blast(RS32(e + 8) + 0x00120000, RS32(e + 0xC) - 0x00120000, 8, 1);
+            blast(RS32(e + 8) - 0x00120000, RS32(e + 0xC) + 0x00100000, 8, 0);
+            blast(RS32(e + 8) + 0x00120000, RS32(e + 0xC) + 0x00100000, 8, 0);
             sub_06007CDE(0x209);
             return;
         }

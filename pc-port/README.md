@@ -45,7 +45,9 @@ PC-only keys (fixed):
 |---|---|
 | F1 / controller Back (Select) | debug / cheat menu (pauses the game) |
 | Alt+Enter or F11 | fullscreen (desktop resolution) on/off |
-| F12 | screenshot: 320x224 PNG (or BMP) in `screenshots/` next to the executable |
+| F10 | CRT filter: off -> scanlines -> crt (see CRT filter) |
+| F12 | screenshot: the clean 320x224 frame, PNG (or BMP) in `screenshots/` next to the executable |
+| Shift+F12 | screenshot of the picture as shown (window size, CRT filter included) |
 | Esc | nothing in game (closes the debug menu); quit by closing the window |
 
 Keyboard + controller 1 = Saturn port 1, controller 2 = port 2. Controllers can be plugged
@@ -67,6 +69,10 @@ default is kept.
 | `[video] vsync` | 1 | sync to the monitor refresh |
 | `[video] bilinear` | 0 | smooth upscaling instead of sharp pixels |
 | `[video] aspect` | native | `native` = square pixels (320x224), `4:3` = stretched to 4:3 like on a TV |
+| `[video] crt` | off | CRT filter: `off`, `scanlines`, `crt` (scanlines + phosphor mask + glow); F10 cycles it in game (not saved) |
+| `[video] crt_strength` | 70 | 0..100: darkness of the scanlines / mask |
+| `[video] crt_mask` | aperture | `crt` mode phosphor mask: `aperture` (grille), `slot` (best at 1440p and up), `none` |
+| `[video] crt_curvature` | 0 | `crt` mode screen curvature 0..100 (bent picture, darker corners) |
 | `[audio] master_volume`, `music_volume`, `sfx_volume` | 100 | 0..100 %; music also covers the movie soundtracks |
 | `[misc] screenshot_format` | png | `png` or `bmp` (F12) |
 | `[keyboard] A B C X Y Z L R Start Up Down Left Right` | see Controls | SDL key (scancode) names, comma separated, up to 4 per button: `Z`, `Space`, `Return`, `Left Shift`, `Right Ctrl`, `Keypad 8`... Names with `;` `#` `,` go in quotes (`";"`); `none` = unbound |
@@ -79,6 +85,32 @@ key is the one labelled W). Unknown names are reported as `[input] ... unknown k
 Bilinear, 4:3 and screenshots need render-target support (every SDL hardware renderer and
 the software one have it). Unit test of the parser and image writers (no SDL):
 `gcc -std=c11 -DCONFIG_NO_SDL -Isrc tests/test_config.c src/config.c src/screenshot.c`.
+
+## CRT filter / Filtre CRT
+
+**English.** Optional 1995-TV look (`src/crt.c`), off by default: `[video] crt = scanlines`
+(dark gaps between the 224 Saturn lines) or `crt` (scanlines + aperture-grille / slot mask +
+soft beam + glow, optional `crt_curvature`); F10 cycles off / scanlines / crt and shows the
+mode for 2 s (the setting in `shinobi.ini` is not rewritten). The pattern is computed once
+per window size at the exact output resolution, so it works at any size, integer zoom or not;
+it is most regular with `integer_scaling = 1` (e.g. 4x = 896 lines in 1080p) and finest at
+1440p / 4K. Brightness is compensated (bright areas bleed into the gaps like a real beam).
+It runs on the SDL renderer (GPU with Direct3D / OpenGL): 3 (scanlines) to 5 (crt)
+full-screen passes, no shaders. The software renderer (no GPU) is slow with it at large
+sizes. F12 still saves the clean 320x224 frame; Shift+F12 saves the picture as shown.
+
+**Français.** Rendu « télé de 1995 » optionnel, désactivé par défaut : `[video] crt =
+scanlines` (lignes sombres entre les 224 lignes de la Saturn) ou `crt` (scanlines + masque de
+phosphores grille / slot + faisceau doux + halo, courbure optionnelle `crt_curvature`) ;
+F10 fait défiler off / scanlines / crt et affiche le mode 2 s (le fichier `shinobi.ini`
+n'est pas réécrit). Le motif est calculé une fois par taille de fenêtre, à la résolution
+exacte de l'écran : il marche à toute taille, zoom entier ou non ; il est le plus régulier
+avec `integer_scaling = 1` et le plus fin en 1440p / 4K. La luminosité est compensée. F12
+garde l'image propre 320x224 ; Maj+F12 enregistre l'image telle qu'affichée.
+
+Unit test of the pattern maths and ini keys:
+`gcc -std=c11 -DCRT_NO_SDL -DCONFIG_NO_SDL -Isrc tests/test_crt.c src/crt.c src/config.c src/u8path.c -lm`.
+Visual check / timing: `tests/shot_crt.c` (offscreen SDL, saves each mode at several sizes).
 
 ## Getting the game files / Obtenir les fichiers du jeu
 
@@ -193,7 +225,9 @@ renders them or steps the port next to the real game; see `docs/ground_truth.md`
   replaces the SMPC/PER library (`PER_GetPer` @ A.BIN 0x0602D076).
 - `src/pad.*` — faithful ports of `Pad_Update` (A.BIN 0x0600572A, table 0x0601C4A0),
   `Pad_Clear`, `Sys_CheckSoftReset` (A.BIN 0x060042B8) and `Game_LatchPad1`
-  (SHINOBI 0x06040CAC: game pad vars, 6 button layouts, L/R mirroring).
+  (SHINOBI 0x06040CAC: game pad vars, 6 button layouts, L/R mirroring), the scripted input
+  0x060463DC and the attract-demo playback 0x060469FE / 0x06046A98 (recorded pad tables in
+  SHINOBI.PPB, docs/director.md §1.4; headless test of the demo loop: `tests/test_demo.c`).
   Unit test: `gcc -std=c11 -Isrc tests/test_pad.c src/pad.c src/player.c`.
 - `src/ram.*` — emulated Saturn HWRAM (big-endian). Ported code keeps original
   addresses; `assets/A.BIN` and `assets/SHINOBI.dec.bin` are loaded at their real bases if present.

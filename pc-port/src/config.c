@@ -46,6 +46,15 @@ static const char kDefaultText[] =
 "bilinear = 0\n"
 "; native = square pixels (320x224), 4:3 = stretched to 4:3 like on a TV.\n"
 "aspect = native\n"
+"; Old TV look: off, scanlines (dark lines between the 224 lines), crt (scanlines + phosphor\n"
+"; mask + glow). F10 cycles off / scanlines / crt in game (not saved here).\n"
+"crt = off\n"
+"; Strength of the scanlines / mask, 0..100.\n"
+"crt_strength = 70\n"
+"; crt mode phosphor mask: aperture (grille, Trinitron-like), slot (best at 1440p and up), none.\n"
+"crt_mask = aperture\n"
+"; crt mode screen curvature, 0 (flat) .. 100.\n"
+"crt_curvature = 0\n"
 "\n"
 "[audio]\n"
 "; 0..100 (%). Music also covers the movie soundtracks.\n"
@@ -61,7 +70,7 @@ static const char kDefaultText[] =
 "; Saturn button = SDL key names (scancodes, US layout positions), comma separated, up to 4.\n"
 "; Examples: Z, Space, Return, Left Shift, Right Ctrl, Left Alt, Tab, Keypad 8, F5.\n"
 "; Put a name containing ; # or , in quotes (\";\"). none = unbound.\n"
-"; Reserved: F1 (debug menu), F11 / Alt+Enter (fullscreen), F12 (screenshot).\n"
+"; Reserved: F1 (debug menu), F10 (CRT filter), F11 / Alt+Enter (fullscreen), F12 (screenshot).\n"
 "A = Z\n"
 "B = X\n"
 "C = C\n"
@@ -208,6 +217,8 @@ void Config_SetDefaults(Config *c)
     memset(c, 0, sizeof *c);
     c->scale = 3;
     c->vsync = 1;
+    c->crt_strength = 70;
+    c->crt_mask = 1;                     /* aperture */
     c->master_volume = c->music_volume = c->sfx_volume = 100;
     c->screenshot_png = 1;
     c->stick_as_dpad = 1;
@@ -280,7 +291,19 @@ int Config_ParseText(Config *c, const char *text, const char *source)
                 if (streqi(v, "native") || streqi(v, "square") || streqi(v, "10:7")) c->aspect43 = 0;
                 else if (streqi(v, "4:3") || streqi(v, "tv")) c->aspect43 = 1;
                 else warn(&x, "aspect: \"%s\" is not native or 4:3", v);
-            } else warn(&x, "unknown key %s in [video]", key);
+            } else if (streqi(key, "crt")) {
+                if (streqi(v, "off") || streqi(v, "none") || streqi(v, "0")) c->crt = 0;
+                else if (streqi(v, "scanlines") || streqi(v, "1")) c->crt = 1;
+                else if (streqi(v, "crt") || streqi(v, "2")) c->crt = 2;
+                else warn(&x, "crt: \"%s\" is not off, scanlines or crt", v);
+            } else if (streqi(key, "crt_strength")) set_int(&x, key, v, &c->crt_strength, 0, 100);
+            else if (streqi(key, "crt_mask")) {
+                if (streqi(v, "none") || streqi(v, "off")) c->crt_mask = 0;
+                else if (streqi(v, "aperture") || streqi(v, "grille")) c->crt_mask = 1;
+                else if (streqi(v, "slot")) c->crt_mask = 2;
+                else warn(&x, "crt_mask: \"%s\" is not none, aperture or slot", v);
+            } else if (streqi(key, "crt_curvature")) set_int(&x, key, v, &c->crt_curvature, 0, 100);
+            else warn(&x, "unknown key %s in [video]", key);
         } else if (sec == SEC_AUDIO) {
             if (streqi(key, "master_volume")) set_int(&x, key, v, &c->master_volume, 0, 100);
             else if (streqi(key, "music_volume")) set_int(&x, key, v, &c->music_volume, 0, 100);

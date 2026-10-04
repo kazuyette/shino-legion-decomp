@@ -34,6 +34,10 @@ typedef struct {
     int vsync;
     int bilinear;         /* smooth upscaling */
     int aspect43;         /* 0 = square pixels (320x224), 1 = 4:3 like a TV */
+    int crt;              /* CRT look (crt.c): 0 off, 1 scanlines, 2 crt (F10 cycles) */
+    int crt_strength;     /* 0..100 */
+    int crt_mask;         /* crt mode phosphor mask: 0 none, 1 aperture grille, 2 slot */
+    int crt_curvature;    /* crt mode screen curvature 0..100 */
     /* [audio] 0..100 */
     int master_volume, music_volume, sfx_volume;
     /* [misc] */

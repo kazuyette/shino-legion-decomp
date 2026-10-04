@@ -1,5 +1,5 @@
 /* Audio module (src/audio.c) without SDL: WAV parsing, resampler, mixer.
- * gcc -std=c11 -Wall -Wextra -O1 -DAUDIO_NO_SDL -Isrc tests/test_audio.c src/audio.c -lm -o /tmp/ta && /tmp/ta ../extracted/
+ * gcc -std=c11 -Wall -Wextra -O1 -DAUDIO_NO_SDL -Isrc tests/test_audio.c src/audio.c src/u8path.c -lm -o /tmp/ta && /tmp/ta ../extracted/
  * (the optional argument is the folder holding TRACK02.WAV / TRACK03.WAV from tools/rip_cdda.py) */
 #include <stdio.h>
 #include <stdlib.h>

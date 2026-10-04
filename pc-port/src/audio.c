@@ -247,7 +247,7 @@ void Audio_Render(int16_t *out, int frames)
     }
     for (k = 0; k < frames; k++) {
         int32_t s[2] = { 0, 0 };
-        if (s_sfx.render) { s[0] = VOL(sfx[k * 2], s_vol_sfx); s[1] = VOL(sfx[k * 2 + 1], s_vol_sfx); }   /* SFX hook */
+        if (s_sfx.render && !s_sfx.mono) { s[0] = VOL(sfx[k * 2], s_vol_sfx); s[1] = VOL(sfx[k * 2 + 1], s_vol_sfx); }   /* SFX hook */
         for (c = 0; c < 2; c++) {                         /* level ramp */
             float d = s_gain_tgt[c] - s_gain_cur[c];
             if (d > GAIN_RAMP) s_gain_cur[c] += GAIN_RAMP;
@@ -270,6 +270,9 @@ void Audio_Render(int16_t *out, int frames)
             s_movie_played++;
         }
         if (s_mono) s[0] = s[1] = (s[0] + s[1]) / 2;
+        if (s_sfx.render && s_sfx.mono) {           /* SFX hook with its own mono (centred slots) */
+            s[0] += VOL(sfx[k * 2], s_vol_sfx); s[1] += VOL(sfx[k * 2 + 1], s_vol_sfx);
+        }
         s[0] = VOL(s[0], s_vol_master); s[1] = VOL(s[1], s_vol_master);
         for (c = 0; c < 2; c++)
             out[k * 2 + c] = (int16_t)(s[c] > 32767 ? 32767 : s[c] < -32768 ? -32768 : s[c]);
@@ -409,6 +412,7 @@ void Audio_SetMono(int mono)
 {
     LOCK();
     s_mono = mono != 0;
+    if (s_sfx.mono) s_sfx.mono(s_mono);
     UNLOCK();
 }
 
@@ -481,6 +485,7 @@ void Audio_SetSfxHooks(const AudioSfxHooks *hooks)
 {
     if (hooks) s_sfx = *hooks;
     else memset(&s_sfx, 0, sizeof s_sfx);
+    if (s_sfx.mono) s_sfx.mono(s_mono);
 }
 
 void Audio_Lock(void)   { LOCK(); }

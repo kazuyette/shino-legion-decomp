@@ -51,8 +51,21 @@ int  Sys_CheckSoftReset(void);
 #define PFLAG4_MIRROR_LR   0x0200
 #define PFLAG4_ALT_INPUT   0x0010   /* scripted input 0x060463DC (Game_ScriptedInput, pad.c) */
 
-/* SHINOBI 0x06040CAC. Returns 0 normally, 1 if the original would tail-call
- * the 0x060463DC scripted input (ported), 2 if the demo path (0x06046A98, not ported). */
+/* SHINOBI 0x06040CAC. Returns 0 normally, 1 if the original tail-called the 0x060463DC
+ * scripted input, 2 if it tail-called the attract-demo playback 0x06046A98 (both ported). */
 int Game_LatchPad1(uint16_t playerFlags4);
+
+/* Attract demo playback (SHINOBI): recorded pad = {u16 held, u16 frames} records in the
+ * overlay's data (one table per demo stage, ending with {0, 0xFFFF}). */
+#define ADDR_DEMO_CNT   0x060EA580u   /* u32 frames spent on the current record */
+#define ADDR_DEMO_PTR   0x060EA584u   /* u32 current record */
+#define ADDR_DEMO_PAD   0x060EA576u   /* u16 x4: held, previous held, pressed, previous pressed */
+#define DEMO_TABLE_S0   0x060CA71Cu   /* stage 0 (1-1) */
+#define DEMO_TABLE_S2   0x060CA8E4u   /* stage 2 (2-1) */
+#define DEMO_TABLE_S4   0x060CAAE4u   /* stage 4 (3-1) */
+#define DEMO_TABLE_S6   0x060CAD28u   /* stage 6 (4-1) */
+#define DEMO_TABLE_S8   0x060CAED4u   /* stage 8 (5-1) */
+void Game_DemoInputInit(void);        /* 0x060469FE (tail of Player_InitForStage 0x06044E18) */
+void Game_DemoInput(void);            /* 0x06046A98 */
 
 #endif

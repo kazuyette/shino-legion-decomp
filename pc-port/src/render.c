@@ -9,6 +9,7 @@
 #include "stage_hooks.h"
 #include "config.h"
 #include "screenshot.h"
+#include "crt.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,10 @@ int Render_Init(SDL_Window *window)
         printf("[render] %s%s, %s%s%s\n", info.name, (info.flags & SDL_RENDERER_PRESENTVSYNC) ? " + vsync" : "",
                cfg->bilinear && s_scene ? "bilinear" : "nearest", cfg->integer_scaling ? ", integer scale" : "",
                cfg->aspect43 && s_scene ? ", 4:3" : "");
+    Crt_Init(cfg->crt, cfg->crt_strength, cfg->crt_mask, cfg->crt_curvature);   /* crt.c, F10 */
+    if (cfg->crt && s_scene)
+        printf("[render] CRT filter: %s, strength %d, mask %s, curvature %d\n", Crt_ModeName(cfg->crt),
+               cfg->crt_strength, Crt_MaskName(cfg->crt_mask), cfg->crt_curvature);
     return 1;
 }
 
@@ -511,8 +516,10 @@ static void take_screenshot(void)
     SDL_SetRenderTarget(s_renderer, s_scene);
     if (SDL_RenderReadPixels(s_renderer, NULL, SDL_PIXELFORMAT_RGB24, rgb, SCREEN_W * 3) != 0)
         fprintf(stderr, "[render] screenshot: %s\n", SDL_GetError());
-    else if (Screenshot_Save(Config_BaseDir(), rgb, SCREEN_W, SCREEN_H, Config_Get()->screenshot_png, path, sizeof path))
+    else if (Screenshot_Save(Config_BaseDir(), rgb, SCREEN_W, SCREEN_H, Config_Get()->screenshot_png, path, sizeof path)) {
         printf("[render] screenshot %s\n", path);
+        Crt_Toast("SCREENSHOT SAVED");
+    }
     else fprintf(stderr, "[render] cannot write %s\n", path);
     free(rgb);
 }
@@ -524,13 +531,24 @@ void Render_Present(void)
     if (s_scene) {
         SDL_SetRenderTarget(s_renderer, NULL);
         SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, 255);
-        SDL_RenderClear(s_renderer);                    /* black borders */
-        SDL_RenderCopy(s_renderer, s_scene, NULL, NULL);
+        /* CRT look (crt.c) at the output resolution, else the plain scaled copy */
+        if (!Crt_Draw(s_renderer, s_scene)) {
+            SDL_RenderClear(s_renderer);                /* black borders */
+            SDL_RenderCopy(s_renderer, s_scene, NULL, NULL);
+        }
     }
+    Crt_Finish(s_renderer);                             /* Shift+F12 screenshot, toast */
     SDL_RenderPresent(s_renderer);
 }
 
 void Render_RequestScreenshot(void) { s_shotPending = 1; }
+void Render_RequestScreenshotOutput(void) { Crt_RequestOutputShot(); }
+
+void Render_CycleCrt(void)
+{
+    if (!s_scene) { fprintf(stderr, "[render] CRT filter unavailable (no render-target support)\n"); return; }
+    Crt_CycleMode();
+}
 
 void Render_ToggleFullscreen(void)
 {
@@ -546,6 +564,7 @@ void Render_Shutdown(void)
     Render_InvalidatePalettes();
     for (int p = 0; p < 8; p++) if (s_sprLayer[p]) { SDL_DestroyTexture(s_sprLayer[p]); s_sprLayer[p] = NULL; }
     s_layersOk = -1;
+    Crt_Shutdown();
     if (s_scene) { SDL_DestroyTexture(s_scene); s_scene = NULL; }
     if (s_renderer) { SDL_DestroyRenderer(s_renderer); s_renderer = NULL; }
 }

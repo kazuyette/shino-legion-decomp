@@ -67,6 +67,8 @@ typedef struct {
     void (*play)(int id);
     void (*stop)(void);
     void (*render)(int32_t *acc, int frames);   /* adds 44.1 kHz stereo frames */
+    void (*mono)(int mono);     /* driver mono flag (NULL: the SFX are averaged with the rest);
+                                   with it the SFX are not averaged (the engine centres them) */
 } AudioSfxHooks;
 void Audio_SetSfxHooks(const AudioSfxHooks *hooks);  /* call with Audio_Lock held */
 void Audio_Lock(void);          /* SDL device lock (no-op without a device) */
@@ -77,7 +79,9 @@ void Audio_PlaySfx(int id);
 void Audio_StopSfx(void);
 
 /* ---- misc -------------------------------------------------------------- */
-void Audio_SetMono(int mono);   /* options AUDIO = MONO (0x06025246): L = R = (L+R)/2 */
+/* options AUDIO = MONO (0x06025246, written to the driver's mono flag 68K 0x483): music and
+ * movie sound L = R = (L+R)/2; the SFX hook's mono() centres every SCSP slot (DIPAN 0). */
+void Audio_SetMono(int mono);
 /* PC settings (shinobi.ini [audio]): master, music (+ movie sound) and sound-effect
  * volumes in % (0..100, default 100 = unchanged output). */
 void Audio_SetVolumes(int master, int music, int sfx);

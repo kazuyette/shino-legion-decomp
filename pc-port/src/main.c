@@ -34,7 +34,8 @@
  *   --verbose       log player action changes
  *   --config FILE   settings file (default: shinobi.ini next to the executable, created
  *                   with commented defaults when missing; see config.c / README)
- *   Alt+Enter / F11 fullscreen on/off, F12 screenshot (screenshots/ next to the executable).
+ *   Alt+Enter / F11 fullscreen on/off, F12 screenshot (screenshots/ next to the executable),
+ *   Shift+F12 screenshot as shown (output size, CRT filter), F10 CRT filter off/scanlines/crt.
  *   Esc is not a quit key: closing the window quits. */
 static void usage(const char *exe)
 {
@@ -226,7 +227,12 @@ int main(int argc, char **argv)
                     Input_SuppressKey(sc);   /* Alt+Enter must not press Start too */
                     continue;
                 }
-                if (sc == SDL_SCANCODE_F12) { Render_RequestScreenshot(); continue; }
+                if (sc == SDL_SCANCODE_F12) {           /* Shift+F12: as shown (CRT filter) */
+                    if (ev.key.keysym.mod & KMOD_SHIFT) Render_RequestScreenshotOutput();
+                    else Render_RequestScreenshot();
+                    continue;
+                }
+                if (sc == SDL_SCANCODE_F10) { Render_CycleCrt(); continue; }   /* CRT filter */
             }
             DebugMenu_HandleEvent(&ev);      /* PC debug/cheat menu: F1 or pad Back */
         }

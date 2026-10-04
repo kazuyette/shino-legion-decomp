@@ -1,0 +1,79 @@
+program,address,kind,chosen,chosen_src,chosen_prio,others,top_tie
+A.BIN,0x06004038,function,Boot_Init,pc-port/src/boot.h:17,90,Boot_And_MainLoop (docs/director.md; p60),0
+A.BIN,0x060042B8,function,Sys_SoftReset,pc-port/src/boot.c:87,100,Sys_CheckSoftReset (pc-port/src/pad.h; p90),0
+A.BIN,0x06004EE8,function,Lz_DecompressRam,pc-port/src/sprite.c:34,100,Lz_OutputSize (pc-port/src/stage.c; p70) | Lz_Decompress (docs/director.md; p60),0
+A.BIN,0x0600527C,function,LineTable_VBlank,pc-port/src/boot.c:82,70,fade_word (pc-port/src/stage_hooks.c; p100),0
+A.BIN,0x06005BB4,function,Vdp2_DisplayOff,pc-port/src/boot.c:20,100,abin_06005BB4 (pc-port/src/objhandlers_c.c; p100),0
+A.BIN,0x06006F56,function,Fade_Reset,pc-port/src/fade.c:120,100,Obj_InitLinkedLists (docs/jump_table_functions.md; p80),0
+A.BIN,0x06007084,function,Fade_Update,pc-port/src/fade.c:307,100,Fx_UpdateInterpEvent (docs/jump_table_functions.md; p80),0
+A.BIN,0x0600718A,function,Fade_UpdateFlash,pc-port/src/fade.c:278,100,Fx_ProcessSwapFlags (docs/jump_table_functions.md; p80),0
+A.BIN,0x0600725C,function,Fade_SetEndLayerMask,pc-port/src/fade.c:79,100,Fade_StageOutro (pc-port/src/objhandlers_c.c; p70),0
+A.BIN,0x060077A4,function,Fade_SetLayerMask,pc-port/src/fade.c:68,100,Fx_SetFlagBits7 (docs/jump_table_functions.md; p80),0
+A.BIN,0x06007960,function,Fade_StepIn,pc-port/src/fade.c:204,100,Fx_StepInterpolate3Axis (docs/jump_table_functions.md; p80),0
+A.BIN,0x06007A5E,function,Fade_StepToTarget,pc-port/src/fade.c:245,100,Fx_VerifyFieldsMatch (docs/jump_table_functions.md; p80),0
+A.BIN,0x06007CDE,function,Sfx_Lookup,pc-port/src/sfx.c:180,100,"Snd_Play (docs/director.md,docs/sound.md; p60)",0
+A.BIN,0x06008154,function,Snd_SeqSlotVolume,pc-port/src/objhandlers_f4.c:19,100,seq_volume (pc-port/src/ninjutsu.c; p100),0
+A.BIN,0x06009254,function,vdp2_dirty,pc-port/src/enemy_boss1f.c:96,100,shadow_mark (pc-port/src/fade.c; p100),1
+A.BIN,0x060092BC,function,EM_Sdiv,pc-port/src/enemy_boss09.c:414,70,"sdiv (docs/director.md,pc-port/src/fade.c,pc-port/src/hud.c,pc-port/src/objhandlers_a.c,pc-port/src/objhandlers_e2.c,pc-port/src/stage_hooks.c; p100) | __divsi3 (docs/hud.md; p60)",0
+A.BIN,0x0600A55C,function,rnd_div,pc-port/src/objhandlers_f4.c:26,100,rnd_div10 (pc-port/src/enemy_t3.c; p100) | udiv (docs/director.md; p60),1
+A.BIN,0x060143EA,data,VBLANKS,pc-port/src/enemy_boss42.c:67,50,"G_FRAME (pc-port/src/ninjutsu.c,pc-port/src/player_stubs.c; p50) | FRAME_COUNT (pc-port/src/director_int.h; p50)",0
+A.BIN,0x06014408,data,ADDR_DEMO_FLAGS,pc-port/src/pad.h:47,50,V_DEMO (pc-port/src/director_int.h; p50) | DEMO (pc-port/src/objhandlers_c.c; p50),0
+A.BIN,0x06014414,data,G_CHEAT_KEY,pc-port/src/physics.c:9,50,V_INVINCIBLE (pc-port/src/director_int.h; p50),0
+A.BIN,0x0601C4A0,data,PAD_TABLE,pc-port/src/pad.c:19,50,PAD1_HELD (pc-port/src/director_int.h; p50),0
+A.BIN,0x06020D08,data,NBG_CFG,pc-port/src/soft_render.c:14,50,NBG_CFG_ADDR (pc-port/src/stage_inits.h; p50),0
+A.BIN,0x060250AC,data,SPR_WORK,pc-port/src/sprite.h:22,50,"ANIM_SPRITE (pc-port/src/anim.h; p50) | SPR (pc-port/src/enemy_int.h,pc-port/src/fx.c,pc-port/src/fx_b.c,pc-port/src/objhandlers.c,pc-port/src/objhandlers_b.c,pc-port/src/objhandlers_c.c; p50)",0
+A.BIN,0x06025100,data,FADE_CUR,pc-port/src/ninjutsu.c:58,50,FADE_OFS (pc-port/src/director_int.h; p50) | CUR (pc-port/src/fade.c; p50),0
+A.BIN,0x0602510C,data,FADE_STATE,pc-port/src/fade.h:33,50,FX_BUSY (pc-port/src/objhandlers_c.c; p50),0
+A.BIN,0x06025114,data,FADE_QUEUED,pc-port/src/ninjutsu.c:59,50,QUEUED (pc-port/src/fade.c; p50),0
+A.BIN,0x06025268,data,G_DIR_MODE,pc-port/src/boot.h:30,50,g_DirMode (docs/director.md; p45),0
+A.BIN,0x0602526A,data,G_STAGE,pc-port/src/player.c:15,50,A_STAGE_IDX (pc-port/src/debug_menu.c; p50) | G_STAGE_INDEX (pc-port/src/stage.h; p50) | V_STAGE (pc-port/src/director_int.h; p50) | STAGE_IDX (pc-port/src/objhandlers_c.c; p50) | g_StageIdx (docs/director.md; p45),0
+A.BIN,0x0602529C,data,G_CHEAT_FLAGS,pc-port/src/player.c:14,50,V_CHEATS (pc-port/src/director_int.h; p50),0
+A.BIN,0x0602529E,data,G_SYSFLAGS,pc-port/src/ninjutsu.c:34,50,A_STAGE_ST (pc-port/src/debug_menu.c; p50) | G_STAGE_STATE (pc-port/src/objhandlers_c.h; p50) | V_STAGE_STATE (pc-port/src/director_int.h; p50),0
+A.BIN,0x060252B0,data,HP_MAX,pc-port/src/hud.c:11,50,G_HP_MAX (pc-port/src/player.c; p50) | A_HP_MAX (pc-port/src/debug_menu.c; p50) | V_HP_MAX (pc-port/src/director_int.h; p50),0
+A.BIN,0x060252B2,data,V_ONEUP_TOKENS,pc-port/src/director_int.h:39,50,ONEUP_TOKS (pc-port/src/hud.c; p50),0
+A.BIN,0x060252B6,data,G_SHURIKENS,pc-port/src/player.c:17,50,A_SHURIKENS (pc-port/src/debug_menu.c; p50) | V_SHURIKENS (pc-port/src/director_int.h; p50) | SHURIKENS (pc-port/src/hud.c; p50),0
+A.BIN,0x060252B8,data,LIVES,pc-port/src/enemy.h:24,50,A_LIVES (pc-port/src/debug_menu.c; p50) | V_LIVES (pc-port/src/director_int.h; p50) | LIVES_CNT (pc-port/src/hud.c; p50),0
+A.BIN,0x060252BA,data,MAGIC,pc-port/src/enemy_int.h:17,50,G_MAGICFLAGS (pc-port/src/player.c; p50) | G_MAGIC (pc-port/src/player_stubs.c; p50) | V_MAGIC (pc-port/src/director_int.h; p50),0
+A.BIN,0x060252BC,data,G_MAGIC_PTS,pc-port/src/player.c:19,50,MAGIC_PTS (pc-port/src/ninjutsu.c; p50),0
+A.BIN,0x060252BE,data,MAGIC_AVAIL,pc-port/src/hud.c:15,50,G_MAGIC_AVAIL (pc-port/src/player.c; p50) | A_NINJUTSU (pc-port/src/debug_menu.c; p50) | G_MAGIC_AV (pc-port/src/player_stubs.c; p50) | V_MAGIC_AVAIL (pc-port/src/director_int.h; p50),0
+A.BIN,0x060252C0,data,ADDR_BUTTON_CONFIG,pc-port/src/pad.h:46,50,V_CONTROL (pc-port/src/director_int.h; p50),0
+A.BIN,0x060252C8,data,SCORE,pc-port/src/enemy.h:23,50,V_SCORE (pc-port/src/director_int.h; p50),0
+A.BIN,0x060252CC,data,G_DIRECTOR_REQ,pc-port/src/objhandlers_c.h:14,50,G_DIR_SCENE (pc-port/src/boot.h; p50) | g_DirScene (docs/director.md; p45),0
+DIRECTOR,0x06042C6C,function,Dir_LivesAdd,pc-port/src/director_tally.c:33,100,Lives_Add (docs/director.md; p60),0
+DIRECTOR,0x06042C98,function,Dir_ScoreAdd,pc-port/src/director_tally.c:44,100,Score_Add (docs/director.md; p60),0
+DIRECTOR,0x06087DAC,data,D_STEP,pc-port/src/director_int.h:25,50,d_SceneStep (docs/director.md; p45),0
+SHINOBI,0x06040000,function,Shinobi_Entry,pc-port/src/shinobi.c:52,100,Overlay_Entry (pc-port/src/boot.c; p70),0
+SHINOBI,0x060459A0,function,Player_SwordMapHit,pc-port/src/objhandlers_e2.c:855,100,sword_hits_wall (pc-port/src/player_stubs.c; p100),0
+SHINOBI,0x06046B14,function,Layer_PutTile,pc-port/src/stage_inits.c:387,100,Map_PutCell (pc-port/src/objhandlers_b.c; p100),1
+SHINOBI,0x0604B7AC,function,ObjF_BlockShurikens,pc-port/src/objhandlers_f.c:72,100,Obj_BlockShurikens (pc-port/src/objhandlers_a.c; p100),1
+SHINOBI,0x0604E12C,function,Debris_Spawn,pc-port/src/stage_hooks.c:102,100,Leaf_Spawn (pc-port/src/objhandlers_e.c; p100),1
+SHINOBI,0x06051432,function,ObjF_CarryListAdd,pc-port/src/objhandlers_f.c:118,100,carry_list_add (pc-port/src/enemy_t05.c; p100),0
+SHINOBI,0x0605817C,function,Obj_CarryEnemies,pc-port/src/objhandlers_b.c:56,100,"ObjF_CarryEnemies (pc-port/src/objhandlers_f.c,pc-port/src/objhandlers_f_int.h; p100)",1
+SHINOBI,0x0605A16C,function,Debris101E_Spawn,pc-port/src/objhandlers_e2.c:885,100,debris_spawn (pc-port/src/enemy_t0c.c; p100),0
+SHINOBI,0x060601BA,function,ObjF_SwordHurtsPlayer,pc-port/src/objhandlers_f.c:23,100,Obj_HurtPlayer (pc-port/src/objhandlers_e2.c; p100),1
+SHINOBI,0x0606078C,function,ObjF_SwordClang,pc-port/src/objhandlers_f.c:11,100,Obj_SwordClang (pc-port/src/objhandlers_a.c; p100),1
+SHINOBI,0x0606081A,function,ObjF_BreakParts,pc-port/src/objhandlers_f.c:35,100,Obj_Burst6 (pc-port/src/objhandlers_e2.c; p100),1
+SHINOBI,0x06060E8E,function,Proj_Hitbox,pc-port/src/fx.c:246,100,"EM_ProjHitbox (pc-port/src/enemy_more.c,pc-port/src/enemy_more.h; p100) | ObjF_ProjHitbox (pc-port/src/objhandlers_f.c,pc-port/src/objhandlers_f_int.h; p100) | proj_hitbox (pc-port/src/enemy_boss42.c; p100)",1
+SHINOBI,0x06060F64,function,EM_ProjTouch,pc-port/src/enemy_more.c:202,100,proj_touch (pc-port/src/enemy_boss42.c; p100),0
+SHINOBI,0x06080808,function,Guard4_ClampX,pc-port/src/enemy_t4.c:46,100,EM_ClampX (pc-port/src/enemy_more.h; p90),0
+SHINOBI,0x06092DA4,function,Soldier_HideCheck,pc-port/src/enemy_soldier_b.c:41,100,Soldier_SetHidden (pc-port/src/enemy_soldier_a.c; p100) | hide_check (pc-port/src/enemy_soldier_sub_d.c; p100),1
+SHINOBI,0x06097130,function,EM_SolveJump,pc-port/src/enemy_more.c:32,100,Guard4_SolveJump (pc-port/src/enemy_t4.c; p100),1
+SHINOBI,0x060ABCF0,data,DEFS61,pc-port/src/objhandlers_f.c:127,50,DEFS10 (pc-port/src/objhandlers_e2.c; p50),0
+SHINOBI,0x060BA5D0,data,B1F_DEFS,pc-port/src/enemy_boss1f.c:45,50,DEFS9B (pc-port/src/objhandlers_f4.c; p50),0
+SHINOBI,0x060D2878,data,SCR61,pc-port/src/objhandlers_f.c:128,50,SCR10 (pc-port/src/objhandlers_e2.c; p50),0
+SHINOBI,0x060DAF72,data,A_GAME_MODE,pc-port/src/debug_menu.c:20,50,G_GAME_MODE (pc-port/src/objhandlers_c.h; p50),0
+SHINOBI,0x060E19D0,data,B1F_SCR,pc-port/src/enemy_boss1f.c:46,50,SCR9B (pc-port/src/objhandlers_f4.c; p50),0
+SHINOBI,0x060EA2B4,data,PLAYER,pc-port/src/player.h:7,50,"PL (pc-port/src/enemy_int.h,pc-port/src/fx.c,pc-port/src/objhandlers.c,pc-port/src/objhandlers_b.c,pc-port/src/objhandlers_c.c,pc-port/src/stage_hooks.c; p50)",0
+SHINOBI,0x060EA41C,data,G_HAZARD_PTR,pc-port/src/player.c:32,50,HAZARD_PTR (pc-port/src/ninjutsu.c; p50) | G_HAZARD (pc-port/src/player_stubs.c; p50),0
+SHINOBI,0x060EA444,data,G_FIDGET_TMR,pc-port/src/player.c:30,50,G_FIDGET (pc-port/src/player_stubs.c; p50),0
+SHINOBI,0x060EA588,data,LAYER_DESC,pc-port/src/collision.h:6,50,DESC0 (pc-port/src/stage_hooks.c; p50) | D (pc-port/src/stage_inits.c; p50),0
+SHINOBI,0x060EA5B8,data,DESC1,pc-port/src/stage_hooks.c:60,50,L1_X (pc-port/src/objhandlers_e.c; p50) | LAYER (pc-port/src/enemy_boss1a.c; p50),0
+SHINOBI,0x060EA5E8,data,DESC2,pc-port/src/stage_hooks.c:61,50,BG_X (pc-port/src/enemy_t0b.c; p50),0
+SHINOBI,0x060EA618,data,STAGE_C,pc-port/src/ninjutsu.c:40,50,"STAGE_CTRL (pc-port/src/soft_render.c; p50) | CTRL (pc-port/src/stage_hooks.c; p50) | STAGE_CTRL_ADDR (pc-port/src/stage_inits.h; p50) | C (pc-port/src/objhandlers_d.c,pc-port/src/objhandlers_e.c,pc-port/src/stage.c; p50)",0
+SHINOBI,0x060EA638,data,SHAKE,pc-port/src/enemy_t0a.c:25,50,CAM_LOCKS (pc-port/src/ninjutsu.c; p50) | C_FLAGS (pc-port/src/enemy_boss17.c; p50),0
+SHINOBI,0x060EA64A,data,G_PROBE_PARAM,pc-port/src/player.c:31,50,G_COLL_LAYER (pc-port/src/collision.h; p50),0
+SHINOBI,0x060EC658,data,G_CHECKPOINT_ADDR,pc-port/src/stage_hooks.c:63,50,A_CHECKPT (pc-port/src/debug_menu.c; p50) | G_CHECKPOINT (pc-port/src/objhandlers_c.h; p50),0
+SHINOBI,0x060EC65A,data,A_RESPAWN,pc-port/src/debug_menu.c:22,50,G_RESPAWN (pc-port/src/objhandlers_c.h; p50),0
+SHINOBI,0x060EC65C,data,G_STAGE11_OBJ,pc-port/src/player.c:33,50,OBJ_TBL (pc-port/src/ninjutsu.c; p50) | OBJ_TABLE (pc-port/src/objects.h; p50),0
+SHINOBI,0x060F205C,data,OBJ_CUR,pc-port/src/ninjutsu.c:42,50,ENEMY_CUR (pc-port/src/enemy.h; p50),0
+SHINOBI,0x060F4D40,data,HV,pc-port/src/stage_hooks.c:51,50,HK (pc-port/src/objhandlers_f.c; p50),0

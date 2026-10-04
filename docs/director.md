@@ -168,7 +168,7 @@ NO DAMAGE = 10 000 if HP ≥ HP max (else 0); NO SHURIKEN = 5000 unless SHINOBI 
 ```
 boot (A.BIN): stage=-1, difficulty=NORMAL(1), control=0, shurikens=20, g_DirScene=0
  └─ scene 0 (logo; skipped on first boot) ─► scene 1 title
-      ├─ idle 38 s ─► attract demo: SHINOBI stage 0/2/4/6/8 (demo flag 0x06014408|0x8000)
+      ├─ idle 38 s ─► attract demo (§1.4): SHINOBI stage 0/2/4/6/8 (demo flag 0x06014408|0x8000)
       │                 └─ demo end (SHINOBI 0x0606BB8A: 1800 frames, or Start → 0x06014408 |= 0x4000):
       │                    request 0 = timed out (→ SEGA logo → title), 1 = Start pressed (→ title)
       ├─ OPTIONS ─► options ─► back to title (step 3)   [RT+Start with cheat ─► sound test]
@@ -183,6 +183,63 @@ SHINOBI:
 soft reset A+B+C+Start (A.BIN Sys_CheckSoftReset 0x060042B8), action from 0x060252E0:
   1 = return to the BIOS (title/logo screens), 0 = reload DIRECTOR into scene 1, -1 = ignored
 ```
+
+### 1.4 Attract demo
+
+Measured on the real game (BizHawk, `title.State`, no input) and ported (pc-port, after v0.21.1).
+
+**Start.** Title step 4 counts idle frames in 0x060DCF92; at **2280** (no Start pressed) it
+fades to black (+ CD-DA fade) and step 5 (`Title_Launch` 0x060412D4) starts the demo 64 frames
+later (real game: between 53 and 73 frames, sampled every 20): g_DirMode++ (SHINOBI), SHOU.CHR
+to LWRAM, HP max / lives / continues from the difficulty option (NORMAL: HP 6), 0x060252DC = 1
+(no drop-in), stage = counter low byte, counter += 2 (0 after 8), |= 0x8000. The demos therefore
+cycle **1-1, 2-1, 3-1, 4-1, 5-1** (stage index 0, 2, 4, 6, 8); the counter survives the return to
+the title (step 3 only keeps its low byte). Gameplay demos only: no movie, no DEMO_n.CPK
+(those are the story movies between stages, §1.2 scene 4). The real game then loads for ~470
+frames (CD), the port for 6.
+
+**Input** — recorded in SHINOBI.PPB's data, not in a file of the disc:
+
+| stage | table | records | frames of input |
+|---|---|---|---|
+| 0 (1-1) | 0x060CA71C | 113 | 1816 |
+| 2 (2-1) | 0x060CA8E4 | 127 | 1818 |
+| 4 (3-1) | 0x060CAAE4 | 144 | 1805 |
+| 6 (4-1) | 0x060CAD28 | 106 | 1810 |
+| 8 (5-1) | 0x060CAED4 | 82 | 1474 |
+
+Each record is `{u16 held, u16 frames}` (pad bits of §5.1, button layout 0: A shuriken, B sword,
+C jump); a table ends with `{0, 0xFFFF}` (nothing held until the demo ends: in 5-1 Sho stands
+still for the last ~330 frames).
+* `Demo_InputInit` **0x060469FE**, tail of `Player_InitForStage` 0x06044E18 (every stage
+  load): clears the demo pad 0x060EA576 (u16 held, previous held, pressed, previous pressed),
+  counter 0x060EA580 (u32) = 0, pointer 0x060EA584 = the table of stages 0/2/4/6/8 (other
+  stages keep the old pointer).
+* `Demo_Input` **0x06046A98**, tail of the pad latch 0x06040CAC when 0x06014408 & 0x8000 (the
+  scripted input 0x060463DC of player flags +4 bit 0x10 has priority; the latch also forces
+  button layout 0): counter++; when the counter is no longer below the record length, next
+  record and counter = 0 (first record: length − 1 frames, the others: length frames); then
+  held = record, pressed = held & ~previous held, and the game pad words 0x060EA428/2A/2C are
+  overwritten. The real pad is only read for Start.
+* `Game_LoadStage` end **0x0606B838**: RNG seed 0x0603A4B0 (A.BIN `srand` 0x0602DDCC) = **0**
+  in a demo, the frame counter 0x060143EA otherwise — so a demo replays identically.
+
+**End** — `Game_CheckDemoEnd` 0x0606BB8A, last call of every stage frame: Start pressed
+(0x0601C4A4 & 0x0800, stage not frozen) sets 0x06014408 |= 0x4000; Start or the stage frame
+timer 0x060F4CCC > 0x708 ends the demo: stage state = end request 3 + first-frame bit 8 +
+freeze 0x8000, 0x06014408 |= 0x2000. Timer: the demo lasts **1801 stage frames (30 s)**.
+`Stage_UpdateState` 0x06046190 fades out, then game mode 11 → DIRECTOR with request
+**0** (timer: scene 0, the SEGA logo is shown — 240 frames — then the title) or **1** (Start:
+scene 1, straight back to "PRESS START"). Any other end of the stage (death, exit) during a
+demo also becomes request 3.
+
+**Verification.** `tools/bizhawk/bridge/demo31.State` (+ `demo31_*.bin`) = first frame of game
+mode 6 of the 3-1 demo (`title.State` + 2511 idle frames, demo counter 4). Lock-step (no input,
+the demo plays itself): identical game state over 1790 frames after one fix (bomb blasts of
+enemy 0x16, enemy_t16.c). The port running from boot through the 5 demos reaches the same 3-1
+state at frame 1790 (Sho x 2428, HP 5, RNG, objects; only stale words of free slots differ).
+`tests/test_demo.c`: launch at idle 2280, stage order, recorded input frame by frame, end at
+1801 frames → logo → title, Start → title.
 
 ---
 

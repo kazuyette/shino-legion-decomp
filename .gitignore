@@ -11,3 +11,9 @@ projet/
 Claude outputs/
 # player packages built by tools/make_dist.py (pc-port/dist/)
 dist/
+
+# backups made by tools/apply_ghidra_names.sh
+projet_backup_*/
+shinolegions_backup_*/
+notes/ghidra_sync/headless_*.log
+notes/ghidra_sync/verify_*.log

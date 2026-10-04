@@ -153,7 +153,46 @@ int Game_LatchPad1(uint16_t playerFlags4)
         Game_ScriptedInput();                    /* tail jump to 0x060463DC */
         return 1;
     }
-    if (demo & 0x8000)
-        return 2;   /* TODO: port SHINOBI 0x06046A98 (demo input) */
+    if (demo & 0x8000) {
+        Game_DemoInput();                        /* tail jump to 0x06046A98 */
+        return 2;
+    }
     return 0;
+}
+
+/* 0x060469FE: reached at the end of every stage (re)load through Player_InitForStage. Clears the
+ * demo pad and points at the recorded input of the stage; other stages keep the old pointer
+ * (only read while the demo flag is set, and demos only run on stages 0/2/4/6/8). */
+void Game_DemoInputInit(void)
+{
+    W16(ADDR_DEMO_PAD + 2, 0); W16(ADDR_DEMO_PAD, 0); W16(ADDR_DEMO_PAD + 6, 0); W16(ADDR_DEMO_PAD + 4, 0);
+    W32(ADDR_DEMO_CNT, 0);
+    switch (R16(0x0602526Au)) {
+    case 0: W32(ADDR_DEMO_PTR, DEMO_TABLE_S0); break;
+    case 2: W32(ADDR_DEMO_PTR, DEMO_TABLE_S2); break;
+    case 4: W32(ADDR_DEMO_PTR, DEMO_TABLE_S4); break;
+    case 6: W32(ADDR_DEMO_PTR, DEMO_TABLE_S6); break;
+    case 8: W32(ADDR_DEMO_PTR, DEMO_TABLE_S8); break;
+    default: break;
+    }
+}
+
+/* 0x06046A98: one record {u16 held, u16 frames} per run of identical input. The counter is
+ * bumped first, and the record is left when the counter reaches its length (so the first record
+ * lasts length-1 frames, the next ones length frames). The game pad words are then replaced
+ * (pressed = held & ~previous held); the real pad only matters for Start (Game_CheckDemoEnd). */
+void Game_DemoInput(void)
+{
+    W32(ADDR_DEMO_CNT, R32(ADDR_DEMO_CNT) + 1u);
+    if (!(R16(R32(ADDR_DEMO_PTR) + 2) > R32(ADDR_DEMO_CNT))) {
+        W32(ADDR_DEMO_PTR, R32(ADDR_DEMO_PTR) + 4u);
+        W32(ADDR_DEMO_CNT, 0);
+    }
+    W16(ADDR_DEMO_PAD + 2, R16(ADDR_DEMO_PAD));
+    W16(ADDR_DEMO_PAD + 6, R16(ADDR_DEMO_PAD + 4));
+    W16(ADDR_DEMO_PAD, R16(R32(ADDR_DEMO_PTR)));
+    W16(ADDR_DEMO_PAD + 4, (uint16_t)(R16(ADDR_DEMO_PAD) & ~R16(ADDR_DEMO_PAD + 2)));
+    W16(ADDR_GAME_HELD, R16(ADDR_DEMO_PAD));
+    W16(ADDR_GAME_PRESSED, R16(ADDR_DEMO_PAD + 4));
+    W16(ADDR_GAME_PRESSED_PREV, R16(ADDR_DEMO_PAD + 6));
 }

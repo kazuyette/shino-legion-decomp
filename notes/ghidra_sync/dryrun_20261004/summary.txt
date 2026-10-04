@@ -1,0 +1,6 @@
+created BSS block 06087dac-060fffff
+created BSS block WRAM_H_LOW 06000000-06003fff
+SUMMARY DIRECTOR.dec.bin role=DIRECTOR data:labeled=8 data:renamed=127 function:commented=2 function:created=15 function:inside=18 function:kept:differs=6 function:renamed=104 function:same=74 function:same:compatible human name=5
+created BSS block 060ea2aa-060fffff
+created BSS block WRAM_H_LOW 06000000-06003fff
+SUMMARY SHINOBI.dec.bin role=SHINOBI data:labeled=17 data:renamed=338 function:commented=9 function:created=23 function:inside=19 function:kept:differs=13 function:renamed=516 function:same=208 function:same:both index-based=22 function:same:compatible human name=12

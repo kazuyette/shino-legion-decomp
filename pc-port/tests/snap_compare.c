@@ -34,7 +34,7 @@
 /* SDL build (render.c instead of tests/render_stub.c): mode "sdl" draws the transplanted frame
  * with the game's SDL renderer (dummy video driver, software renderer) -> OUT_sdl.png.
  *   gcc -std=c11 -O2 -DSNAP_SDL -Isrc -Itests -I<SDL include> tests/snap_compare.c <SOURCES.txt
- *   without tests/render_stub.c> src/render.c <SDL2 libs> -lm -o snap_sdl */
+ *   without tests/render_stub.c> src/render.c src/crt.c <SDL2 libs> -lm -o snap_sdl */
 #include <SDL2/SDL.h>
 #include "screenshot.h"
 RenderSprite g_spriteLog[4096]; int g_spriteLogCount;

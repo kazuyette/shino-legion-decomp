@@ -42,7 +42,8 @@ ENGLISH
 
    PC keys: F1 (or controller Back/Select) = debug / cheat menu (pauses the
    game: lives, energy, shurikens, ninjutsu, stage select...);
-   Alt+Enter or F11 = fullscreen; F12 = screenshot (screenshots folder);
+   Alt+Enter or F11 = fullscreen; F10 = CRT filter (off / scanlines / crt);
+   F12 = screenshot (screenshots folder), Shift+F12 = screenshot as displayed;
    quit by closing the window. A+B+C+Start = soft reset, as on the Saturn.
 
 3. Settings: shinobi.ini
@@ -91,8 +92,9 @@ FRANCAIS
 
    Touches PC : F1 (ou Back/Select de la manette) = menu debug / triche (met le
    jeu en pause : vies, energie, shurikens, ninjutsu, choix du niveau...) ;
-   Alt+Entree ou F11 = plein ecran ; F12 = capture d'ecran (dossier
-   screenshots) ; on quitte en fermant la fenetre. A+B+C+Start = reset comme
+   Alt+Entree ou F11 = plein ecran ; F10 = filtre CRT (off / scanlines / crt) ;
+   F12 = capture d'ecran (dossier screenshots), Maj+F12 = capture telle
+   qu'affichee ; on quitte en fermant la fenetre. A+B+C+Start = reset comme
    sur la Saturn.
 
 3. Reglages : shinobi.ini

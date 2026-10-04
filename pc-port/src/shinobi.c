@@ -124,7 +124,25 @@ static void Game_LoadStage(void)
     Shinobi_InitVdp2();                              /* 0x060400B0 */
     W32(0x06024058u, 0); W32(0x0602405Cu, 0); W32(0x06024060u, 0x10000); W32(0x06024064u, 0x10000);
     W32(SPR_ZOOM, 0x10000);
-    Player_Init();
+    {
+        /* Player_Init is a PC helper (also used by the tests) that sets HP / HP max 16 and 20
+         * shurikens; in the original those belong to DIRECTOR (new game / continue) and
+         * Player_InitForStage 0x06044E18 only refills HP: always, except after a stage clear
+         * into an act 2 (odd index), where the HP of act 1 is kept. Found with the attract
+         * demo (HP 6 on NORMAL in the real game, 16 in the port). */
+        uint16_t hp = R16(PLAYER + P_HP), hpmax = R16(0x060252B0u), shur = R16(0x060252B6u);
+        Player_Init();
+        W16(PLAYER + 0x18, 0xFFFF);                  /* 0x06044ED4 (unused word, kept for the RAM diffs) */
+        if (hpmax != 0) {                            /* DIRECTOR (or Boot_DevStartStage) ran */
+            W16(0x060252B0u, hpmax); W16(0x060252B6u, shur); W16(PLAYER + P_HP, hp);
+            int clear = (R16(G_STAGE_STATE) & 7) == 2;
+            if (!clear || !(R16(G_STAGE_INDEX) & 1)) {
+                W16(PLAYER + P_HP, hpmax);
+                W16(0x060252BAu, 0); W16(0x060252BCu, 0);
+                if (clear) W16(0x060252BEu, 0);
+            }
+        }
+    }
     if (!Stage_Load(Res_GetAssetDir(), st)) {
         printf("[game] stage %d not available yet: loading index 12 instead\n", st);
         W16(G_CHECKPOINT, 0);
@@ -133,10 +151,14 @@ static void Game_LoadStage(void)
     W16(0x060F4CCEu, 0); W16(0x060F4CCCu, 0);        /* 0x0606694C */
     Stage_SpawnPlayer();
     Ninjutsu_PlayerStageInit();                      /* part of 0x06044E18 */
+    Game_DemoInputInit();                            /* 0x060469FE (tail of 0x06044E18) */
     Ninjutsu_Init();                                 /* 0x06063538 */
     StageHooks_Init();                               /* 0x0606C618 (after 0x0606694C) */
     Fade_StageIntro();                               /* 0x0606B7C6-0x0606B838 */
     W16(G_STAGE_STATE, R16(G_STAGE_STATE) & 0x7FF0);
+    /* 0x0606B838: RNG seed (A.BIN srand 0x0602DDCC) = 0 for the attract demo, else the frame
+     * counter: the demo replays identically, the game does not (missing up to v0.21.1) */
+    W32(0x0603A4B0u, (R32(ADDR_DEMO_FLAGS) & 0x8000) ? 0u : (uint32_t)R16(0x060143EAu));
     Vdp2_DisplayOff();                               /* 0x06005BB4 */
     W16(G_GAME_MODE, R16(G_GAME_MODE) + 1u);
 }

@@ -43,7 +43,9 @@ void Render_Present(void);
  * the 320x224 frame target that Render_Present scales to the window). */
 void Render_BeginFrame(void);
 void Render_ToggleFullscreen(void);      /* Alt+Enter / F11: desktop fullscreen <-> window */
-void Render_RequestScreenshot(void);     /* F12: saved by the next Render_Present */
+void Render_RequestScreenshot(void);     /* F12: clean 320x224 frame, saved by the next Render_Present */
+void Render_RequestScreenshotOutput(void); /* Shift+F12: the window picture as shown (CRT filter) */
+void Render_CycleCrt(void);              /* F10: CRT filter off -> scanlines -> crt (crt.c) */
 void Render_Shutdown(void);
 void Render_SetKeepQueue(int keep);   /* 1: keep the sprite queue (frame paused) */
 

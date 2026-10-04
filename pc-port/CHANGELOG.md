@@ -3,6 +3,51 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.22.0 — 2026-10-04
+- Attract demo (docs/director.md §1.4): the recorded demo input is ported — Demo_InputInit
+  0x060469FE (tail of Player_InitForStage) and Demo_Input 0x06046A98 (pad.c, called by the pad
+  latch when 0x06014408 & 0x8000); tables {held, frames} in SHINOBI.PPB at 0x060CA71C /
+  0x060CA8E4 / 0x060CAAE4 / 0x060CAD28 / 0x060CAED4 for the demos 1-1, 2-1, 3-1, 4-1, 5-1.
+  Idle title (2280 frames) -> demo -> 1801 stage frames -> SEGA logo -> title, Start -> title,
+  as on the real game. 3-1 demo lock-step against BizHawk (demo31.State): identical over 1790
+  frames.
+- shinobi.c: RNG seed at the end of the stage load (0x0606B838: 0 in a demo, else the frame
+  counter) was missing; Player_InitForStage HP rule (HP = HP max except after a clear into an
+  act 2, magic state cleared) replaces the PC defaults of Player_Init, which also overwrote HP
+  max with 16 and the shurikens with 20 at every (re)load.
+- enemy_t16.c: bomb (projectile 0x13) blasts re-read x/y from the freed slot like the original
+  (the four outer blasts were 16 px too low).
+- fx.c: effect 7 (0x06062578, Ikazuchi shield flash when the shield absorbs a hit, spawned by
+  Player_TakeDamage): sprite list 0x060AD2C2, drifts 3 px/frame, drawn on odd frames.
+- tests/test_demo.c, tests/test_effect7.c.
+- CRT filter (src/crt.c, PC only): shinobi.ini `[video] crt = off | scanlines | crt`, `crt_strength`
+  (0..100, 70), `crt_mask = aperture | slot | none`, `crt_curvature` (0..100, 0); F10 cycles off ->
+  scanlines -> crt with an on-screen toast (session only, the ini is not rewritten). Render_Present
+  scales the 320x224 frame to the output rectangle, adds it again for brightness, multiplies it
+  (SDL_BLENDMODE_MOD) by overlays built on the CPU once per window size at the exact output
+  resolution (Gaussian beam profile per source line, box-filtered per output row, gamma-aware;
+  phosphor mask per output column = no moire), adds a 160x112 / 80x56 glow (crt), optional bent
+  mesh (SDL_RenderGeometry) with the mask applied after it. No shader, works on every SDL
+  renderer with render targets. Shift+F12 = screenshot of the picture as shown (F12 stays the
+  clean 320x224 frame). tests/test_crt.c (pattern maths + ini keys), tests/shot_crt.c (offscreen
+  captures + Render_Present timing); comparison captures in `Claude outputs/crt/`.
+- Sound (docs/sound.md §3, §6): sfx.c now follows the SBL path as read from A.BIN — the SH-2
+  request queue 0x06007FA8 / scheduler 0x0600863E (17 x 12-byte requests, priority sort, slot 0
+  = tunes, slots 1-7 = SE, steal one frame later, unplaced SE dropped, no same-id restart),
+  0x06008154 / 0x06007DBA sequence volume and fades, 0x060084BE stop by slot, and the 68K
+  driver: timer-B ticks of 88 samples with its 8.8 tempo maths, note table (note-off by channel
+  + key), event step = delay BEFORE the event (was after: every event was one step early),
+  channels 0-31, CC 0x20 resets volume/program, program change resets bend, velocity table +
+  TL law (velocity and CC 7 linear in dB: TL = 255 - (2v)(255 - TL)(2 vol) >> 16), driver pan
+  law (DIPAN side was reversed; pan changes follow on channel 0 only, as the driver), pitch =
+  driver OCT/FNS tables (fine tune = 1/256 semitone, was 1/128), bend applied by the main-loop
+  refresh, gate extensions 0x88-0x8B confirmed, EG key rate scaling, hardware PLFO/ALFO, mono
+  flag = centred slots (audio.c: SFX no longer averaged). DSP: the game loads no effect
+  program (no DSP area, SND_ChgEfct/ChgMix not linked, MPRO cleared, mixers zero) — no reverb
+  on the Saturn, none here. Output gain 0.9. Sfx_*Locked API for the remaining 0x06008154 /
+  0x060084BE callers. tests/test_sfx.c rewritten (driver tables, queue, fades, mono, clipping,
+  loop timing; listening WAVs with a 2nd argument).
+
 ## 0.21.1 — 2026-10-04
 - Unicode file paths on Windows (u8path.c): every file access (assets, disc image, .cue
   contents, shinobi.ini, screenshots) goes through UTF-8 -> UTF-16 wide APIs, so folders or

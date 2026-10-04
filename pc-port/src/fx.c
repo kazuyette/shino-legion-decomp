@@ -138,6 +138,28 @@ static void Fx_Flash05(uint32_t e)                                     /* 0x0606
     fx_tick(e);
 }
 
+/* 0x06062578: 7 = Ikazuchi shield flash, spawned on Sho by Player_TakeDamage (0x06045BEC) when
+ * the shield absorbs a hit. Sprite list 0x060AD2C2 (A.BIN 0x060067C2: char, offsets, colour calc;
+ * 0xFFFF = end -> effect freed), char + 0x480, drifts 3 px per frame towards the effect's
+ * facing (+2 bit 15 = right), colour bank 0x40, half-transparent (+0x18 = 0x7F) and drawn
+ * on odd frames only (frame counter 0x060143EA & 1). */
+static void Fx_Shield07(uint32_t e)
+{
+    SprList_Step(0x060AD2C2u, e + 0x12, e + 0x2A);
+    if (R16(SPR) == 0xFFFF) { W16(e, 0xFFFF); return; }
+    if (!FROZEN) {
+        if (R16(e + 2) & 0x8000) W32(e + 8, R32(e + 8) + 0x00030000u);
+        else                     W32(e + 8, R32(e + 8) - 0x00030000u);
+    }
+    W16(SPR, R16(SPR) + 0x480u);
+    fx_screen(e);
+    W16(SPR + 0x10, (R16(e + 2) & 0x8000) | 0x0200);
+    W16(SPR + 0x0A, 0x40);
+    W16(SPR + 0x0C, 0);
+    W32(SPR + 0x18, 0x7F);
+    if (R16(0x060143EAu) & 1) Sprite_Draw(SPR);
+}
+
 int  BossB_Effect(uint16_t t, uint32_t e);                              /* enemy_boss06.c (bosses 0x17 / 0x1F) */
 void Effects_Update(void)
 {
@@ -157,6 +179,7 @@ void Effects_Update(void)
         case 3: Fx_Spark(e, 2, 0x74); break;
         case 4: Fx_Slash(e); break;
         case 5: Fx_Flash05(e); break;                             /* (PC v0.18.x audit) */
+        case 7: Fx_Shield07(e); break;
         case 8: case 9: Fx_Shard(e); break;                      /* objhandlers_e.c, 0x0604E180 */
         case 0xE: Fx_Splash0E(e); break;                         /* enemy_more.c, 0x0605B08A */
         case 0xA: case 0xB: case 0xC: case 0xD: Fx_Sparkle(e); break;   /* fx_b.c */
