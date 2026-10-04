@@ -3,6 +3,7 @@
 #include "sprite.h"
 #include "stage.h"
 #include "fade.h"
+#include "stage_hooks.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -219,6 +220,54 @@ void Vdp2_DecodeNbg3(uint32_t *argb)
         }
 }
 
+/* ---- line / cell scroll ---- */
+
+#define SH_SCRCTL 0x0603A60Au
+#define SH_VCSTA  0x0603A60Cu
+#define SH_LSTA0  0x0603A610u
+#define SH_LSTA1  0x0603A614u
+
+void Vdp2_GetLineScroll(int nbg, Vdp2LineScroll *s)
+{
+    int sx, sy;
+    const uint32_t m = VDP2_VRAM_SIZE - 1;
+    Vdp2_LayerScroll(nbg, &sx, &sy);
+    s->sy = sy; s->lines = 0; s->cells = 0;
+    for (int y = 0; y < SCREEN_H; y++) s->sx[y] = sx;
+    for (int c = 0; c <= SCREEN_W / 8; c++) s->dy[c] = 0;
+    if (nbg == 2 && (LineTable_DmaActive() & 0x2000)) {
+        for (int y = 0; y < SCREEN_H; y++) s->sx[y] = RS16(LINE_HBL_W + (uint32_t)y * 8u);
+        s->lines = 1;
+        return;
+    }
+    if (nbg < 0 || nbg > 1) return;
+    unsigned scr = (R16(SH_SCRCTL) >> (8 * nbg)) & 0xFF;
+    if (scr & 2) {                                         /* LSCX */
+        uint32_t base = (R32(nbg ? SH_LSTA1 : SH_LSTA0) << 1) & m;
+        uint32_t size = 4u * (((scr >> 1) & 1) + ((scr >> 2) & 1) + ((scr >> 3) & 1));
+        int iv = 1 << ((scr >> 4) & 3);
+        for (int y = 0; y < SCREEN_H; y++)
+            s->sx[y] = sx + (RS32(VDP2_VRAM_BASE | ((base + (uint32_t)(y / iv) * size) & m)) >> 16);
+        s->lines = 1;
+    }
+    if (scr & 1) {                                         /* VCSEN */
+        uint32_t base = (R32(SH_VCSTA) << 1) & m;
+        int both = (R16(SH_SCRCTL) & 0x101) == 0x101;
+        uint32_t stride = both ? 8u : 4u, off = (both && nbg == 1) ? 4u : 0u;
+        for (int c = 0; c <= SCREEN_W / 8; c++)
+            s->dy[c] = RS32(VDP2_VRAM_BASE | ((base + (uint32_t)c * stride + off) & m)) >> 16;
+        s->cells = 1;
+    }
+}
+
+int Vdp2_LineColorOffset(int line, int *r, int *g, int *b)
+{
+    if (!(LineTable_DmaActive() & 0x4000) || line < 0 || line >= 0x108) return 0;
+    uint32_t w = LINE_HBL_W + (uint32_t)line * 8u;
+    *r = RS16(w + 2); *g = RS16(w + 4); *b = RS16(w + 6);
+    return 1;
+}
+
 /* ---- reference frame ---- */
 
 static uint32_t s_page[VDP2_PAGE_PX * VDP2_PAGE_PX];
@@ -239,10 +288,43 @@ static void blit_page(uint32_t *fb, int dx, int dy)
 
 static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 
+/* NBG0-2 with line / cell scroll: per pixel, decoded pages cached */
+static void soft_layer_lines(uint32_t *fb, int nbg, const Vdp2LineScroll *ls)
+{
+    enum { NC = 6 };
+    static uint32_t *cache[NC];
+    int cpid[NC], next = 0;
+    for (int i = 0; i < NC; i++) {
+        cpid[i] = -1;
+        if (!cache[i]) cache[i] = (uint32_t *)malloc((size_t)VDP2_PAGE_PX * VDP2_PAGE_PX * sizeof(uint32_t));
+        if (!cache[i]) return;
+    }
+    for (int y = 0; y < SCREEN_H; y++)
+        for (int x = 0; x < SCREEN_W; x++) {
+            int wx = ls->sx[y] + x, wy = ls->sy + ls->dy[x >> 3] + y;
+            int px = floordiv(wx, VDP2_PAGE_PX), py = floordiv(wy, VDP2_PAGE_PX);
+            int pid = Vdp2_LayerPageAt(nbg, px, py), k;
+            if (pid < 0) continue;
+            for (k = 0; k < NC && cpid[k] != pid; k++) ;
+            if (k == NC) {
+                k = next; next = (next + 1) % NC;
+                Vdp2_DecodeMapPage(nbg, pid, cache[k]);
+                cpid[k] = pid;
+            }
+            uint32_t c = cache[k][(wy - py * VDP2_PAGE_PX) * VDP2_PAGE_PX + (wx - px * VDP2_PAGE_PX)];
+            if (c) fb[y * SCREEN_W + x] = c;
+        }
+}
+
 static void soft_layer(uint32_t *fb, int nbg)
 {
     int sx, sy;
     if (!Vdp2_LayerEnabled(nbg)) return;
+    if (nbg != 3) {
+        static Vdp2LineScroll ls;
+        Vdp2_GetLineScroll(nbg, &ls);
+        if (ls.lines || ls.cells) { soft_layer_lines(fb, nbg, &ls); return; }
+    }
     Vdp2_LayerScroll(nbg, &sx, &sy);
     if (nbg == 3) {
         Vdp2_DecodeNbg3(s_page);
@@ -317,12 +399,18 @@ static uint8_t clamp8(int v) { return (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v); 
 static void soft_offset(uint32_t *fb, const uint8_t *src, int layer)
 {
     int r, g, b;
-    if (!Fade_GetLayerOffset(layer, &r, &g, &b) || !(r || g || b)) return;
-    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
-        if (src[i] != layer) continue;
-        uint32_t c = fb[i];
-        fb[i] = 0xFF000000u | (uint32_t)clamp8((int)(c >> 16 & 255) + r) << 16 |
-                (uint32_t)clamp8((int)(c >> 8 & 255) + g) << 8 | clamp8((int)(c & 255) + b);
+    if (!Fade_GetLayerOffset(layer, &r, &g, &b)) return;
+    int lineA = !((R16(0x0603B49Cu) >> layer) & 1);          /* CLOFSL: offset A -> per-line DMA */
+    for (int y = 0; y < SCREEN_H; y++) {
+        int lr = r, lg = g, lb = b;
+        if (lineA) Vdp2_LineColorOffset(y, &lr, &lg, &lb);
+        if (!(lr || lg || lb)) continue;
+        for (int i = y * SCREEN_W; i < (y + 1) * SCREEN_W; i++) {
+            if (src[i] != layer) continue;
+            uint32_t c = fb[i];
+            fb[i] = 0xFF000000u | (uint32_t)clamp8((int)(c >> 16 & 255) + lr) << 16 |
+                    (uint32_t)clamp8((int)(c >> 8 & 255) + lg) << 8 | clamp8((int)(c & 255) + lb);
+        }
     }
 }
 

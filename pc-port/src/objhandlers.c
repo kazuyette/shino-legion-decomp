@@ -6,6 +6,8 @@
 #include "anim.h"
 #include "player.h"
 #include "objhandlers_d.h"
+#include "objhandlers_f.h"
+#include "objhandlers_e.h"
 #include <stdio.h>
 
 #define CUR      R32(OBJ_CUR)
@@ -223,11 +225,35 @@ void ObjHandler_Call(uint16_t type)
     case 0x1004: ObjHandler_1004(); break;
     case 0x1005: ObjHandler_1005(); break;
     case 0x1006: ObjHandler_1006(); break;
+    case 0x1007: ObjHandler_1007(); break;   /* objhandlers_e.c / objhandlers_e2.c */
+    case 0x1008: ObjHandler_1008(); break;
+    case 0x1009: ObjHandler_1009(); break;
+    case 0x100A: ObjHandler_100A(); break;
+    case 0x100B: ObjHandler_100B(); break;
+    case 0x100C: ObjHandler_100C(); break;
+    case 0x100D: ObjHandler_100D(); break;
+    case 0x100F: ObjHandler_100F(); break;
+    case 0x1010: ObjHandler_1010(); break;
+    case 0x1011: ObjHandler_1011(); break;
+    case 0x1013: ObjHandler_1013(); break;
+    case 0x1014: ObjHandler_1014(); break;
+    case 0x1015: ObjHandler_1015(); break;
+    case 0x1016: ObjHandler_1016(); break;
+    case 0x1017: ObjHandler_1017(); break;
+    case 0x1018: ObjHandler_1018(); break;
+    case 0x1019: ObjHandler_1019(); break;
+    case 0x101A: ObjHandler_101A(); break;
+    case 0x101B: ObjHandler_101B(); break;
+    case 0x101C: ObjHandler_101C(); break;
+    case 0x101D: ObjHandler_101D(); break;
+    case 0x101E: ObjHandler_101E(); break;
+    case 0x101F: ObjHandler_101F(); break;
     case 0x1025: ObjHandler_1025(); break;   /* objhandlers_d.c (stage 4-2) */
     case 0x1026: ObjHandler_1026(); break;
     case 0x1027: ObjHandler_1027(); break;
     case 0x1028: ObjHandler_1028(); break;
     default:
+        if (ObjHandlerF_Call(type)) break;  /* objhandlers_f*.c: 0x1020-0x1050 */
         if (!warned[type & 0xFFF]) {
             warned[type & 0xFFF] = 1;
             printf("[obj] handler %04X (0x%08X) not ported\n", type, R32(0x060AC820u + 4u * (type - 0x1000u)));

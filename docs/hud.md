@@ -64,11 +64,15 @@ A.BIN helpers used: 0x060092BC `__divsi3` (r1 / r0, signed), 0x0600A55C `__udivs
 
 ## 0x0606BCD0 (not the HUD)
 
-`0x0606BCD0` copies the 18-entry table 0x060B10CC (per-stage frame handlers, 0 for index 3)
-and calls `table[stage index]`, then `0x0606F6AC` and `0x0606EF9C`: a tile/palette/line-scroll
-animation system on the block 0x060F4D80 (flags at +0x0C; writes the VDP2 register shadow
-0x0603A5E0). Not ported yet; stage-specific effects (waterfalls, palette cycling...) belong
-there.
+`0x0606BCD0` (Stage_FrameHooks) calls the per-stage frame handler of table 0x060B10CC (18
+entries, 0 for index 3), then LayerAnim_Update `0x0606F6AC` and LayerAnim_Commit `0x0606EF9C`
+(line scroll / wave / cell scroll on the block 0x060F4D80, VDP2 shadow SCRCTL 0x0603A60A,
+VCSTA 0x0603A60C, LSTA0/1 0x0603A610/14 of the register shadow 0x0603A570). The per-stage
+inits are in table 0x060B1114 (called by StageHooks_Init 0x0606C618 at stage load). NBG2 line
+scroll and per-line colour offsets go through the A.BIN HBlank table 0x0601ABD8 (flags
+0x0601C498). Ported in `pc-port/src/stage_hooks.c` (layout in stage_hooks.h); the 4-2 handler
+0x0606D99E draws the boss bar (0x06061B58). 0x06063554 is the ninjutsu effect state machine
+(not an event system): only its idle path is ported.
 
 Other callers of the digit routines: 0x06067246 (a debug/menu display at row 24,
 counter 0x060F4CF8) — not ported.

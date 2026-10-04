@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 # Port version: bump here (MAJOR.MINOR.PATCH), see CHANGELOG.md.
-project(shinobi_legions_pc VERSION 0.15.0 LANGUAGES C)
+project(shinobi_legions_pc VERSION 0.16.0 LANGUAGES C)
 
 # Short git hash of the build, if git is available.
 set(SL_GIT_HASH "unknown")
@@ -44,14 +44,22 @@ add_executable(shinobi_legions_pc
     src/camera.c
     src/stage.c
     src/stage_inits.c
+    src/stage_hooks.c
     src/objects.c
     src/objhandlers.c
     src/objhandlers_a.c
     src/objhandlers_b.c
     src/objhandlers_c.c
     src/objhandlers_d.c
+    src/objhandlers_f.c
+    src/objhandlers_f2.c
+    src/objhandlers_f3.c
+    src/objhandlers_f4.c
+    src/objhandlers_e.c
+    src/objhandlers_e2.c
     src/enemy.c
     src/fx.c
+    src/fx_b.c
     src/fade.c
     src/enemy_soldier_sub.c
     src/enemy_soldier_a.c
@@ -60,6 +68,17 @@ add_executable(shinobi_legions_pc
     src/enemy_t3.c
     src/enemy_t4.c
     src/enemy_boss42.c
+    src/enemy_more.c
+    src/enemy_t02.c
+    src/enemy_soldier_sub_d.c
+    src/enemy_t23.c
+    src/enemy_t05.c
+    src/enemy_t07.c
+    src/enemy_t16.c
+    src/enemy_t22.c
+    src/enemy_t24.c
+    src/enemy_boss18.c
+    src/enemy_boss15.c
     src/shinobi.c
     src/director.c
     src/director_font.c

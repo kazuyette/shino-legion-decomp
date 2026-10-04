@@ -19,6 +19,7 @@
 #include "objhandlers_c.h"
 #include "hud.h"
 #include "player_ext.h"
+#include "stage_hooks.h"
 #include <stdio.h>
 
 int g_shinobiVerbose = 0;
@@ -130,6 +131,8 @@ static void Game_LoadStage(void)
     }
     W16(0x060F4CCEu, 0); W16(0x060F4CCCu, 0);        /* 0x0606694C */
     Stage_SpawnPlayer();
+    Ninjutsu_Init();                                 /* 0x06063538 */
+    StageHooks_Init();                               /* 0x0606C618 (after 0x0606694C) */
     Fade_StageIntro();                               /* 0x0606B7C6-0x0606B838 */
     W16(G_STAGE_STATE, R16(G_STAGE_STATE) & 0x7FF0);
     Vdp2_DisplayOff();                               /* 0x06005BB4 */
@@ -171,8 +174,9 @@ static void Game_StageFrame(void)
     Game_LatchPad1(P16(P_FLAGS4));                   /* 0x06040CAC */
     Player_Tick();                                   /* 0x06040B72 */
     Stage_UpdateState();                             /* 0x06046190 */
-    /* PC approximation of 0x0606E440: the drop-in ends when Sho lands */
-    if (R16(0x060252DCu) == 0 && !(P16(P_FLAGS2) & 0x4000)) {
+    /* PC approximation of 0x0606E440 (stage 1-1 hook) for the other stages entered first
+     * with --stage: the drop-in ends when Sho lands */
+    if (RS16(G_STAGE_INDEX) != 0 && R16(0x060252DCu) == 0 && !(P16(P_FLAGS2) & 0x4000)) {
         W16(0x060252DCu, 1);
         PW16(P_FLAGS4, P16(P_FLAGS4) & 0xFFEF);
     }
@@ -187,8 +191,8 @@ static void Game_StageFrame(void)
     Projectiles_Update();                            /* 0x0606088C */
     Effects_Update();                                /* 0x06061FA0 */
     Items_Update();                                  /* 0x06062894 */
-    /* 0x0606BCD0 (per-stage frame hook 0x060B10CC + tile/palette animation 0x0606F6AC /
-     * 0x0606EF9C, not the HUD) and 0x06063554 not ported */
+    Stage_FrameHooks();                              /* 0x0606BCD0 */
+    Ninjutsu_Update();                               /* 0x06063554 */
     Game_CheckDemoEnd();                             /* 0x0606BB8A */
 }
 

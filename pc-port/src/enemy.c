@@ -22,8 +22,9 @@ static int32_t iabs(int32_t v) { return v < 0 ? -v : v; }
 void Enemy_Once(const char *what, unsigned id)
 {
     static unsigned seen[64]; static int n;
-    for (int i = 0; i < n; i++) if (seen[i] == id) return;
-    if (n < 64) seen[n++] = id;
+    unsigned key = id | ((unsigned)(unsigned char)what[0] << 16) | ((unsigned)(unsigned char)what[1] << 24);   /* per message */
+    for (int i = 0; i < n; i++) if (seen[i] == key) return;
+    if (n < 64) seen[n++] = key;
     printf("[enemy] %s %04X not ported\n", what, id);
 }
 
@@ -71,6 +72,7 @@ void Enemy_LoadTypes(void)
         else if (t == 3) Enemy3_Load();
         else if (t == 4) Enemy4_Load();
         else if (t == 0x20) Enemy20_Load();                    /* enemy_boss42.c */
+        else if (EnemyMore_Load(t)) { }                        /* enemy_more.c (types 2, F, ...) */
         else Enemy_Once("loader for type", t);
     }
 }
@@ -612,6 +614,7 @@ void Obj_UpdateEnemies(void)
         else if (t == 3) EnemyHandler_0003();
         else if (t == 4) EnemyHandler_0004();
         else if (t == 0x20) EnemyHandler_0020();               /* enemy_boss42.c */
+        else if (EnemyMore_Handler(t)) { }                     /* enemy_more.c (types 2, F, ...) */
         else Enemy_Once("enemy type", t);
         if (!FROZEN) AND16(o + 0x10, 0xDFFF);
     }

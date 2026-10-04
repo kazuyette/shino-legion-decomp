@@ -431,8 +431,8 @@ void EnemyHandler_0020(void)                                     /* 0x06084560 *
                     if (R16(o + 0x52) != 3) {                   /* the last one: stop everything */
                         set_all_moving(0);
                         W16(o + 0x52, 3);
-                        W16(0x060F4D44u, 1);                    /* 0x0606DC5C: music fade request */
-                        W16(0x060F4D4Cu, 0x50);
+                        W32(0x060F4D44u, 1);                    /* 0x0606DC5C: stage hook 0x0606D99E: */
+                        W32(0x060F4D4Cu, 0x50);                 /* NBG1 wave out after 80 frames (longs) */
                         W16(PL + 0x1C, 0x8000);
                         OR16(PL + 4, 0x0400);
                     }

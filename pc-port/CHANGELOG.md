@@ -3,6 +3,18 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.16.0 — 2026-10-04
+- Stage frame hooks: SHINOBI 0x0606BCD0 (17 per-stage handlers, table 0x060B10CC),
+  per-stage hook inits 0x0606C618 (table 0x060B1114), layer animation (line/cell scroll,
+  NBG1 wave), HBlank line table (per-line NBG2 scroll + colour offset) in both renderers.
+- Stage 4-2: ledge colours fixed (sprite banks 0-4 loaded by 0x0606BF12), boss life bar.
+- Object handlers 0x1007-0x1050 all ported (lanterns, gates, crumbling blocks, statue
+  heads, turrets, crates, ropes, carts, elevators, rockfalls, collapsing walls...), fx
+  effects 0x08/0x09/0x0A-0x0E.
+- Enemies: types 2, 5, 7, 0xF, 0x16, 0x22, 0x23, 0x24, soldier subtypes 5/6/9, bosses
+  0x15 (2-2) and 0x18 (1-2) with their projectiles.
+- Remaining: enemies 0xA, 0xB, 0xC, 0x19; bosses 0x21, 0x1A, 9, 6, 0x17, 0x1F; ninjutsu.
+
 ## 0.15.0 — 2026-10-04
 - Sound: all 10 .SND banks parsed (area map + word-LZ blocks, A.BIN 0x06004C52); SBL
   sequencer + TON voice mixer (32 voices, 8 sequence slots) in sfx.c. System and stage

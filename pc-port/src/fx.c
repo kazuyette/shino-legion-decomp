@@ -3,6 +3,7 @@
 #include "enemy.h"
 #include "objects.h"
 #include "objhandlers.h"
+#include "objhandlers_e.h"
 #include "ram.h"
 #include "anim.h"
 #include "sprite.h"
@@ -89,6 +90,7 @@ static void fx_tick(uint32_t e)
     if (R16(e + 0x10) & 0x8000) W16(e, 0xFFFF);
 }
 
+void Fx_Splash0E(uint32_t e);                                         /* enemy_more.c */
 static void Fx_Explosion(uint32_t e)                                   /* 0x06062224: 0, 1, 6, 0xF */
 {
     fx_start(e, 0x060ACCFEu, 0);
@@ -140,6 +142,9 @@ void Effects_Update(void)
         case 2: Fx_Spark(e, 3, 0x73); break;
         case 3: Fx_Spark(e, 2, 0x74); break;
         case 4: Fx_Slash(e); break;
+        case 8: case 9: Fx_Shard(e); break;                      /* objhandlers_e.c, 0x0604E180 */
+        case 0xE: Fx_Splash0E(e); break;                         /* enemy_more.c, 0x0605B08A */
+        case 0xA: case 0xB: case 0xC: case 0xD: Fx_Sparkle(e); break;   /* fx_b.c */
         default: once("effect type", t); W16(e, 0xFFFF); break;
         }
     }
@@ -404,6 +409,13 @@ static void Proj_EnemyShuriken(uint32_t e)                             /* 0x0606
 
 void Proj_Boss42Orb(uint32_t e);    /* enemy_boss42.c */
 void Proj_Boss42Bolt(uint32_t e);
+void Proj_Explosion05(uint32_t e);                                     /* enemy_more.c */
+void Proj_ShockWave06(uint32_t e);                                     /* enemy_t07.c */
+void Proj_Bomb13(uint32_t e); void Proj_Blast14(uint32_t e);           /* enemy_t16.c */
+void Proj_Flame28(uint32_t e);                                         /* enemy_t22.c */
+void Proj_Grenade29(uint32_t e);                                       /* enemy_t24.c */
+void Proj_FirePillar10(uint32_t e); void Proj_Fireball11(uint32_t e);   /* enemy_boss18.c */
+void Proj_Dust0E(uint32_t e); void Proj_Slash0F(uint32_t e);           /* enemy_boss15.c */
 void Projectiles_Update(void)
 {
     for (int i = 0; i < 64; i++) {
@@ -413,8 +425,20 @@ void Projectiles_Update(void)
         if (t == 0xFFFF) continue;
         if (t == 0) Proj_ShoShuriken(e);
         else if (t == 1) Proj_EnemyShuriken(e);
+        else if (t == 5) Proj_Explosion05(e);                          /* enemy_more.c */
+        else if (t == 6) Proj_ShockWave06(e);                          /* enemy_t07.c (type 7) */
+        else if (t == 0x13) Proj_Bomb13(e);                            /* enemy_t16.c (type 0x16) */
+        else if (t == 0x14) Proj_Blast14(e);
+        else if (t == 0x28) Proj_Flame28(e);                           /* enemy_t22.c (type 0x22) */
+        else if (t == 0x29) Proj_Grenade29(e);                         /* enemy_t24.c (type 0x24) */
+        else if (t == 0x10) Proj_FirePillar10(e);                      /* enemy_boss18.c (1-2 boss) */
+        else if (t == 0xE) Proj_Dust0E(e);                             /* enemy_boss15.c (2-2 boss) */
+        else if (t == 0xF) Proj_Slash0F(e);
+        else if (t == 0x11) Proj_Fireball11(e);
         else if (t == 0x20) Proj_Boss42Orb(e);                         /* enemy_boss42.c (4-2 boss) */
         else if (t == 0x21) Proj_Boss42Bolt(e);
+        else if (t == 0x24) Proj_CannonBall(e);                        /* objhandlers_e2.c (0x101B) */
+        else if (t == 0x25) Proj_Rock(e);                              /* objhandlers_e2.c (0x101A) */
         else { once("projectile type", t); W16(e, 0xFFFF); }
     }
 }

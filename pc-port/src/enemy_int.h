@@ -54,4 +54,7 @@ void Enemy4_Load(void);    void EnemyHandler_0004(void);   /* 0x06067378 / 0x060
 void Enemy20_Load(void);   void EnemyHandler_0020(void);   /* 0x06084420 / 0x06084560 */
 void Proj_Boss42Orb(uint32_t e);                           /* 0x06085CD8 */
 void Proj_Boss42Bolt(uint32_t e);                          /* 0x06086A68 */
+/* types ported by agent "enemies" (enemy_more.c dispatch; enemy_t02.c, ...): 1 = handled */
+int  EnemyMore_Load(uint16_t type);
+int  EnemyMore_Handler(uint16_t type);
 #endif

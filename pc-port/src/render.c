@@ -6,6 +6,7 @@
 #include "stage.h"
 #include "soft_render.h"
 #include "resource.h"
+#include "stage_hooks.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -89,13 +90,12 @@ static SDL_Texture *nbg3_texture(void)
 
 static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 
-static void draw_layer(int l)
+/* Screen rect [x0,x0+w) x [y0,y0+h) showing layer pixels (sx + x, sy + y). */
+static void blit_region(int l, int sx, int sy, int x0, int y0, int w, int h)
 {
-    int sx, sy;
-    if (!Vdp2_LayerEnabled(l)) return;
-    Vdp2_LayerScroll(l, &sx, &sy);
-    for (int py = floordiv(sy, VDP2_PAGE_PX); py * VDP2_PAGE_PX < sy + SCREEN_H; py++)
-        for (int px = floordiv(sx, VDP2_PAGE_PX); px * VDP2_PAGE_PX < sx + SCREEN_W; px++) {
+    int wx0 = sx + x0, wy0 = sy + y0, wx1 = wx0 + w, wy1 = wy0 + h;
+    for (int py = floordiv(wy0, VDP2_PAGE_PX); py * VDP2_PAGE_PX < wy1; py++)
+        for (int px = floordiv(wx0, VDP2_PAGE_PX); px * VDP2_PAGE_PX < wx1; px++) {
             SDL_Texture *t;
             if (l == 3) t = nbg3_texture();                 /* one page, all plates the same */
             else {
@@ -104,9 +104,37 @@ static void draw_layer(int l)
                 t = page_texture(l, pid);
             }
             if (!t) continue;
-            SDL_Rect dst = { px * VDP2_PAGE_PX - sx, py * VDP2_PAGE_PX - sy, VDP2_PAGE_PX, VDP2_PAGE_PX };
-            SDL_RenderCopy(s_renderer, t, NULL, &dst);
+            int ax = wx0 > px * VDP2_PAGE_PX ? wx0 : px * VDP2_PAGE_PX;
+            int ay = wy0 > py * VDP2_PAGE_PX ? wy0 : py * VDP2_PAGE_PX;
+            int bx = wx1 < (px + 1) * VDP2_PAGE_PX ? wx1 : (px + 1) * VDP2_PAGE_PX;
+            int by = wy1 < (py + 1) * VDP2_PAGE_PX ? wy1 : (py + 1) * VDP2_PAGE_PX;
+            SDL_Rect src = { ax - px * VDP2_PAGE_PX, ay - py * VDP2_PAGE_PX, bx - ax, by - ay };
+            SDL_Rect dst = { ax - sx, ay - sy, bx - ax, by - ay };
+            SDL_RenderCopy(s_renderer, t, &src, &dst);
         }
+}
+
+static void draw_layer(int l)
+{
+    int sx, sy;
+    if (!Vdp2_LayerEnabled(l)) return;
+    if (l != 3) {                                       /* line scroll / cell scroll: strips */
+        static Vdp2LineScroll ls;
+        Vdp2_GetLineScroll(l, &ls);
+        if (ls.lines || ls.cells) {
+            int cols = ls.cells ? SCREEN_W / 8 : 1, cw = ls.cells ? 8 : SCREEN_W;
+            for (int c = 0; c < cols; c++)
+                for (int y = 0; y < SCREEN_H; ) {
+                    int y1 = y + 1;
+                    while (y1 < SCREEN_H && ls.sx[y1] == ls.sx[y]) y1++;
+                    blit_region(l, ls.sx[y], ls.sy + ls.dy[c], c * cw, y, cw, y1 - y);
+                    y = y1;
+                }
+            return;
+        }
+    }
+    Vdp2_LayerScroll(l, &sx, &sy);
+    blit_region(l, sx, sy, 0, 0, SCREEN_W, SCREEN_H);
 }
 
 static uint32_t sprite_key(const RenderSprite *s) { return (uint32_t)s->mode << 16 | s->colr; }
@@ -250,6 +278,30 @@ static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase)
     if (erase) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
 }
 
+static void apply_color_offset(int r, int g, int b, const SDL_Rect *all)
+{
+    if (!(r || g || b)) return;
+    if (r < 0 || g < 0 || b < 0) {
+        SDL_BlendMode sub = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE,
+            SDL_BLENDOPERATION_REV_SUBTRACT, SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD);
+        if (SDL_SetRenderDrawBlendMode(s_renderer, sub) == 0) {
+            SDL_SetRenderDrawColor(s_renderer, (Uint8)(r < 0 ? (-r > 255 ? 255 : -r) : 0),
+                                   (Uint8)(g < 0 ? (-g > 255 ? 255 : -g) : 0), (Uint8)(b < 0 ? (-b > 255 ? 255 : -b) : 0), 255);
+        } else {                                   /* no REV_SUBTRACT: darken with alpha */
+            int d = -(r < g ? (r < b ? r : b) : (g < b ? g : b));
+            SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, (Uint8)(d > 255 ? 255 : d));
+        }
+        SDL_RenderFillRect(s_renderer, all);
+    }
+    if (r > 0 || g > 0 || b > 0) {
+        SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_ADD);
+        SDL_SetRenderDrawColor(s_renderer, (Uint8)(r > 0 ? r : 0), (Uint8)(g > 0 ? g : 0), (Uint8)(b > 0 ? b : 0), 255);
+        SDL_RenderFillRect(s_renderer, all);
+    }
+    SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_NONE);
+}
+
 void Render_DrawFrame(void)
 {
     if (!s_renderer) { s_queued = 0; return; }
@@ -304,31 +356,22 @@ void Render_DrawFrame(void)
             if (tex[k] && vp[k] == p) draw_sprite(&s_queue[order[k]], tex[k], 0);
     }
     /* VDP2 colour offset A (screen fades, A.BIN 0x06007084): result = clamp(c + off). In the
-     * stage flow every layer (CLOFEN 0x7F) gets it, so one full-screen pass is exact. */
+     * stage flow every layer (CLOFEN 0x7F) gets it, so full-width passes are exact; when the
+     * HBlank DMA rewrites COAR/G/B every line (stage hooks), one pass per run of equal lines. */
     {
         int r, g, b, m;
         Fade_GetColorOffset(&r, &g, &b, &m);
-        if (m && (r || g || b)) {
-            SDL_Rect all = { 0, 0, SCREEN_W, SCREEN_H };
-            if (r < 0 || g < 0 || b < 0) {
-                SDL_BlendMode sub = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE,
-                    SDL_BLENDOPERATION_REV_SUBTRACT, SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD);
-                if (SDL_SetRenderDrawBlendMode(s_renderer, sub) == 0) {
-                    SDL_SetRenderDrawColor(s_renderer, (Uint8)(r < 0 ? (-r > 255 ? 255 : -r) : 0),
-                                           (Uint8)(g < 0 ? (-g > 255 ? 255 : -g) : 0), (Uint8)(b < 0 ? (-b > 255 ? 255 : -b) : 0), 255);
-                } else {                                   /* no REV_SUBTRACT: darken with alpha */
-                    int d = -(r < g ? (r < b ? r : b) : (g < b ? g : b));
-                    SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_BLEND);
-                    SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, (Uint8)(d > 255 ? 255 : d));
-                }
-                SDL_RenderFillRect(s_renderer, &all);
+        if (m) {
+            for (int y = 0; y < SCREEN_H; ) {
+                int lr = r, lg = g, lb = b, y1 = y + 1;
+                if (Vdp2_LineColorOffset(y, &lr, &lg, &lb)) {
+                    int nr, ng, nb;
+                    while (y1 < SCREEN_H && Vdp2_LineColorOffset(y1, &nr, &ng, &nb) && nr == lr && ng == lg && nb == lb) y1++;
+                } else y1 = SCREEN_H;
+                SDL_Rect band = { 0, y, SCREEN_W, y1 - y };
+                apply_color_offset(lr, lg, lb, &band);
+                y = y1;
             }
-            if (r > 0 || g > 0 || b > 0) {
-                SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_ADD);
-                SDL_SetRenderDrawColor(s_renderer, (Uint8)(r > 0 ? r : 0), (Uint8)(g > 0 ? g : 0), (Uint8)(b > 0 ? b : 0), 255);
-                SDL_RenderFillRect(s_renderer, &all);
-            }
-            SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_NONE);
         }
     }
     s_queued = 0;

@@ -2089,3 +2089,193 @@ New semantics learned while porting:
   30/8/8 frames (1 damage on touch), 8-frame fade, ledge +0x50 = 3.
 - Not ported: the 4-2 frame hook 0x0606D99E (0x060B10CC[7]: boss HP bar on NBG3, items sliding
   with the ledges, line-scroll effect 0x0606F5C4 when the boss appears).
+
+## Stage objects 0x1007-0x101F (2026-10-04, pc-port objhandlers_e.c / objhandlers_e2.c)
+
+- Handlers (table 0x060AC820) by stage index: 13 (STAGE1_2) 0x1007 0x0604CCCC lamp on layer 1
+  (drawn against the layer-1 scroll 0x060EA5B8/BC, glow 0x0604CE18 anim 6), 0x1008 0x0604CEB4
+  lantern (cut -> top flies 48 frames towards Sho's side, base 0x0604D188 / top 0x0604D218);
+  2 (STAGE2_1) 0x1009 0x0604D30C bush (Sho inside +-(w+32) px and +-16 px, on the ground ->
+  +0x5A = 1 rustle; sword -> leaf effects 8 via 0x0604E12C, 128-frame cooldown), 0x100A
+  0x0604D83C / 0x100B 0x0604D9A4 decor (anims 7/8), 0x100C 0x0604DB08 gate (solid; opens at
+  checkpoint == flags & 3: +8 px/frame x 8, C+0xC world bottom = 0x0E44 / 0x0644 px - 8/frame;
+  carries/crushes enemy type 0x23 via 0x0604E5B8), 0x100D 0x0604DD8C crumbling block
+  (Obj_PlayerContact(5); 2/3 -> shakes 64 frames, falls 65, fades); 3 (STAGE2_2, boss room)
+  0x100F 0x0604EB88 debris (spawner: 0x0604ED92 every 200 frames, tables 0x060AA0D8..0x060AA110),
+  0x1010 0x0604EF58 / 0x1011 0x0604F450 statue heads (12 HP, Player_SwordPower per hit,
+  mouth anims 0xB/0xC at 0x060F2204/24, glow anim 0xD scaled 0x2000 -> 0x12000 then fireball
+  0x1012 (0x0604F956 / 0x0604F9A4), explosion 0x0604F9D0, both dead -> 0x0604FAC0 = 0x100E +
+  0x06073308 (0x060F688C = 1, 0x060F688E = 60); globals 0x060F21F6..0x060F224C, see
+  objhandlers_e.h); 5 (STAGE3_2) 0x1013 0x06051F34 hanging plant (Sho and the type-0x1A enemy
+  brush it; cut -> 0x104B leaves via 0x06052B98), 0x1014 0x06052454 lamp (glow 0x060523CC),
+  0x1015 0x06052614 fountain spark (placement Y = launch angle + 0x582 px); 0 (STAGE7_1)
+  0x1016 0x0605B4EC cloud (1/4 parallax), 0x1017 0x0605B7C8 stone lantern (lid 0x0605B664: 6
+  states, falls onto the map), 0x1018 0x0605BC62 decor, 0x1019 0x0605BD7C solid block,
+  0x101A 0x0605BEE4 3-part rock pillar (base 0x0605C7D0, rocks = projectile 0x25 via
+  0x0605B1AE); 10 (STAGE6_1) 0x101B 0x06058F7C cannon turret (aim 0x060498BE = Atan8 to Sho's
+  chest, ball = projectile 0x24, flash effect 0xF, touch damage 0x060601BA; NB its
+  "destroyed" branch is dead code: +2 & 8 is cleared right before the test), 0x101C 0x06059842
+  crate (6 explosion parts 0x0606081A, table 0x060AC964), 0x101D 0x06059CAC decor (speed table
+  0x060ABF16), 0x101E 0x06059F4A layer-2 debris (0x060459A0 = Sho's sword box vs map cells of
+  a layer whose type 0x060CA700[(attr >> 4) & 7] has bits 0xC; debris table 0x060ABF22 via
+  0x0605A16C), 0x101F 0x060599D4 swinging rope (Sho jumping near its end grabs it: 0x060EA440 =
+  rope, PL+0x10 |= 0x90, PL+4 |= 0x100, pull into PL+0x38/+0x3C).
+- Effects 8/9 0x0604E180 (leaves/shards): sprite list A.BIN 0x060067C2 (table 0x060A9E26 +
+  char 0x1C, {char, ox, oy, ticks, cc}, 0x8000 goto, 0xFFFF end); +2 = spawn flags | 1 (never
+  cleared), so only trajectories 1/3/5/7 occur; the missing cases use the caller's r12/r11
+  (0x8000 / 64). The real current-effect pointer is 0x060F3FD4 (effects update 0x06061FA0).
+- Projectiles: 0x24 0x06059700 cannon ball (Projectile_Collide(1, 0x9000) -> projectile 5),
+  0x25 0x0605B226 rock (falls 1 px/frame + swing by +2 & 7, Projectile_Collide(1, 0x8000)).
+- Not ported here: 0x100E (0x0604E6AC, spawned when the heads die), 0x1012 (0x0604FADE,
+  fireball, ~9 KB), projectile 5, effect 5 (sword clang spark); 0x104B (0x06052C4C, the plant
+  leaves of 0x1013) is in objhandlers_f4.c.
+
+## Stage objects 0x1020-0x1050, effects 0xA-0xD (2026-10-04, pc-port objhandlers_f*.c / fx_b.c)
+
+Every handler of table 0x060AC820 from 0x1020 to 0x1050 (the table ends there; 0x104A = 0)
+except 0x1025-0x1028 (4-2, objhandlers_d.c) is ported. Game stage = index / 2 + 1.
+Common idioms: visibility |x - camX - 160 px| (< 256 / 384 px), anim defs + scripts per stage
+(chars 0x10), sprite struct 0x060250AC (+0x0E colour calc, +0x10 flags, +0x0A bank, +0x0C
+priority register, +0x18 draw priority), +0x5A = anim part, Hitbox_Test(o, 0, Sho, 2) = sword.
+- Shared: 0x0606078C sword clang, **0x060601BA ObjF_SwordHurtsPlayer(dmg)** (object box 2 vs
+  Sho 0: spark + damage unless invulnerable 0x060EA41C / +2 & 8 / +4 & 0x410), **0x0606081A
+  ObjF_BreakParts** (6 explosion parts from 0x060AC964 {dx, dy, delay, flags}, returns +0x18),
+  0x0605817C carry enemies, 0x06056160 / 0x06056072 carry contact with ceiling bump + crush
+  (-> HP 0), 0x0605DF3E the same for enemy type 0x24 only. A.BIN 0x0600A604 = signed modulo,
+  0x0600A7AC = 1 << n, 0x0600A55C = unsigned division (used on rand >> 8: (rand >> 8) / 7 etc).
+- Stage-hook state block 0x060F4D40 setters called by objects: 0x0606D774 (+0x18 = 1),
+  0x0606D77C (+0xA = 5 or 7), 0x0606D7AE (+0xA = 4), 0x0606D7C8 (+0xA in {1,2,3,6,8}),
+  0x0606E154 (+4++, +6 = 60, C+0x20 |= 0x80), 0x0606E184 (5-2 checkpoint 1 bounds/camera),
+  0x0606E1B8 (+4++). 0x06051432 = add an enemy slot to the 3-1 carry list 0x060F2250 (count
+  0x060F227E, max 23; called by enemy code 0x06098B50, reset by the stage hook).
+- 6-1 (idx 10): 0x1020 0x06059DE0 background decoration at 1/8 or 5/16 of the camera, layer Y
+  0x060EA58C.
+- 3-1 (idx 4, defs 0x060AA13E / 0x060D2380): 0x1021 0x06050884 lanterns: flags & 7 = 0 glass,
+  1 stone lantern (glass 32 px up, lid 96 px up), 2 lid (Sho stands on it), 3 hanging lantern
+  (glass 97 px down, base 96 px down), 4 base, 5/6 parts; the cut glass shatters (0x060510BC:
+  sound 0x22D, 17 shards 0x1024 table 0x060AA438, lid/base falls, item or enemy type 5 with
+  flags & 8). 0x1022 0x060516BC wall eye (6 HP, palette 0x1C0 pulse, hook state 0x060F4D4A;
+  the original calls 0x0604967C on the CURRENT ENEMY - kept). 0x1023 0x06051B9C sliding
+  blocks (slots 0x060F2280.., 76 px at 1.75 px/frame, 30/60-frame waits, Sho pushed off with
+  +0x10 |= 0x8000). 0x1024 0x06051458 shard.
+- 4-1 (idx 6, defs 0x060AA6CC / 0x060D25D4): 0x1029 0x06052ECC hanging lantern (cut: top
+  0x06053308 flies left 57 frames, base 0x060533C0, lantern scaled by +0x14 << 8);
+  0x1030 0x06053470 paper screen (6 sparks 0x0605381C, enemy type 2/4 bursts out with flags &
+  1, tear quad 0x06053908 = distorted sprite +0x24..+0x32); 0x102F 0x06053A28 sliding door
+  (left leaf 0x06053F44) releasing type 4 / 2; 0x102E 0x06053FF4 4 spears (phase bytes
+  +0x50.., timers +0x48.., 0x060601BA per spear); 0x102D 0x060546FC lift (guard = enemy type
+  7 with the same flags & 3; locks Sho's input +4 |= 0x400 / 0x10 while rising); 0x102C
+  0x06054CA4 floor switch sending the flags-8 lift up; 0x102B 0x06055090 rope/chain
+  (+0x4A length, rest length by flags & 0x1F, Map_GetAttr 16 px below its end, sway, rewind,
+  cut -> 0x1037 segments via 0x06055D6E, rewrites its anim hitbox like the original);
+  0x102A 0x06055A1C platform on the rope's end (falls when cut); 0x1037 0x06055E00 segment.
+- 5-1 (idx 8, defs 0x060AAC02 / 0x060D27C4): 0x103D 0x06057464 mine cart (Track_Attr
+  0x06057E2C from the map character: 0x10 flat, 0x20 down, 0x30 up; speed +0x48, tilt +0x4C,
+  wreck flags 3; ambushes 0x06057F10, spawn list 0x060580A4 / 0x060AAD9C; camera offset
+  0x060F2288 -> 0x060EA564), 0x103E 0x06058238 explosive barrels (5 projectiles type 5),
+  0x103F 0x06058444 controller (items 0x060AB0B8, 0x060586EA keeps the cart speed on Sho +
+  moves enemy shurikens, warning sign at x in 0x060AB0AE), 0x1040 0x060570FC water surface,
+  0x1041 0x06057298 splash at y 0x7FE, 0x1042 0x06056F34 far background (+ palette 0x2F0 cycle).
+- 5-2 (idx 9, defs 0x060AB18C / 0x060D2814): 0x1043 0x06058774 elevator (+0x48 from the hook
+  0x0606DDBC: 1 descending (to 16 px/frame), 2 rising 0.75 px; ends y 0x2F80 / 0x04C0; enemy
+  table 0x060AB318 (0x18 bytes, 0x67 entries) kept in 0x060F22B0 (6), index 0x060F22BC;
+  world bounds follow it with +4 & 1; cage anim in the global state 0x060F2290),
+  0x1044 0x06058D38 crate (parts 0x060ABCC0).
+- 6-2 (idx 11, defs 0x060ABF62 / 0x060D28D8): 0x1038 0x0605ACF0 crystal (8 fragments
+  0x0605AF84 table 0x060AC010 {angle, dx, dy, part}, re-armed after 96 frames), 0x1039
+  0x0605A224 wall collapsing into 3 rows of rubble when +0x48 is set (boss), 0x103A
+  0x0605A714 debris (spawn 0x0605A688, called by enemy code 0x0609AFE4..; physics table
+  0x060D28E4 + 4 x set), 0x103B 0x0605AB42 rubble (spawn 0x0605AA34, also enemy 0x0609DF20).
+- 8-1 (idx 14, defs 0x060AC40A / 0x060D2A5C): 0x1045 0x0605D234 scenery, 0x1046 0x0605D3B0
+  crumbling ledge, 0x1047 0x0605D668 post (Enemy_DeathBurst), 0x1048 0x0605D928 falling rock
+  (spawn 0x0605D838: 2-3 rocks every 64 px, from enemy code 0x060A203C; C+0x20 |= 0x80 while
+  alive), 0x1049 0x0605DCF8 rubble (spawn 0x0605DBEC; the original's -1 test on a
+  zero-extended slot writes slot -1 when the table is full - kept).
+- 9-1 (idx 16, defs 0x060AC6EC / 0x060D2B20): 0x1035 0x0605E81C sinking platform (down-thrust
+  attack kind 5 or Sho crouching on it), 0x1036 0x0605EB8C urn, 0x1050 0x0605ED0C scenery.
+  Boss arena (defs 0x060BA5D0 / 0x060E19D0, chars 0x60): 0x104C 0x0605F520 orb (6 to collect:
+  mask 0x060F22C4, count 0x060F7AD4; steps the boss type 0x1F via 0x060843BE -> 0x060842F8,
+  ported here as Boss1F_Notify / Boss1F_OrbTaken; at 6: NBG2 priority 2, CCRNA &= 0xFF00,
+  layer offsets, effects cleared, 0x06008154(0, 0, 0x80) music fade - logged, magic 6),
+  0x104D 0x0605FAA8 flash (stage hook), 0x104E 0x0605FC38 ember / 0x104F 0x0605FEC4 spark
+  (enemy code, chars 0x132).
+- Strays: 0x103C 0x0605E40A shard (spawn 0x0605E76C at the current projectile, from the
+  projectile handler at 0x0605E272.. and enemy 0x0607A8A8; anim (rand >> 4) % 3 + 3 kept in
+  +0x70), 0x104B 0x06052C4C leaf of the 2-1 plants.
+- Effects 0xA-0xD 0x06062670 (fx_b.c): anims 5-8 of 0x060ACB20, bank 0x75, looping sparkles
+  (placed by the stage lists as 0x800A..); not advanced off screen. The original's current
+  effect pointer is 0x060F3FD4 (fx.h FX_CUR says 0x060F33D0).
+- Not ported (owned elsewhere): enemy loaders/handlers the objects spawn (types 2, 4, 5, 7, 0x24,
+  soldiers), projectile 5 (barrel explosions), the boss that sets 0x1039 +0x48, the sequencer
+  volume call 0x06008154. The stage hooks driving 0x1022 / 0x1043 / 0x104D are in stage_hooks.c.
+
+## Enemy types 2, 5, 7, 0xF, 0x16, 0x22, 0x23, 0x24, bosses 0x15 / 0x18, soldier subtypes 5/6/9 (2026-10-04, pc-port enemy_t*.c / enemy_boss1*.c / enemy_soldier_sub_d.c)
+
+- Dispatch: `EnemyMore_Load` / `EnemyMore_Handler` (enemy_more.c) are called by `Enemy_LoadTypes` /
+  `Obj_UpdateEnemies` for the types below; shared helpers there: 0x06097130 jump solver,
+  0x06080808 X clamp to the stage bounds ±24 px, 0x06060E8E / 0x06060F64 projectile hit tests.
+  `Enemy_Once` now keys its "not ported" log on (message, id): type 5/6/9 loaders were hidden
+  behind the soldier subtypes 5/6/9 of the same number.
+- Enemy slot lists (0x060A91B8): idx0 {1,2,F}, 1 {18}, 2 {1,22,23,21}, 3 {15}, 4 {16,23,5}, 5 {1A},
+  6 {7,4,2}, 7 {20}, 8 {1,4,24}, 9 {1,24,23}, 10 {1,C}, 11 {9}, 12 {1,4,3}, 13 {6}, 14 {B,A,24},
+  15 {17}, 16 {19,1}, 17 {1F}. Type 0x21 (no loader) is the 2-1 boss, registered by the stage
+  hook at 0x0606C9E4 (x 1914, y 1503).
+- Type 2 (0x06096290 / 0x0609630A, sub 1 0x0609723A, inits 0x060970B4 / 0x06098078) and type 0xF
+  (0x0606FE7C / 0x0606FF64, sub 1 0x06070E08, inits 0x06070D60 / 0x06071ABC): jumping ninjas from
+  one template (walk, wall hop, shuriken back-flip, jump attack at Sho, guard recoil); 2 HP, 200.
+  The original overwrites its "jump" decision with "walk" in action 0 (kept). Type 2 sub 1 respawns
+  from the top of the screen (+4 bit 1 re-armed 320 px away). Type F: palettes +0/+2 darkened on
+  stage 0, sub 1 drawn with bank +2.
+- Soldier sub 5 0x0608E3E6 (init 0x0608E36C): hides under world bottom + 100 px, leaps out (vy
+  0xD6000, effect 0xE splash 0x0605B08A via 0x0605B04C), respawns home. Sub 6 0x0608E8C4 (init
+  0x0608F3F0): 2-HP rifleman, own decision (inlined zone test), shots inherit its X speed (not on
+  stage 8), banks +2/+3. Sub 9 0x060921CC (init 0x06092768): jumps up a floor (two hops, 1/3 chance
+  via (rand >> 9) % 3), drops back through floors (+4 bit 0) when it lands where it started.
+- Type 0x23 0x06095310 / 0x0609535E (init 0x0609609C, flip 0x060961C0 — it tests |dx| twice):
+  ninja pair; sub 0 appears at the left screen edge when Sho walks past it and registers sub 1 at
+  the right edge (items from 0x060C1AC6[+0x18]); run to Sho ±40 px, jump up (max 9 px/frame).
+- Type 5 0x06098130 / 0x06098164 (init 0x06098CEE, setter 0x06098FC0, threat 0x06098DC0,
+  dodge 0x06098EBE, decision 0x06098EE0 by distance 32/80/160/320 px): agile ninja, 3 HP, 200;
+  leaping slash speed (|dx| + 8 px) / 56 (/ 26 in the descent); registers itself in the 0x1021
+  lantern carry list 0x06051432 every frame.
+- Type 7 0x060991D0 / 0x06099254 (init 0x0609991C, setter 0x06099AD0 with 0x060C32F4[rand % 7]
+  waits and 0x060C3302[rand % 5] swings, decision 0x06099A3C, death 0x060999C4, flash 0x06099DBC):
+  stationary giant, 12 HP, 800; after each hurt it flashes and blocks for 20 frames; projectile 6
+  0x06099BE4 = shock wave stretched along X (SPR+0x1C).
+- Type 0x16 0x06073E2C / 0x06073EC4 (init 0x06074D54, flip 0x06075D10, range 0x06075DB8 — beyond
+  480 px it returns the caller's r0, decision 0x06075DEC with (rand >> 7) % 101 < 30, back-off
+  limit 0x06075C84): bomber, 4 HP, 300; floor probe ahead (0x06046FE2 on layers 0x060EA64A /
+  0x060EA64C, descriptor (l * 0x30) & 0xFF). Projectile 0x13 0x06074E88 (bomb, rotated sprite;
+  +0x10 = 1: hand flash 0x06075368) bursts into 5 projectiles 0x14 0x06075524 (0x060754B2: delay,
+  hurts flag) that grow 0x600/frame, hurt Sho (1) and break the 0x1021 lanterns (flags2 |= 8).
+- Type 0x22 0x0608C050 / 0x0608C084 (init 0x0608D3C8; sub 1 0x0608D606 init 0x0608DB60; sub 2
+  0x0608DE88 init 0x0608E1FC): flying fire-breather with an orbit leader + 3 members circling at
+  32 px (Cos8/Sin8 of +0x4C >> 4); flame = projectile 0x28 0x0608D4A8 (anim 6 then 0xE). Cut-down
+  body drifts by +0x48/3, +0x4A/3 (A.BIN 0x060092BC). Reappears 480 frames after a death.
+- Type 0x24 0x06093B34 / 0x06093B96 (init 0x06094E40): grenadier (soldier anims), hand-offset
+  tables 0x060C1218/24 (standing), 0x060C1230/3C (crouched), 0x060C1248/56 (jump, aimed throw);
+  projectile 0x29 0x06094EE4 grenade (gravity 0x2000, spins; bursts on Sho / sword / guard / wall /
+  0x103D (stage 8, 0x060585F8) / 0x1046 (stage 0xE, 0x0605E050) / the stage-9 pit).
+- Effect 0xE 0x0605B08A (splash, enemy_more.c), projectiles 6, 0x13, 0x14, 0x28, 0x29 added to
+  the fx.c dispatch.
+- Boss 0x18 (1-2, enemy_boss18.c): loader 0x0609FFF4 (opens HANNYA2.PBC), handler 0x060A00EA,
+  init 0x060A0F3C, wave 0x060A103C, spit 0x060A10E8 (aim 0x060498BE), charge aim 0x060A122A,
+  arena 0x060A1300, death flames 0x060A1A44 (sub 1) / fragments 0x060A1974 (sub 2), shots off
+  0x060A1ACE, end 0x060A00A8 (fade to white, stage state |= 10). State block 0x060F832C..44.
+  HP 0x060C6172[difficulty]. Projectiles 0x10 fire pillar 0x060A152C, 0x11 fireball 0x060A1354.
+- Boss 0x15 (2-2, enemy_boss15.c): loader 0x06071B24, handler 0x06071E04, init 0x06072CB8,
+  setter 0x06073614, decision 0x0607333C (bands 24/48/80/120/144 px, rand % 2..4 via A.BIN
+  0x0600A604), threat 0x06073C26, flee 0x06073D3C, wall stop 0x06072C94, invulnerable timer
+  0x06073DB6/DD0/DF6, big / death graphics 0x06071C3C / 0x06071D2C. Woken by 0x060F688C/E (set
+  by the heads, objhandlers_e.c). HP 0x060B48BA[difficulty]. Projectiles 0xE dust 0x06072D88,
+  0xF slash 0x06072FC4 (frame tables 0x060B48C0/EA/4912/491A).
+- Afterimage trail 0x06049BA4 / 0x06049BF0 / 0x06049C10 (enemy_more.c EM_Trail): 8 anim-state
+  copies at 0x060F206C (+ X 0x060F216C, Y 0x060F218C, extra 0x060F21AC, step 0x060F21EC).
+- Projectile 5 0x060631CE (explosion, common anim 10, hurts 2) ported in enemy_more.c.
+- **A.BIN 0x0600A604 is a signed modulo (r1 % r0)**, not an idle-anim gate: the PC stub
+  `sub_0600A604()` (player_stubs.c, returns 1) is wrong for its callers (player.c, enemy.c
+  Soldier_Draw subtypes 3/0xB: the frame counter modulo). In the new code: footsteps
+  `frame % 7 == 0` (types 0xF, 0x15), `frame % 4` (0x15 waits), `rand % n` (0x15 decision).
+- Not ported yet: types 6 (7-2 boss), 9 (6-2 boss), 0xA / 0xB (8-1), 0xC (6-1), 0x17 (8-2
+  boss), 0x19 (9-1, with projectile 0x23), 0x1A (3-2 boss), 0x1F (9-2 boss), 0x21 (2-1 boss
+  0x06089E40: own RNG 0x060F828C, projectiles 0x26 / 0x27).

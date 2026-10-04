@@ -1,4 +1,5 @@
 /* A.BIN boot sequence and main loop body (0x06004038), soft reset (0x060042B8). */
+#include "stage_hooks.h"
 #include "boot.h"
 #include "ram.h"
 #include "pad.h"
@@ -74,6 +75,7 @@ void Boot_Frame(void)
     /* 0x0602894C, NBG0..3 config (0x06029B40 with the SclConfig blocks 0x06020D08 +
      * 0x4C*n; byte 0 = display enable, read by render.c) */
     Fade_Update();                               /* 0x06007084 */
+    LineTable_VBlank();                          /* VBlank 0x06004FD4/0x060050A4: HBlank line table */
     /* 0x0600863E sound scheduler: sound.c (not part of the headless build) */
 }
 

@@ -39,6 +39,18 @@ uint32_t Vdp2_MapPageChecksum(int nbg, int pageId);
 void Vdp2_DecodeNbg3(uint32_t *argb);
 uint32_t Vdp2_Nbg3Checksum(void);
 
+/* Per-line / per-cell scroll of NBG0-NBG2 for the frame being displayed: NBG0/NBG1 VDP2 line
+ * scroll X (SCRCTL shadow 0x0603A60A, tables at LSTA0/LSTA1 0x0603A610/14, added to the screen
+ * scroll) and vertical cell scroll (VCSTA 0x0603A60C, per 8-pixel column, added); NBG2: the
+ * SCXIN2 value of each line written by the HBlank DMA (0x0601C498 bit 13, stage_hooks.c).
+ * sx[y] = layer x shown at screen x 0 of line y; screen (x,y) shows layer (sx[y] + x,
+ * sy + dy[x / 8] + y). lines / cells = 0 when the layer scrolls as a whole. */
+typedef struct { int sx[SCREEN_H]; int sy; int dy[SCREEN_W / 8 + 1]; int lines, cells; } Vdp2LineScroll;
+void Vdp2_GetLineScroll(int nbg, Vdp2LineScroll *s);
+/* Colour offset A of a line when the HBlank DMA rewrites COAR/G/B every line (0x0601C498
+ * bit 14): 1 and the offsets, else 0 (use the frame-wide offset). */
+int  Vdp2_LineColorOffset(int line, int *r, int *g, int *b);
+
 /* Reference frame: back colour, VDP2 layers and the queued sprites by priority (sprites
  * mapped affinely through vertices A,B,D; VDP1 colour calculation approximated), then the
  * VDP2 colour offsets. fb = SCREEN_W x SCREEN_H ARGB. */

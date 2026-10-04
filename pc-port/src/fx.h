@@ -18,6 +18,7 @@ void Effects_Clear(void);                                               /* 0x060
 void Projectiles_Clear(void);                                           /* 0x06060904 */
 int  Obj_Spawn(int type, int32_t x, int32_t y, int flags, int param);   /* 0x060621B2 */
 void Effects_Update(void);                                              /* 0x06061FA0 */
+void Fx_Sparkle(uint32_t e);                                            /* 0x06062670: effects 0xA-0xD (fx_b.c) */
 
 int  Projectile_Spawn(int16_t type, int32_t x, int32_t y, int16_t angle, int32_t speed); /* 0x0606098C */
 void Projectiles_Update(void);                                          /* 0x0606088C */
