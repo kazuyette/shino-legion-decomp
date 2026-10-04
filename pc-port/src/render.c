@@ -4,6 +4,8 @@
 #include "ram.h"
 #include "sprite.h"
 #include "stage.h"
+#include "soft_render.h"
+#include "resource.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -31,19 +33,15 @@ int Render_Init(SDL_Window *window)
     return 1;
 }
 
-/* ---- VDP2 background layers (stage maps) ---- */
-#define LAYERS     3
-#define LAYER_DESC 0x060EA588u
-static SDL_Texture *s_pageTex[LAYERS][256];
-static uint32_t s_pageSum[LAYERS][256];   /* PC: checksum of the page's name table (map cells change at runtime) */
-
-static uint32_t page_sum(int l, int pid)
-{
-    uint32_t d = LAYER_DESC + (uint32_t)l * 0x30, a = R32(d + 0x1C) + (uint32_t)pid * 0x800, h = 2166136261u;
-    const uint8_t *p = Ram_Ptr(a);
-    for (int i = 0; i < 0x800; i++) h = (h ^ p[i]) * 16777619u;
-    return h;
-}
+/* ---- VDP2 background layers ----
+ * NBG0..NBG2 = the stage map layers, drawn page by page from the MAP data (layout desc+0x20,
+ * pages desc+0x1C) with the pattern-name format of 0x06046B14 (decoder in soft_render.c);
+ * NBG3 = the status-bar layer, drawn from its VDP2 VRAM page (map built by 0x06047244). */
+#define LAYERS 4
+static SDL_Texture *s_pageTex[3][256];
+static uint32_t s_pageSum[3][256];   /* PC: checksum of the page's name table (map cells change at runtime) */
+static SDL_Texture *s_nbg3Tex;
+static uint32_t s_nbg3Sum;
 
 void Render_InvalidatePalettes(void)
 {
@@ -51,122 +49,67 @@ void Render_InvalidatePalettes(void)
         if (s_cache[i].tex) SDL_DestroyTexture(s_cache[i].tex);
         s_cache[i].tex = NULL;
     }
-    for (int l = 0; l < LAYERS; l++)
+    for (int l = 0; l < 3; l++)
         for (int p = 0; p < 256; p++)
             if (s_pageTex[l][p]) { SDL_DestroyTexture(s_pageTex[l][p]); s_pageTex[l][p] = NULL; }
+    if (s_nbg3Tex) { SDL_DestroyTexture(s_nbg3Tex); s_nbg3Tex = NULL; }
 }
 
-/* One 512x512 page = 32x32 pattern names (1 word: bit15 H-flip (guess),
- * bits 14-12 palette bank, bits 9-0 16x16 8bpp tile = 4 cells TL,TR,BL,BR). */
-static SDL_Texture *page_texture(int l, int pid)
+static SDL_Texture *argb_texture(const uint32_t *argb)
 {
-    if (s_pageTex[l][pid]) return s_pageTex[l][pid];
-    static uint32_t argb[512 * 512];
-    uint32_t d = LAYER_DESC + (uint32_t)l * 0x30;
-    uint32_t pages = R32(d + 0x1C) + (uint32_t)pid * 0x800;
-    uint32_t chr = VDP2_VRAM_BASE + R32(d + 0x2C) * 0x20;
-    unsigned craof = (R16(VDP2_SHADOW_ADDR + 4) >> (4 * l)) & 7;   /* CRAOFA: per-layer CRAM offset */
-    for (int ty = 0; ty < 32; ty++)
-        for (int tx = 0; tx < 32; tx++) {
-            uint16_t pn = R16(pages + (uint32_t)(ty * 32 + tx) * 2);
-            uint32_t tile = chr + (uint32_t)(pn & 0x3FF) * 128;
-            uint32_t pal = SHADOW_CRAM + 2u * (((((pn >> 12) & 7) + craof) & 7) * 256u);
-            for (int y = 0; y < 16; y++)
-                for (int x = 0; x < 16; x++) {
-                    int sx = (pn & 0x8000) ? 15 - x : x;
-                    uint32_t cell = (uint32_t)((y >> 3) * 2 + (sx >> 3));
-                    uint8_t v = Ram_Ptr(tile + cell * 64 + (uint32_t)(y & 7) * 8 + (uint32_t)(sx & 7))[0];
-                    uint32_t c = 0;
-                    if (v) {
-                        uint16_t rgb = R16(pal + 2u * v);
-                        c = 0xFF000000u | ((rgb & 31) * 255 / 31) << 16 | (((rgb >> 5) & 31) * 255 / 31) << 8 |
-                            (((rgb >> 10) & 31) * 255 / 31);
-                    }
-                    argb[(ty * 16 + y) * 512 + tx * 16 + x] = c;
-                }
-        }
-    SDL_Texture *t = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, 512, 512);
+    SDL_Texture *t = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC,
+                                       VDP2_PAGE_PX, VDP2_PAGE_PX);
     if (!t) return NULL;
-    SDL_UpdateTexture(t, NULL, argb, 512 * 4);
+    SDL_UpdateTexture(t, NULL, argb, VDP2_PAGE_PX * 4);
     SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-    s_pageTex[l][pid] = t;
     return t;
 }
 
-static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
-static int wrap(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
+static SDL_Texture *page_texture(int l, int pid)
+{
+    static uint32_t argb[VDP2_PAGE_PX * VDP2_PAGE_PX];
+    uint32_t sum = Vdp2_MapPageChecksum(l, pid);
+    if (s_pageTex[l][pid] && s_pageSum[l][pid] != sum) { SDL_DestroyTexture(s_pageTex[l][pid]); s_pageTex[l][pid] = NULL; }
+    s_pageSum[l][pid] = sum;
+    if (s_pageTex[l][pid]) return s_pageTex[l][pid];
+    Vdp2_DecodeMapPage(l, pid, argb);
+    return s_pageTex[l][pid] = argb_texture(argb);
+}
 
-/* Layer scroll = VDP2 scroll register = layer position (desc +0/+4, computed
- * by Scroll_Update / 0x060470A4) - 1024 px. */
+static SDL_Texture *nbg3_texture(void)
+{
+    static uint32_t argb[VDP2_PAGE_PX * VDP2_PAGE_PX];
+    uint32_t sum = Vdp2_Nbg3Checksum();
+    if (s_nbg3Tex && s_nbg3Sum != sum) { SDL_DestroyTexture(s_nbg3Tex); s_nbg3Tex = NULL; }
+    s_nbg3Sum = sum;
+    if (s_nbg3Tex) return s_nbg3Tex;
+    Vdp2_DecodeNbg3(argb);
+    return s_nbg3Tex = argb_texture(argb);
+}
+
+static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
+
 static void draw_layer(int l)
 {
-    /* SclConfig of NBGl (0x06020D08 + 0x4C*l), byte 0 = display enable: set by SHINOBI's
-     * VDP2 init 0x060400B0, cleared by Director_Init 0x06040094 (DIRECTOR = sprites only) */
-    if (!Ram_Ptr(0x06020D08u + 0x4Cu * (uint32_t)l)[0]) return;
-    uint32_t d = LAYER_DESC + (uint32_t)l * 0x30;
-    uint32_t lay = R32(d + 0x20);
-    if (!lay || !R32(d + 0x1C)) return;
-    int pw = Ram_Ptr(lay)[0], ph = Ram_Ptr(lay)[1];
-    if (pw <= 0 || ph <= 0) return;
-    int sx = (RS32(d + 0) >> 16) - 1024;
-    int sy = (RS32(d + 4) >> 16) - 1024;
-    for (int py = floordiv(sy, 512); py * 512 < sy + SCREEN_H; py++)
-        for (int px = floordiv(sx, 512); px * 512 < sx + SCREEN_W; px++) {
-            uint8_t pid = Ram_Ptr(lay)[2 + wrap(py, ph) * pw + wrap(px, pw)];
-            if (pid == 0xFF) continue;
-            uint32_t sum = page_sum(l, pid);
-            if (s_pageTex[l][pid] && s_pageSum[l][pid] != sum) { SDL_DestroyTexture(s_pageTex[l][pid]); s_pageTex[l][pid] = NULL; }
-            s_pageSum[l][pid] = sum;
-            SDL_Texture *t = page_texture(l, pid);
+    int sx, sy;
+    if (!Vdp2_LayerEnabled(l)) return;
+    Vdp2_LayerScroll(l, &sx, &sy);
+    for (int py = floordiv(sy, VDP2_PAGE_PX); py * VDP2_PAGE_PX < sy + SCREEN_H; py++)
+        for (int px = floordiv(sx, VDP2_PAGE_PX); px * VDP2_PAGE_PX < sx + SCREEN_W; px++) {
+            SDL_Texture *t;
+            if (l == 3) t = nbg3_texture();                 /* one page, all plates the same */
+            else {
+                int pid = Vdp2_LayerPageAt(l, px, py);
+                if (pid < 0) continue;
+                t = page_texture(l, pid);
+            }
             if (!t) continue;
-            SDL_Rect dst = { px * 512 - sx, py * 512 - sy, 512, 512 };
+            SDL_Rect dst = { px * VDP2_PAGE_PX - sx, py * VDP2_PAGE_PX - sy, VDP2_PAGE_PX, VDP2_PAGE_PX };
             SDL_RenderCopy(s_renderer, t, NULL, &dst);
         }
 }
 
 static uint32_t sprite_key(const RenderSprite *s) { return (uint32_t)s->mode << 16 | s->colr; }
-
-static uint32_t cram_argb(unsigned idx)
-{
-    uint16_t c = R16(SHADOW_CRAM + 2u * (idx & 0x7FF));
-    uint32_t r = (c & 31) * 255 / 31, g = ((c >> 5) & 31) * 255 / 31, b = ((c >> 10) & 31) * 255 / 31;
-    return 0xFF000000u | r << 16 | g << 8 | b;
-}
-
-/* Decode a VDP1 character (CMDPMOD colour modes 0-5) from the emulated VRAM.
- * Dot 0 is transparent unless SPD (CMDPMOD bit 6) is set. */
-static void decode_char(const RenderSprite *s, uint32_t *argb)
-{
-    const uint8_t *v = Ram_Ptr(s->src);
-    int n = s->w * s->h, spd = (s->mode & 0x40) != 0;
-    for (int i = 0; i < n; i++) {
-        unsigned dot;
-        switch ((s->mode >> 3) & 7) {
-        case 0:                                     /* 4bpp colour bank */
-            dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
-            argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFFF0u) | dot) : 0;
-            break;
-        case 1: {                                   /* 4bpp lookup table at VRAM colr*8 */
-            dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
-            uint16_t e = R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + dot * 2u);
-            if (!dot && !spd) argb[i] = 0;
-            else if (e & 0x8000) {
-                uint32_t r = (e & 31) * 255 / 31, g = ((e >> 5) & 31) * 255 / 31, b = ((e >> 10) & 31) * 255 / 31;
-                argb[i] = 0xFF000000u | r << 16 | g << 8 | b;
-            } else argb[i] = cram_argb(e);
-            break; }
-        case 2: dot = v[i] & 0x3F; argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFFC0u) | dot) : 0; break;
-        case 3: dot = v[i] & 0x7F; argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFF80u) | dot) : 0; break;
-        case 4: dot = v[i];        argb[i] = (dot || spd) ? cram_argb((s->colr & 0xFF00u) | dot) : 0; break;
-        default: {                                  /* RGB */
-            uint16_t e = (uint16_t)(v[2 * i] << 8 | v[2 * i + 1]);
-            if (!(e & 0x8000) && !(spd && e == 0)) { argb[i] = 0; break; }
-            uint32_t r = (e & 31) * 255 / 31, g = ((e >> 5) & 31) * 255 / 31, b = ((e >> 10) & 31) * 255 / 31;
-            argb[i] = 0xFF000000u | r << 16 | g << 8 | b;
-            break; }
-        }
-    }
-}
 
 static SDL_Texture *get_texture(const RenderSprite *s)
 {
@@ -178,7 +121,7 @@ static SDL_Texture *get_texture(const RenderSprite *s)
         if (!e->tex) {
             static uint32_t argb[512 * 512];
             if (s->w <= 0 || s->h <= 0 || s->w * s->h > 512 * 512) return NULL;
-            decode_char(s, argb);
+            Vdp1_DecodeChar(s, argb);
             SDL_Texture *t = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888,
                                                SDL_TEXTUREACCESS_STATIC, s->w, s->h);
             if (!t) return NULL;
@@ -223,55 +166,7 @@ void Render_Clear(void)
     SDL_RenderClear(s_renderer);
 }
 
-/* ---- VDP2 priorities ----
- * VDP2 register shadow 0x0603B46C mirrors 0x25F800E0..: +0x00 SPCTL, +0x04 CRAOFA, +0x0C CCCTL,
- * +0x10..+0x16 PRISA..PRISD (sprite registers S0..S7), +0x18 PRINA (NBG0 | NBG1 << 8),
- * +0x1A PRINB (NBG2 | NBG3 << 8), +0x1C PRIR, +0x1E CCRSA...
- * Boot (SHINOBI 0x060401A0..) sets SPCTL sprite type 3 (dot: bit 15 MSB, 14-13 priority
- * register, 12-11 colour calc, 10-0 colour code); the stage init 0x060472D2 copies the stage
- * control block 0x060EA618 +0x22..+0x28 (S0..S3) and +0x2A..+0x30 (NBG0..NBG3) through
- * SCL_SetPriority 0x0602AFD4 (1-1: S0..S3 = 3,4,5,7; NBG0..3 = 4,3,2,7).
- * Higher priority is in front; 0 = not displayed; on a tie sprite > NBG0 > NBG1 > NBG2 > NBG3. */
-#define VDP2_SPCTL   (VDP2_SHADOW_ADDR + 0x00)
-#define VDP2_PRIS    (VDP2_SHADOW_ADDR + 0x10)
-#define VDP2_PRIN    (VDP2_SHADOW_ADDR + 0x18)
-#define STAGE_CTRL   0x060EA618u
-
-typedef struct { int nbg[4], spr[8], sptype; } Vdp2Prio;
-
-static void vdp2_priorities(Vdp2Prio *p)
-{
-    uint16_t spctl = R16(VDP2_SPCTL);
-    int any = 0;
-    p->sptype = spctl ? (spctl & 0xF) : 3;      /* PC: boot VDP2 init not ported -> type 3 */
-    for (int n = 0; n < 8; n++) any |= p->spr[n] = (R16(VDP2_PRIS + 2u * (uint32_t)(n >> 1)) >> (8 * (n & 1))) & 7;
-    for (int n = 0; n < 4; n++) any |= p->nbg[n] = (R16(VDP2_PRIN + 2u * (uint32_t)(n >> 1)) >> (8 * (n & 1))) & 7;
-    if (any) return;
-    /* PC: 0x060472D2 not ported -> take the values it would copy from the stage control block */
-    for (int n = 0; n < 4; n++) {
-        any |= p->spr[n] = R16(STAGE_CTRL + 0x22 + 2u * (uint32_t)n) & 7;
-        any |= p->nbg[n] = R16(STAGE_CTRL + 0x2A + 2u * (uint32_t)n) & 7;
-        p->spr[n + 4] = 0;
-    }
-    if (any) return;
-    for (int n = 0; n < 8; n++) p->spr[n] = 7;  /* nothing set up: layers 2,1,0 then sprites */
-    for (int n = 0; n < 4; n++) p->nbg[n] = 1;
-}
-
-/* Priority register number held in a sprite's colour data for the VDP2 sprite type
- * (types 0-7, 16-bit dots). RGB dots use register 0. LUT sprites: colour of dot 1. */
-static int sprite_prio_reg(const RenderSprite *s, int type)
-{
-    static const uint8_t shift[8] = { 14, 13, 14, 13, 13, 12, 12, 12 }, bits[8] = { 2, 3, 1, 2, 2, 3, 3, 3 };
-    unsigned cm = (s->mode >> 3) & 7;
-    uint16_t c = s->colr;
-    if (cm >= 5 || type > 7) return 0;
-    if (cm == 1) {
-        c = R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + 2u);
-        if (c & 0x8000) return 0;
-    }
-    return (c >> shift[type]) & ((1 << bits[type]) - 1);
-}
+/* VDP2 priorities: Vdp2_GetPriorities / Vdp2_SpritePrioReg (soft_render.c). */
 
 /* VDP1 framebuffer split by VDP2 priority: target p holds the pixels whose last-drawn sprite
  * has priority p (other sprites erase what they cover), so a later sprite hides an earlier
@@ -328,6 +223,11 @@ static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase)
         case 3: col.a = 128; break;                               /* half transparency */
         default: break;
         }
+    } else if (!erase && ((s->mode >> 3) & 7) < 5 && Res_OverlayResident() == OVL_DIRECTOR) {
+        /* VDP2 sprite colour calculation (title menus dim unselected items) */
+        int reg = (s->colr >> 11) & 3;
+        int ratio = (R16(VDP2_SHADOW_ADDR + 0x1E + 2u * (unsigned)(reg >> 1)) >> (8 * (reg & 1))) & 0x1F;
+        col.r = col.g = col.b = (Uint8)(255 * (32 - ratio) / 32);
     }
     for (int i = 0; i < 4; i++) {
         float ux = (float)(s->qx[i] - s->qx[un[i]]), uy = (float)(s->qy[i] - s->qy[un[i]]);
@@ -372,12 +272,12 @@ void Render_DrawFrame(void)
         order[j] = i;
     }
     Vdp2Prio pr;
-    vdp2_priorities(&pr);
+    Vdp2_GetPriorities(&pr);
     unsigned used = 0;
     for (int k = 0; k < n; k++) {
         const RenderSprite *s = &s_queue[order[k]];
         tex[k] = get_texture(s);
-        vp[k] = pr.spr[sprite_prio_reg(s, pr.sptype)];
+        vp[k] = pr.spr[Vdp2_SpritePrioReg(s, pr.sptype)];
         if (tex[k]) used |= 1u << vp[k];
     }
     int split = (used & (used - 1)) != 0 && sprite_layers_ok();

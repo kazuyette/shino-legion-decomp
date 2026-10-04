@@ -3,6 +3,17 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.14.0 — 2026-10-04
+- All 18 per-stage inits ported (table 0x060A8B0C, Stage_InitLayers 0x060471D4,
+  Layer_FillVram/PutTile, NBG3 status-bar map); every stage loads and the player lands
+  (except 4-2: floor objects 0x1025/0x1026/0x1028 not ported yet).
+- VDP2 map word decode fixed (H/V flip, palette bank, special priority): stage 1-1 ground
+  no longer garbled; NBG3 status bar drawn; software reference compositor (soft_render.c).
+- Title screen complete: all 18 steps, options, sound test, cheats, mono/stereo; VDP2
+  sprite colour calculation dims unselected menu items.
+- End screens complete: stage-clear tally (score/lives bonus), continue / game over,
+  staff roll.
+
 ## 0.13.0 — 2026-10-03
 - The game now boots like the Saturn: SEGA logo -> title screen (with the CD-DA title
   music) -> Start -> "STAGE 1 START" movie -> intro movie -> stage 1-1 (the real one:

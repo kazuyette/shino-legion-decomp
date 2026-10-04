@@ -67,7 +67,7 @@ void Camera_Update(void)
 }
 
 /* 0x060470A4: layer position from the camera: FixMul(cam - 1024, rate) + offset. */
-static void layer_from_camera(int32_t cx, int32_t cy, uint32_t d)
+void Layer_FromCamera(int32_t cx, int32_t cy, uint32_t d)
 {
     W32(d + 0, (uint32_t)(fixmul(cx + (int32_t)0xFC000000, RS16(d + 0x18) << 8) + RS32(d + 0x10)));
     W32(d + 4, (uint32_t)(fixmul(cy + (int32_t)0xFC000000, RS16(d + 0x1A) << 8) + RS32(d + 0x14)));
@@ -93,6 +93,6 @@ void Scroll_Update(void)
         W32(CAM_Y, (uint32_t)(RS32(CAM_Y) + shake * 0x10000));
     }
     for (uint32_t n = 0; n < 3; n++)                        /* layers follow the frame-start camera */
-        layer_from_camera(RS32(0x060252A8u), RS32(0x060252ACu), D + n * 0x30);
+        Layer_FromCamera(RS32(0x060252A8u), RS32(0x060252ACu), D + n * 0x30);
     /* VDP2 scroll registers ((pos - 1024) & 0x07FFFFFF) are derived by the renderer. */
 }

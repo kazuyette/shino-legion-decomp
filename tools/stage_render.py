@@ -14,8 +14,9 @@ def palettes(m):
         pal.append(((v & 31)*255//31, ((v >> 5) & 31)*255//31, ((v >> 10) & 31)*255//31))
     return pal
 def tile_pixels(c, layer, pn):
-    """16x16 tile = 4 8x8 cells (TL,TR,BL,BR), 8bpp, 256 bytes."""
-    base = layer*0x20000 + (pn & 0x3FF)*128
+    """16x16 tile = 4 8x8 cells (TL,TR,BL,BR), 8bpp, 256 bytes. MAP word -> VDP2 pattern name
+    as SHINOBI 0x06046B14: character = layer char base (0/0x1000/0x2000 cells) + (pn & 0xFFE)*4."""
+    base = layer*0x20000 + (pn & 0xFFE)*0x80
     out = [[0]*16 for _ in range(16)]
     for cell in range(4):
         cx, cy = (cell & 1)*8, (cell >> 1)*8
@@ -24,7 +25,7 @@ def tile_pixels(c, layer, pn):
                 i = base + cell*64 + y*8 + x
                 out[cy+y][cx+x] = c[i] if i < len(c) else 0
     if pn & 0x8000: out = [row[::-1] for row in out]        # H flip
-    if pn & 0x0800: out = out[::-1]                          # V flip (guess)
+    if pn & 0x4000: out = out[::-1]                          # V flip (bit 13 = special priority)
     return out
 def render_layer(m, c, shi, layer, layout_addr, scale=1):
     pal = palettes(m)
@@ -41,15 +42,14 @@ def render_layer(m, c, shi, layer, layout_addr, scale=1):
                 for tx in range(32):
                     pn = W(m, pages + pid*0x800 + 2*(ty*32+tx))
                     if (pn & 0x3FF) == 0 and not pn: continue
-                    key = pn & 0x8FFF | (pn & 0x7000)
                     t = cache.get(pn)
                     if t is None: t = cache[pn] = tile_pixels(c, layer, pn)
-                    bank = (pn >> 12) & 7
+                    bank = layer + ((pn >> 12) & 1)          # CRAOFA (0,1,2 by default) + palette bit
                     for y in range(16):
                         row = t[y]
                         for x in range(16):
                             v = row[x]
-                            if v: px[pc*512+tx*16+x, pr*512+ty*16+y] = pal[(bank % 3)*256 + v] + (255,)
+                            if v: px[pc*512+tx*16+x, pr*512+ty*16+y] = pal[(bank*256 + v) % 768] + (255,)
     return img
 if __name__ == '__main__':
     m, c, shi = load(sys.argv[1]), load(sys.argv[2]), load(sys.argv[3])

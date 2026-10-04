@@ -9,71 +9,29 @@
 #include "render.h"
 #include "enemy.h"
 #include "fx.h"
+#include "stage_inits.h"
 #include <stdio.h>
 
 /* VDP2 register shadow (A.BIN): +4 = CRAOFA, NBGn colour RAM offset in bits 4n..4n+2. */
 
-/* 0x06005EAC */
+/* 0x06005EAC: a negative argument leaves that screen's offset unchanged. */
 void Vdp2_SetColorRamOffsets(int n0, int n1, int n2, int n3)
 {
     uint32_t a = VDP2_SHADOW_ADDR + 4;
-    if (n0 >= 0) W16(a, (R16(a) & 0xFFF8) | (n0 & 7));
-    if (n1 >= 0) W16(a, (R16(a) & 0xFF8F) | (n1 & 7) << 4);
-    if (n2 >= 0) W16(a, (R16(a) & 0xF8FF) | (n2 & 7) << 8);
-    if (n3 >= 0) W16(a, (R16(a) & 0x8FFF) | (n3 & 7) << 12);
+    if ((int8_t)n0 > -1) W16(a, (R16(a) & 0xFFF0) | (n0 & 7));
+    if ((int8_t)n1 > -1) W16(a, (R16(a) & 0xFF0F) | (n1 & 7) << 4);
+    if ((int8_t)n2 > -1) W16(a, (R16(a) & 0xF0FF) | (n2 & 7) << 8);
+    if ((int8_t)n3 > -1) W16(a, (R16(a) & 0x0FFF) | (n3 & 7) << 12);
 }
 
 #define MAP_ADDR   0x002B0000u           /* LWRAM, *(0x060EA650) */
+#define MAP_MAX    (LWRAM_BASE + LWRAM_SIZE - MAP_ADDR)   /* STAGE6_1.MAP is 0x25A20 bytes */
 #define D          LAYER_DESC            /* 3 layer descriptors, 0x30 bytes */
 #define C          0x060EA618u           /* scroll/screen control block */
 
 static const char *kStageNames[] = { "STAGE7_1", "STAGE7_2", "STAGE2_1", "STAGE2_2", "STAGE3_1", "STAGE3_2",
     "STAGE4_1", "STAGE4_2", "STAGE5_1", "STAGE5_2", "STAGE6_1", "STAGE6_2", "STAGE1_1", "STAGE1_2",
     "STAGE8_1", "STAGE8_2", "STAGE9_1", "STAGE9_2" };
-
-/* 0x06047F90 (table 0x060A8B0C[0]): game stage 1-1 (file STAGE7_1) layer setup. */
-static void stage7_1_init(void)
-{
-    W16(C + 0x20, R16(C + 0x20) | 0x40);
-    W16(C + 0x10, 0x7FFF);
-    W16(C + 0x2A, 4); W16(C + 0x2C, 4); W16(C + 0x2E, 2); W16(C + 0x30, 7);
-    W16(C + 0x22, 2); W16(C + 0x24, 4); W16(C + 0x26, 5); W16(C + 0x28, 7);
-    W32(D + 0x20, 0x060CEDB0u); W32(D + 0x50, 0x060CEDC6u); W32(D + 0x80, 0x060CEDD6u);   /* page layouts */
-    W32(D + 0x10, 0x04000000u); W32(D + 0x14, 0x04000000u);
-    W32(D + 0x40, 0x04000000u); W32(D + 0x44, 0x04600000u);
-    W32(D + 0x70, 0x04000000u); W32(D + 0x74, 0x05100000u);
-    W32(C + 0x00, 0x04000000u); W32(C + 0x04, 0x04800000u);
-    W32(C + 0x08, 0x2C000000u); W32(C + 0x0C, 0x06000000u);                              /* world bounds */
-    W16(D + 0x18, 0x100); W16(D + 0x1A, 0x100);     /* parallax rates */
-    W16(D + 0x48, 0xA0);  W16(D + 0x4A, 0xA0);
-    W16(D + 0x78, 0);     W16(D + 0x7A, 0x10);
-    W16(C + 0x32, 0); W16(C + 0x34, 0xFFFF);
-    /* NBG2 SclConfig (0x06020D08 + 0x98): +3 = 1, pattern-name/plate addresses 0x25E69000,
-     * then SCL_SetConfig 0x06029B40(0x10, ...) (not emulated) */
-    Ram_Ptr(0x06020DA0u)[3] = 1;
-    W32(0x06020DA0u + 16, 0x25E69000u); W32(0x06020DA0u + 20, 0x25E69000u); W32(0x06020DA0u + 24, 0x25E69000u);
-    W16(C + 0x18, 0xFFC8); W16(C + 0x1A, 0xFFD0); W16(C + 0x1C, 16);
-    if (R16(0x060EC658u) == 1) W32(C + 0x00, 0x0BC00000u);     /* checkpoint-dependent left bound */
-    if (R16(0x060EC658u) == 2) W32(C + 0x00, 0x1CD00000u);
-}
-
-/* 0x060473B4: stage 1-1 specific layer setup. */
-static void stage1_1_init(void)
-{
-    W16(C + 0x20, R16(C + 0x20) | 0x40);
-    W16(C + 0x2A, 4); W16(C + 0x2C, 3); W16(C + 0x2E, 2); W16(C + 0x30, 7);
-    W16(C + 0x22, 3); W16(C + 0x24, 4); W16(C + 0x26, 5); W16(C + 0x28, 7);
-    W32(D + 0x20, 0x060CEAD8u); W32(D + 0x50, 0x060CEB0Eu); W32(D + 0x80, 0x060CEB20u);   /* page layouts */
-    W32(D + 0x10, 0x04000000u); W32(D + 0x14, 0x04000000u);
-    W32(D + 0x40, 0x04000000u); W32(D + 0x44, 0x04580000u);
-    W32(D + 0x70, 0x04000000u); W32(D + 0x74, 0x04F00000u);
-    W32(C + 0x00, 0x04000000u); W32(C + 0x04, 0x04000000u);
-    W32(C + 0x08, R32(C) + 0x34000000u); W32(C + 0x0C, R32(C + 4) + 0x01F00000u);      /* world bounds */
-    W16(D + 0x18, 0x100); W16(D + 0x1A, 0x100);     /* parallax rates (0x100 = 1.0) */
-    W16(D + 0x48, 0x77);  W16(D + 0x4A, 0xB0);
-    W16(D + 0x78, 0x18);  W16(D + 0x7A, 0x19);
-    W16(C + 0x32, 0); W16(C + 0x34, 0xFFFF);
-}
 
 /* 0x06047128: stage palettes from the MAP file into the shadow CRAM. */
 static void stage_palettes(void)
@@ -108,13 +66,18 @@ int Stage_Load(const char *dir, int idx)
     snprintf(p, sizeof p, "%s/%s.CHR", dir, kStageNames[idx]);
     if (!Ram_LoadCompressed(p, VDP2_VRAM_BASE, VDP2_VRAM_SIZE)) { printf("[stage] missing %s\n", p); return 0; }
     snprintf(p, sizeof p, "%s/%s.MAP", dir, kStageNames[idx]);
-    if (!Ram_LoadCompressed(p, MAP_ADDR, 0x20000)) { printf("[stage] missing %s\n", p); return 0; }
+    if (!Ram_LoadCompressed(p, MAP_ADDR, MAP_MAX)) { printf("[stage] missing %s\n", p); return 0; }
     W32(0x060EA650u, MAP_ADDR);
     snprintf(p, sizeof p, "%s/%s.SPR", dir, kStageNames[idx]);       /* loader 0x0606BB0C */
     if (!Ram_LoadCompressed(p, VDP1_VRAM_BASE + 0x4740u, VDP1_VRAM_SIZE - 0x4740u))
         printf("[stage] missing %s (no enemy/platform graphics)\n", p);
     Render_InvalidateVram(VDP1_VRAM_BASE, VDP1_VRAM_SIZE);
+    stage_palettes();                                      /* 0x06047128 (tail of 0x060472C4) */
+    Common_LoadChars();                                    /* 0x06040A90 */
 
+    /* 0x060472D2: VDP2 pattern-name pages of NBG0..NBG3, flags cleared, then 0x0604861C */
+    W32(D + 0x24, 0x25E60000u); W32(D + 0x54, 0x25E64000u); W32(D + 0x84, 0x25E68000u); W32(D + 0xB4, 0x25E6C000u);
+    W16(C + 0x20, 0);
     /* 0x0604861C (common part) */
     uint32_t m = MAP_ADDR;
     W32(D + 0x1C, m + 0x1220 + (R32(m + 0x1200) >> 1) * 2);
@@ -131,10 +94,7 @@ int Stage_Load(const char *dir, int idx)
     W32(0x060EA55Cu, 0x006E0000u); W32(0x060EA560u, 0x00AA0000u);
     W32(0x060EA56Cu, 0x00F00000u); W32(0x060EA570u, 0x00280000u);
     W16(C + 0x1E, 0xFFFF);
-    W16(G_COLL_LAYER, 0);
-    if (idx == 12) stage1_1_init();
-    else if (idx == 0) stage7_1_init();
-    else printf("[stage] per-stage init for index %d (table 0x060A8B0C) not ported yet\n", idx);
+    StageInit_Run(idx);                                    /* jsr @(0x060A8B0C[stage]) */
     /* 0x060472D2: VDP2 priorities from the control block (sprite registers S0-S3 at
      * +0x22..+0x28, NBG0-3 at +0x2A..+0x30); boot sets sprite type 3 (SPCTL). */
     W16(VDP2_SHADOW_ADDR, (uint16_t)((((R16(VDP2_SHADOW_ADDR) & 0x0FFF) | 0x2000) & 0xFFDF & 0xFFF0) | 3) & 0xFFEF);
@@ -143,8 +103,7 @@ int Stage_Load(const char *dir, int idx)
     Scl_SetPriority(0x100, Ram_Ptr(C + 0x22)[1]); Scl_SetPriority(0x200, Ram_Ptr(C + 0x24)[1]);
     Scl_SetPriority(0x400, Ram_Ptr(C + 0x26)[1]); Scl_SetPriority(0x800, Ram_Ptr(C + 0x28)[1]);
     Scl_SetPriority(0x1000, 0); Scl_SetPriority(0x2000, 0); Scl_SetPriority(0x4000, 0); Scl_SetPriority(0x8000, 0);
-    stage_palettes();
-    Common_LoadChars();                                    /* 0x06040A90 */
+    Player_InitChars();                                    /* 0x06044A78: Sho's palette with the stage tint */
     Stage_RegisterSpriteChars();                           /* 0x06060108 */
     Enemy_ResetTables();
     Enemy_LoadTypes();                                     /* 0x06048C8A: enemy chars + palettes */
@@ -178,4 +137,5 @@ void Stage_SpawnPlayer(void)
     W32(0x060252A8u, R32(CAM_X));
     W32(0x060252ACu, R32(CAM_Y));
     Scroll_Update();
+    Stage_InitLayers();                                    /* 0x060471D4 (game mode 5, 0x0606B7BA) */
 }

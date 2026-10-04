@@ -1858,8 +1858,9 @@ New semantics learned while porting:
   order 7_1,7_2,2_1..6_2,1_1,1_2 → stage index (0x0602526A) 12 = 1-1.
 - MAP layout: +0x000/+0x400/+0x800 collision attrs per tile (512 × u16) for layers 0/1/2;
   +0xC00/+0xE00/+0x1000 3 palettes (256 RGB555) → shadow CRAM 0/0x100/0x200 colours;
-  +0x1200 3 × u32 page offsets (base +0x1220); pages = 32×32 u16 pattern names
-  (bits 14-12 palette bank, bit 15 H-flip (guess), bits 9-0 tile → 16x16 = 4 cells TL,TR,BL,BR).
+  +0x1200 3 × u32 page offsets (base +0x1220); pages = 32×32 u16 map words (16x16 = 4 cells
+  TL,TR,BL,BR; format corrected in "Per-stage inits" below: bit 15 H-flip, 14 V-flip, 13 special
+  priority, 12 palette +256, 11-1 tile, 0 special colour calc).
 - Layer descriptors 0x060EA588 + n*0x30: +0x10/+0x14 offsets (layer px = world + off − 2048),
   +0x18/+0x1A parallax rates (0x100 = 1), +0x1C pages, +0x20 page layout {u8 w, u8 h, ids;
   0xFF = empty}, +0x28 collision attrs, +0x2C char base (×0x20 bytes).
@@ -2011,3 +2012,35 @@ New semantics learned while porting:
 - Start: 0x06044E18 Player_InitForStage → 0x0604879C checkpoint (table 0x060A8D94, 4 per
   stage, 1-1 = world 1120,1488 / 5376 / 9536); first entry (0x060252DC == 0) = drop-in
   from y 1248, action 0x39; 0x0606E440 ends it on landing.
+
+## Per-stage inits & VDP2 layer format (2026-10-04, pc-port stage_inits.c / soft_render.c)
+
+- Game mode 5 (0x0606B6EC) order: 0x060472C4 (CHR 0x060470E6, MAP 0x06047178, palettes
+  0x06047128), Common_LoadChars 0x06040A90, 0x0606BAE4, **0x060472D2** (desc+0x24 VRAM pages
+  0x25E60000/64000/68000/6C000, C+0x20 = 0, common init 0x0604861C → per-stage handler
+  0x060A8B0C[stage], then SCL_SetPriority from C+0x22..0x30), Player_InitChars 0x06044A78 (Sho's
+  palette with the stage tint C+0x18..0x1C), ..., 0x06048C8A, 0x06060108, ..., **0x060471D4**
+  (layers from the camera, 0x06046EBC fills 22×18 tiles of each layer into VRAM via 0x06046B14,
+  then tail-calls 0x06047244 = NBG3 map).
+- Per-stage handlers (all ported in stage_inits.c, verified byte-for-byte against an SH-2
+  emulation of the originals for checkpoints 0-2): C+0x20 flags, priorities, layouts, offsets,
+  world bounds, parallax rates, C+0x32 collision layer, C+0x34; extras: SclConfig plane size /
+  plate addresses (+SCL_SetConfig 0x06029B40) for idx 0, 4, 9, 10, 17; Vdp2_SetColorRamOffsets
+  (idx 4: NBG2 → palette 1; idx 10: NBG1+NBG2 → palette 1); SFPRMD &= ~NBG1/NBG2 (idx 14, 17;
+  stays 0); player tint (idx 0, 4, 5); camera target ranges 0x060EA55C.. (idx 6, 8, 10, 16);
+  checkpoint-dependent bounds (idx 0, 4, 9). C+0x20 bits 0x10/0x20/0x40 = layer 0/1/2 static
+  (not re-streamed by 0x06046E54).
+- **Map word → VDP2 2-word pattern name (0x06046B14)**: bit 15 → HF (bit 30), bit 14 → VF (31),
+  bit 13 → special priority (29), bit 0 → special colour calc (28), bit 12 → palette bit 4 (20,
+  +256 colours), (word & 0xFFE) << 2 → character number (+ desc+0x2C base). So a tile is
+  (word >> 1) & 0x7FF × 256 bytes from the layer's char base, and can reach the next layer's bank
+  (6-1 layer 1 uses tiles 0x200+ = layer 2's graphics). Colour = CRAM[(CRAOFA(n) + pal) × 256 + dot].
+  The old reading (bits 14-12 = palette bank) sent every special-priority / V-flipped tile to
+  CRAM banks 2-7 → the "noise" ground of 1-1 (STAGE7_1 layer 0: 2633 words with bit 13).
+- NBG3 = status bar ("PLAYER", item icons): VDP2 init 0x060400B0 sets it 1x1 cells, 16 colours,
+  2-word PN, plate 0x25E6C000; map LZ 0x060CE5B8 → 0x060EA658 → 0x800 PNs ((w & 0xF000) << 4 |
+  (w & 0x3FF) | 0x2C00): characters in the last 32 KB of every CHR file, palette CRAM 0x300
+  (LZ 0x060CEA3E, CRAOFA NBG3 = 3), priority 7.
+- Other SHINOBI users of VDP2 colour calculation (not per-stage): CCRNA 0x0603B492 at
+  0x0605F900 / 0x060807BC / 0x0608214C, CCCTL 0x0603B478 at 0x0608246C / 0x060826B0, NBG3 config
+  at 0x06088760 (object/boss code).

@@ -131,6 +131,7 @@ int main(int argc, char **argv)
     }
     assert(RS16(V_STAGE) == 0 && RS16(V_LIVES) == 4 && RS16(V_CONTINUES) == 5 && RS16(V_HP_MAX) == 6);
 
+    frame(PAD_START); frame(0);                       /* PRESS START BUTTON */
     frame(PAD_START); frame(0);                       /* GAME START */
     n = run_until(stage_running, 0, 2000);
     printf("stage running after %d frames\n", n); assert(n >= 0);
