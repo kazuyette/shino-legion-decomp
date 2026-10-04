@@ -126,6 +126,18 @@ static void Fx_Slash(uint32_t e)                                       /* 0x0606
     fx_tick(e);
 }
 
+static void Fx_Flash05(uint32_t e)                                     /* 0x060627C8: 5 */
+{
+    fx_start(e, 0x060ACB20u, 1);
+    fx_screen(e);
+    W16(SPR + 0x10, (R16(e + 2) & 0x8000) | 0x0200);
+    W32(SPR + 0x18, 0x80);
+    W16(SPR + 0x0A, 0x73);
+    W16(SPR + 0x0C, 0);
+    W16(SPR + 0x0E, 0);
+    fx_tick(e);
+}
+
 int  BossB_Effect(uint16_t t, uint32_t e);                              /* enemy_boss06.c (bosses 0x17 / 0x1F) */
 void Effects_Update(void)
 {
@@ -143,6 +155,7 @@ void Effects_Update(void)
         case 2: Fx_Spark(e, 3, 0x73); break;
         case 3: Fx_Spark(e, 2, 0x74); break;
         case 4: Fx_Slash(e); break;
+        case 5: Fx_Flash05(e); break;                             /* (PC v0.18.x audit) */
         case 8: case 9: Fx_Shard(e); break;                      /* objhandlers_e.c, 0x0604E180 */
         case 0xE: Fx_Splash0E(e); break;                         /* enemy_more.c, 0x0605B08A */
         case 0xA: case 0xB: case 0xC: case 0xD: Fx_Sparkle(e); break;   /* fx_b.c */
@@ -650,6 +663,35 @@ static void Common_AnimateChars(void)
     }
 }
 
+/* 0x06063078: item kind 8, a mine (anim 8 armed): when Sho comes within 24 px (and not more
+ * than 64 px below him) or the armed animation ends, plays anim 9 (fuse), then bursts as
+ * projectile 5 24 px above its point. (PC v0.18.x audit: was logged "not ported".) */
+static void Item_Mine(uint32_t it)
+{
+    if (R16(it + 0x2C) & 1) {
+        Anim_Start(it + 0xC, 0x060AD302u, 0x060D8040u, 0x4B0, 8);
+        AND16(it + 0x2C, 0xFFFE);
+    }
+    if (!FROZEN) {
+        if (R16(it + 0x24) == 8) {
+            int32_t dx = iabs(RS32(it + 4) - RS32(PL + 8)), dy = RS32(it + 8) - RS32(PL + 0xC);
+            int near = dx < 0x180000 && dy < 0x180000 && dy > (int32_t)0xFFC00000;
+            if (near || (R16(it + 0xC) & 0x8000)) Anim_Start(it + 0xC, 0x060AD302u, 0x060D8040u, 0x4B0, 9);
+        } else if (R16(it + 0xC) & 0x8000) {
+            Projectile_Spawn(5, RS32(it + 4), RS32(it + 8) - 0x180000, 0, 0);
+            W16(it, 0xFFFF);
+        }
+    }
+    W16(SPR + 2, (uint32_t)((RS32(it + 4) - RS32(CAM_X)) >> 16));
+    W16(SPR + 4, (uint32_t)((RS32(it + 8) - RS32(CAM_Y)) >> 16));
+    W16(SPR + 0x10, 0x0200);
+    W32(SPR + 0x18, 0x81);
+    W16(SPR + 0x0A, 0x7E);
+    W16(SPR + 0x0C, 0);
+    W16(SPR + 0x0E, 0);
+    Anim_Tick(it + 0xC);
+}
+
 void Items_Update(void)
 {
     Common_AnimateChars();
@@ -659,6 +701,6 @@ void Items_Update(void)
         if (R16(it) == 0xFFFF) continue;
         uint16_t k = R16(it) & 0xFF;
         if (k <= 7) Item_Update(it);
-        else if (k == 8) once("item kind", k);
+        else if (k == 8) Item_Mine(it);
     }
 }

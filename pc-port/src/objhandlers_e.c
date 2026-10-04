@@ -10,6 +10,7 @@
 #include "anim.h"
 #include "sprite.h"
 #include "fixmath.h"
+#include "collision.h"
 #include "player_ext.h"
 #include "ram.h"
 
@@ -673,3 +674,254 @@ static void Head_Update(int right)
 }
 void ObjHandler_1010(void) { Head_Update(0); }
 void ObjHandler_1011(void) { Head_Update(1); }
+
+/* ================================================================ stage 3: rocks / fire
+ * (PC v0.18.x audit: these two handlers were missing -- the heads' fireballs never appeared
+ * and the rock falls after the heads / on fireball impacts were silently dropped.) */
+
+/* 0x0604E9BA: a group of falling rocks (0x100E flags 1), count from the cyclic table
+ * 0x060AA094 (5 entries), side from 0x060AA0C8 (8), offsets 0x060AA09E / 0x060AA0B2 jittered
+ * by the frame counter; each rock keeps the camera position it was born at (+0x48/+0x4A). */
+static void Rocks_Group(uint32_t o)
+{
+    int16_t k = RS16(o + 0x48);
+    int16_t n = RS16(0x060AA094u + 2u * (uint32_t)(int32_t)k);
+    W16(o + 0x48, (uint16_t)k < 4 ? (uint16_t)(k + 1) : 0);
+    int16_t j = RS16(o + 0x4A);
+    int side = R16(0x060AA0C8u + 2u * (uint32_t)(int32_t)j) != 0;
+    W16(o + 0x4A, (uint16_t)j < 7 ? (uint16_t)(j + 1) : 0);
+    int32_t bx = RS32(CAM_X) + (side ? 0x12C0000 : 0x140000), by = RS32(CAM_Y) + 0x640000;
+    for (int16_t i = 0; i < n; i++) {
+        int32_t dx = RS16(0x060AA09Eu + 2u * (uint32_t)i) * 0x10000, dy = RS16(0x060AA0B2u + 2u * (uint32_t)i) * 0x10000;
+        uint16_t v = R16(VBLANKS);
+        if (!side) dx = -dx;
+        dx += (int32_t)((uint32_t)(v & (uint16_t)i) << 16);
+        dy += (int32_t)((uint32_t)((v >> 2) & (uint16_t)i) << 16);
+        int s = (int16_t)Obj_Register(0x100E, bx + dx, by + dy, 1, 0xFFFF);
+        if (s == -1) continue;
+        uint32_t p = slot_addr(s);
+        if (side) OR16(p + 2, 0x8000);
+        W16(p + 0x48, (uint32_t)RS32(CAM_X) >> 16);
+        W16(p + 0x4A, (uint32_t)RS32(CAM_Y) >> 16);
+        W16(p + 0x4C, (uint16_t)i);
+    }
+}
+
+/* 0x100E (0x0604E6AC), flags & 0x1F: 0 = rock-fall spawner (registered at the camera when both
+ * heads are down, 0x0604FAC0): first group after 60 frames, then every 2500; 1 = background
+ * rock (anim 1, half size, frame (vblanks >> n) % 4), drifts 1/8 px per frame, drawn relative to
+ * the camera it was born at, freed 320 px away; 2 = rock knocked off by a fireball (anim 10,
+ * angle 85 / 37 mirrored), flies at 3 px per frame, freed above the camera. */
+void ObjHandler_100E(void)
+{
+    uint32_t o = CUR;
+    uint16_t f = R16(o + 0x12) & 0x1F;
+    if (R16(o + 2) & 1) {
+        W16(o + 0x1C, 0x8000);
+        AND16(o + 2, 0xFFFE);
+        if (f == 0) { W16(o + 0x14, 0x3C); W16(o + 0x48, 0); W16(o + 0x4A, 0); }
+        else if (f == 1) {
+            W16(o + 6, 1);
+            Anim_Start(o + 0x58, DEFS3, SCR3, 0x10, RS16(o + 6));
+            W16(o + 0x5A, (uint16_t)sub_0600A604((int32_t)(R16(VBLANKS) >> (RS16(o + 0x4C) & 31)), 4));
+            W32(o + 0x30, 0x2000);
+        } else if (f == 2) {
+            W16(o + 6, 10);
+            Anim_Start(o + 0x58, DEFS3, SCR3, 0x10, RS16(o + 6));
+            W16(o + 0x48, (R16(o + 2) & 0x8000) ? 85 : 37);
+        }
+    }
+    if (!FROZEN) {
+        if (f == 1) {
+            W32(o + 8, (uint32_t)(RS32(o + 8) + ((R16(o + 2) & 0x8000) ? -RS32(o + 0x30) : RS32(o + 0x30))));
+            int16_t b = RS16(o + 0x48);
+            if (RS32(o + 8) < b * 0x10000 || RS32(o + 8) > (b + 0x140) * 0x10000) W16(o, 0xFFFF);
+        } else if (f == 0) {
+            W16(o + 0x14, R16(o + 0x14) - 1);
+            if (R16(o + 0x14) == 0) { Rocks_Group(o); W16(o + 0x14, 0x9C4); }
+            return;
+        } else if (f == 2) {
+            int a = RS16(o + 0x48);
+            W32(o + 8, (uint32_t)(RS32(o + 8) + FixMul(0x30000, Cos8(a))));
+            W32(o + 0xC, (uint32_t)(RS32(o + 0xC) - FixMul(0x30000, Sin8(a))));
+            if (RS32(o + 0xC) < RS32(CAM_Y)) W16(o, 0xFFFF);
+        }
+    }
+    if (f == 0) return;                              /* PC guard: the spawner has no animation */
+    W16(SPR + 0x0C, 0xFFFF);
+    if (f == 1) {
+        W16(SPR + 0x02, (uint32_t)(RS32(o + 8) - RS16(o + 0x48) * 0x10000) >> 16);
+        W16(SPR + 0x04, (uint32_t)(RS32(o + 0xC) - RS16(o + 0x4A) * 0x10000) >> 16);
+        W16(SPR + 0x10, (R16(o + 2) & 0x8000) | 0x1B00);
+        W32(SPR + 0x1C, 0x8000); W32(SPR + 0x20, 0x8000);
+    } else {
+        W16(SPR + 0x02, (uint16_t)scr_x(o));
+        W16(SPR + 0x04, (uint16_t)scr_y(o));
+        int16_t a = RS16(o + 0x48);
+        if (a > 0x40) a = (int16_t)(a + 0x80);
+        W16(SPR + 0x10, (R16(o + 2) & 0x8000) | 0x0600);
+        W16(SPR + 0x14, (uint16_t)a);
+    }
+    W32(SPR + 0x18, 0xFFFFFF80u);
+    W16(SPR + 0x0A, 0x10);
+    W16(SPR + 0x0E, 0);
+    Anim_Tick(o + 0x58);
+}
+
+/* 0x06050290: fireball hit the floor and left the screen: 11 debris parts (type 0) around the
+ * impact point, sound 0x209 and a burning patch 0x1012 flags 1 there. */
+static void Fire_Debris(uint32_t o)
+{
+    static const int8_t d[11][3] = {
+        { 0, 0, 0 }, { 0x12, 0, 0 }, { -0x16, 0, 0 }, { 0x0C, -0x12, 0 }, { -0x0E, -0x14, 0 }, { 0, -0x1A, 10 },
+        { 0, -0x1C, 10 }, { 0x12, -0x1D, 10 }, { -0x14, -0x1F, 10 }, { 0x16, -0x23, 20 }, { -0x18, -0x25, 20 } };
+    int32_t x = RS16(o + 0x4A) * 0x10000;
+    int32_t y = (int32_t)((uint32_t)(RS16(o + 0x4C) * 0x10000) & 0xFFF80000u);
+    for (int i = 0; i < 11; i++) Obj_Spawn(0, x + d[i][0] * 0x10000, y - 0x80000 + d[i][1] * 0x10000, 0, d[i][2]);
+    sub_06007CDE(0x209);
+    Obj_Register(0x1012, x, y, 1, 0xFFFF);
+}
+
+/* 0x06050754: rocks knocked off the wall (0x100E flags 2) from the bottom corner on the impact
+ * side; count from the cyclic table 0x060AA11A (index 0x060F21FC, 5 entries). */
+static void Fire_Rocks(uint32_t o)
+{
+    int32_t cx = RS32(CAM_X);
+    int right = RS16(o + 0x4A) >= (int16_t)((int16_t)((uint32_t)cx >> 16) + 0xA0);
+    int32_t x = cx + (right ? 0xF00000 : 0x500000), y = RS32(CAM_Y) + 0xE00000;
+    int16_t k = RS16(G_21FC);
+    int16_t n = RS16(0x060AA11Au + 2u * (uint32_t)(int32_t)k);
+    W16(G_21FC, (uint16_t)k >= 4 ? 0 : (uint16_t)(k + 1));
+    for (; n != 0; n--) {
+        int s = (int16_t)Obj_Register(0x100E, x, y, 2, 0xFFFF);
+        int32_t r = (int32_t)(((uint32_t)(R16(VBLANKS) >> (n & 31)) << 16) & 0xF0000u) + 0xA0000;
+        x += right ? -r : r;
+        y += 0x50000;
+        if (s != -1 && right) OR16(slot_addr(s) + 2, 0x8000);
+    }
+}
+
+/* 0x06050500: 0x1012 flags 1 = burning patch, 40 x 30 px above its point, 1 damage to Sho on
+ * contact (body boxes of kind 0 / 3), 30 frames. */
+static void Fire_Patch(uint32_t o)
+{
+    if (R16(o + 2) & 1) { AND16(o + 2, 0xFFFE); W16(o + 0x14, 30); }
+    if (FROZEN) return;
+    if (!(R16(PL + 2) & 8) && R16(R32(0x060EA41Cu)) == 0 && R32(PL + 0x68)) {
+        ObjRect fr = { RS32(o + 8) - 0x140000, RS32(o + 0xC) - 0x1E0000, RS32(o + 8) + 0x140000, RS32(o + 0xC) };
+        int flip = (R16(PL + 2) & 0x8000) != 0;
+        for (uint32_t e = R32(PL + 0x68); R16(e) != 0xFFFF; e += 10) {
+            if (R16(e) != 0 && R16(e) != 3) continue;
+            int32_t x0 = RS32(PL + 8) + (flip ? -1 : 1) * RS16(e + 2) * 0x10000, x1 = RS32(PL + 8) + (flip ? -1 : 1) * RS16(e + 6) * 0x10000;
+            int32_t y0 = RS32(PL + 0xC) + RS16(e + 4) * 0x10000, y1 = RS32(PL + 0xC) + RS16(e + 8) * 0x10000;
+            ObjRect pr = { x0 >= x1 ? x1 : x0, y0 >= y1 ? y1 : y0, x0 > x1 ? x0 : x1, y0 > y1 ? y0 : y1 };
+            if ((int16_t)Rect_Overlap(&pr, &fr) == -1) { Player_TakeDamage(1); break; }
+        }
+    }
+    W16(o + 0x14, R16(o + 0x14) - 1);
+    if (RS16(o + 0x14) < 1) W16(o, 0xFFFF);
+}
+
+/* Does the fireball's beam (o -> (nx,ny)) cross the player box e (part of 0x0604FADE)? */
+static int Fire_BeamHits(uint32_t o, uint32_t e, int32_t nx, int32_t ny)
+{
+    int32_t ox = RS32(o + 8), oy = RS32(o + 0xC);
+    int32_t smin = ox >= nx ? nx : ox, smax = ox > nx ? ox : nx;
+    int s = (R16(PL + 2) & 0x8000) ? -1 : 1;
+    int32_t x0 = RS32(PL + 8) + s * RS16(e + 2) * 0x10000, x1 = RS32(PL + 8) + s * RS16(e + 6) * 0x10000;
+    int32_t y0 = RS32(PL + 0xC) + RS16(e + 4) * 0x10000, y1 = RS32(PL + 0xC) + RS16(e + 8) * 0x10000;
+    int32_t xmin = x0 >= x1 ? x1 : x0, xmax = x0 > x1 ? x0 : x1, ymin = y0 >= y1 ? y1 : y0, ymax = y0 > y1 ? y0 : y1;
+    int32_t dx = nx - ox, dy = ny - oy;
+    int32_t l = (xmin > smin ? xmin : smin) - ox, r = (xmax >= smax ? smax : xmax) - ox;
+    int32_t ya = oy + FixMul(FixDiv(l, dx), dy), yb = oy + FixMul(FixDiv(r, dx), dy);
+    if (!(ya < ymin && yb < ymin) && !(ya > ymax && yb > ymax) && smax >= xmin && smin <= xmax) return 1;
+    return (dx & (int32_t)0xFFFF0000) == 0 && ny > ymin && ny < ymax;      /* (near) vertical beam */
+}
+
+/* 0x1012 (0x0604FADE): statue head's fireball. Aimed at Sho at birth (angle 0x96..0xEA, else the
+ * nearest bound), a beam from its point growing by 0x6000 x 16 px per frame (head anim 8 scaled
+ * by the length, tail anim 9 at the far end, both drawn twice 10 px apart); waits 10 frames,
+ * then flies at 7.9 px per frame. The beam hurts Sho (1, then 15 frames of grace) and, on a
+ * floor under its far end, marks the impact (+0x4A/+0x4C) and draws a growing blast (anim 0);
+ * once off screen after an impact: debris, burning patch and knocked-off rocks. */
+void ObjHandler_1012(void)
+{
+    uint32_t o = CUR;
+    if ((R16(o + 0x12) & 0x1F) == 1) { Fire_Patch(o); return; }
+    if (R16(o + 2) & 1) {
+        AND16(o + 2, 0xFFFE);
+        W16(o + 0x48, (uint16_t)Atan8((int16_t)(RS32(o + 8) >> 16), (int16_t)(RS32(o + 0xC) >> 16),
+                                      (int16_t)(RS32(PL + 8) >> 16), (int16_t)(RS32(PL + 0xC) >> 16)));
+        int16_t a = RS16(o + 0x48);
+        if (a < 0x96 || a > 0xEA) W16(o + 0x48, RS32(o + 8) >= RS32(PL + 8) ? 0x96 : 0xEA);
+        W16(o + 4, 0);
+        W32(o + 0x30, 0x10000);
+        W16(o + 0x4A, 0); W16(o + 0x4C, 0); W16(o + 0x4E, 0); W16(o + 0x50, 0); W16(o + 0x52, 0);
+        W16(o + 0x14, 10);
+    }
+    int a = RS16(o + 0x48);
+    if (!FROZEN) {
+        W32(o + 0x30, (uint32_t)(RS32(o + 0x30) + 0x6000));
+        int32_t nx = RS32(o + 8) + FixMul(FixMul(Cos8(a), RS32(o + 0x30)), 0x100000);
+        int32_t ny = RS32(o + 0xC) - FixMul(FixMul(Sin8(a), RS32(o + 0x30)), 0x100000);
+        if (!(R16(PL + 2) & 8) && R16(R32(0x060EA41Cu)) == 0 && RS16(o + 0x52) == 0 && R32(PL + 0x68)) {
+            for (uint32_t e = R32(PL + 0x68); R16(e) != 0xFFFF; e += 10) {
+                if (R16(e) != 0 && R16(e) != 3) continue;
+                if (Fire_BeamHits(o, e, nx, ny)) { Player_TakeDamage(1); W16(o + 0x52, 15); break; }
+            }
+        } else if (RS16(o + 0x52) != 0) W16(o + 0x52, R16(o + 0x52) - 1);
+        if (R16(o + 4) == 0) {
+            int32_t fy = (int32_t)((uint32_t)ny & 0xFFF80000u);
+            uint16_t at = Map_GetAttr(nx, fy, LAYER_DESC + (((uint32_t)(R16(G_COLL_LAYER) & 0xFF) * 0x30u) & 0xFF));
+            uint16_t fl = Coll_AttrFlags(at) & 15;
+            if (RS16(0x060EA64Cu) >= 0) at = Map_GetAttr(nx, fy, LAYER_DESC + (((uint32_t)(R16(0x060EA64Cu) & 0xFF) * 0x30u) & 0xFF));
+            fl |= Coll_AttrFlags(at) & 15;
+            if (fl & 2) {                                       /* floor under the far end */
+                W16(o + 4, 1);
+                int32_t hx = RS32(o + 8) + FixMul(FixDiv(fy - RS32(o + 0xC), ny - RS32(o + 0xC)), nx - RS32(o + 8));
+                W16(o + 0x4A, (uint32_t)hx >> 16);
+                W16(o + 0x4C, (uint32_t)fy >> 16);
+            }
+        } else {                                                /* blast grows */
+            uint32_t v = ((uint32_t)R16(o + 0x4E) << 16) + R16(o + 0x50) + 0x1800;
+            W32(SPR + 0x1C, v);
+            W16(o + 0x4E, v >> 16); W16(o + 0x50, v);
+        }
+        W16(o + 0x14, R16(o + 0x14) - 1);
+        if (RS16(o + 0x14) < 1) {
+            W32(o + 8, (uint32_t)(RS32(o + 8) + FixMul(Cos8(a), 0x7F000)));
+            W32(o + 0xC, (uint32_t)(RS32(o + 0xC) - FixMul(Sin8(a), 0x7F000)));
+            int32_t sx = RS32(o + 8) - RS32(CAM_X), sy = RS32(o + 0xC) - RS32(CAM_Y);
+            if (sx < (int32_t)0xFFD80000 || sx > 0x15E0000 || sy > 0xF00000) {
+                if (R16(o + 4)) { Fire_Debris(o); Fire_Rocks(o); }
+                W16(o, 0xFFFF);
+            }
+        }
+    }
+    int32_t sp = RS32(o + 0x30);
+    int32_t tx = RS32(o + 8) + FixMul(FixMul(Cos8(a), sp), 0x100000);
+    int32_t ty = RS32(o + 0xC) - FixMul(FixMul(Sin8(a), sp), 0x100000);
+    int16_t hx = scr_x(o), hy = scr_y(o);
+    Anim_Start(SCRATCH_ANIM, DEFS3, SCR3, 0x10, 8);             /* head, stretched by the speed */
+    spr((int16_t)(hx + 5), hy, 0x1600, 0xFFFFFF83u, 0x10, 0, 0);
+    W16(SPR + 0x14, (uint16_t)a);
+    W32(SPR + 0x1C, (uint32_t)sp);
+    Anim_Tick(SCRATCH_ANIM);
+    W16(SPR + 0x02, (uint16_t)(hx - 5));
+    Anim_Tick(SCRATCH_ANIM);
+    Anim_Start(SCRATCH_ANIM, DEFS3, SCR3, 0x10, 9);             /* far end */
+    int16_t ex = (int16_t)((uint32_t)(tx - RS32(CAM_X)) >> 16), ey = (int16_t)((uint32_t)(ty - RS32(CAM_Y)) >> 16);
+    spr((int16_t)(ex + 5), ey, 0x0600, 0xFFFFFF83u, 0x10, 0, 0);
+    W16(SPR + 0x14, (uint16_t)a);
+    Anim_Tick(SCRATCH_ANIM);
+    W16(SPR + 0x02, (uint16_t)(ex - 5));
+    Anim_Tick(SCRATCH_ANIM);
+    if (R16(o + 4)) {                                           /* blast at the impact */
+        Anim_Start(SCRATCH_ANIM, DEFS3, SCR3, 0x10, 0);
+        spr((int16_t)((uint32_t)(RS16(o + 0x4A) * 0x10000 - RS32(CAM_X)) >> 16),
+            (int16_t)((uint32_t)(RS16(o + 0x4C) * 0x10000 - RS32(CAM_Y)) >> 16), 0x1A00, 0xFFFFFF83u, 0x10, 0, 0);
+        uint32_t v = ((uint32_t)R16(o + 0x4E) << 16) + R16(o + 0x50);
+        W32(SPR + 0x1C, v); W32(SPR + 0x20, v);
+        Anim_Tick(SCRATCH_ANIM);
+    }
+}

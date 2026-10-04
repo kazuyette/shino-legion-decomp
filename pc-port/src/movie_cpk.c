@@ -1,6 +1,9 @@
 /* CPK movie backend for the game: Sega FILM / Cinepak decoder (cpk.c) + audio (audio.c).
- * Plays at the movie's own timestamps against a 60 Hz frame clock, keeps ~0.3 s of audio
- * queued, and hands every decoded frame to Movie_PresentFrame (RGB VDP1 character). */
+ * Plays at the movie's own timestamps, keeps ~0.3 s of audio queued, and hands every
+ * decoded frame to Movie_PresentFrame (RGB VDP1 character). The video clock is the audio
+ * actually played (audio master): a 60 Hz tick clock drifted on long movies (ENDING.CPK)
+ * because the PC loop is not exactly 60 Hz. Without audio, or once it has run out, the
+ * clock continues with 60 Hz ticks from the last audio time. */
 #include "movie_backend.h"
 #include "movie.h"
 #include "cpk.h"
@@ -14,6 +17,8 @@ static CpkMovie *s_m;
 static uint32_t *s_argb;
 static uint16_t *s_rgb;
 static int s_ticks, s_audioDone, s_endTick;
+static long long s_queuedOut;            /* output frames handed to Audio_QueueMovie */
+static int s_clockMs, s_clockTick;       /* last audio-derived time and the tick it was taken */
 
 static int start(CpkMovie *m, const char *what)
 {
@@ -23,6 +28,7 @@ static int start(CpkMovie *m, const char *what)
     s_argb = (uint32_t *)malloc((size_t)n * 4);
     s_rgb = (uint16_t *)malloc((size_t)n * 2);
     s_ticks = 0; s_endTick = -1;
+    s_queuedOut = 0; s_clockMs = 0; s_clockTick = 0;
     s_audioDone = Cpk_AudioRate(m) <= 0;
     printf("[movie] %s %dx%d %.2f fps, %d frames, audio %d Hz x%d\n", what, Cpk_Width(m), Cpk_Height(m),
            Cpk_FrameRate(m), Cpk_FrameCount(m), Cpk_AudioRate(m), Cpk_AudioChannels(m));
@@ -49,7 +55,7 @@ static void feed_audio(void)
     while (!s_audioDone && Audio_MovieQueuedFrames() < 44100 * 3 / 10) {
         int got = Cpk_ReadAudio(s_m, buf, 4096);
         if (got <= 0) { s_audioDone = 1; break; }
-        Audio_QueueMovie(buf, got, Cpk_AudioRate(s_m), Cpk_AudioChannels(s_m));
+        s_queuedOut += Audio_QueueMovie(buf, got, Cpk_AudioRate(s_m), Cpk_AudioChannels(s_m));
     }
 }
 
@@ -57,7 +63,12 @@ int MovieBk_TaskFrame(void)
 {
     if (!s_m) return 1;
     feed_audio();
-    int now_ms = s_ticks * 1000 / 60;
+    int queued = Audio_MovieQueuedFrames();
+    if (Cpk_AudioRate(s_m) > 0 && s_queuedOut > 0 && !(s_audioDone && queued == 0)) {
+        s_clockMs = (int)((s_queuedOut - queued) * 1000 / AUDIO_RATE);   /* audio played so far */
+        s_clockTick = s_ticks;
+    }
+    int now_ms = s_clockMs + (s_ticks - s_clockTick) * 1000 / 60;
     s_ticks++;
     int t, shown = 0;
     while (Cpk_PeekFrameTime(s_m) >= 0 && Cpk_PeekFrameTime(s_m) <= now_ms) {

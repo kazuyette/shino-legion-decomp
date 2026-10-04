@@ -123,7 +123,10 @@ void Boot_DevStartStage(int idx)
     W16(0x060252C2u, R16(0x06014430u + 2u * (uint32_t)d));   /* continues */
     W16(0x060252BAu, 0);
     W32(0x060252C8u, 0);
-    W16(0x060252DCu, 0);                         /* Sho drops in */
+    /* 0x060252DC: 0 only on the very first stage of a new game (1-1: Sho drops in from the
+     * sky); any later stage is entered with 1 and starts at its checkpoint position. With 0
+     * Sho fell from y = 1248 into stages that start lower (5-1, 6-1, 8-1...) and died. */
+    W16(0x060252DCu, idx == 0 ? 0u : 1u);
     W16(0x060252B6u, R16(0x060252B4u));
     W16(0x060252BEu, 0);
     W16(0x0602529Eu, 0);

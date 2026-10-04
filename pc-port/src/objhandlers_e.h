@@ -10,7 +10,8 @@
  *                 0x100A/0x100B decor, 0x100C sliding gate (opens at checkpoint flags & 3 and
  *                 moves the world bottom C+0xC), 0x100D crumbling block (shakes, falls)
  *   3 (STAGE2_2): boss room: 0x100F falling-debris spawner/pieces, 0x1010/0x1011 statue
- *                 heads (12 HP, spit 0x1012 fireballs; when both die -> 0x100E)
+ *                 heads (12 HP, spit 0x1012 fireballs; when both die -> 0x100E), 0x1012
+ *                 fireball beam / burning patch, 0x100E rock-fall spawner and rocks
  *   5 (STAGE3_2): 0x1013 hanging plants (sway; cut -> 0x104B leaves), 0x1014 lamp, 0x1015 sparks
  *   0 (STAGE7_1): 0x1016/0x1018 parallax decor, 0x1017 lantern (lid falls off), 0x1019 solid
  *                 block, 0x101A breakable rock pillar (falls in pieces, projectile 0x25 rocks)
@@ -27,9 +28,11 @@ void ObjHandler_100A(void);   /* 0x0604D83C */
 void ObjHandler_100B(void);   /* 0x0604D9A4 */
 void ObjHandler_100C(void);   /* 0x0604DB08 */
 void ObjHandler_100D(void);   /* 0x0604DD8C */
+void ObjHandler_100E(void);   /* 0x0604E6AC */
 void ObjHandler_100F(void);   /* 0x0604EB88 */
 void ObjHandler_1010(void);   /* 0x0604EF58 */
 void ObjHandler_1011(void);   /* 0x0604F450 */
+void ObjHandler_1012(void);   /* 0x0604FADE */
 void ObjHandler_1013(void);   /* 0x06051F34 */
 void ObjHandler_1014(void);   /* 0x06052454 */
 void ObjHandler_1015(void);   /* 0x06052614 */

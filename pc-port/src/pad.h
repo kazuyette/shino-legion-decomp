@@ -49,10 +49,10 @@ int  Sys_CheckSoftReset(void);
 /* Player flags word read by the latch (player struct 0x060EA2B4 + 4). */
 #define PFLAG4_INPUT_OFF   0x0400
 #define PFLAG4_MIRROR_LR   0x0200
-#define PFLAG4_ALT_INPUT   0x0010   /* tail-jumps 0x060463DC, not ported */
+#define PFLAG4_ALT_INPUT   0x0010   /* scripted input 0x060463DC (Game_ScriptedInput, pad.c) */
 
 /* SHINOBI 0x06040CAC. Returns 0 normally, 1 if the original would tail-call
- * the 0x060463DC input path, 2 if the demo path (0x06046A98). */
+ * the 0x060463DC scripted input (ported), 2 if the demo path (0x06046A98, not ported). */
 int Game_LatchPad1(uint16_t playerFlags4);
 
 #endif

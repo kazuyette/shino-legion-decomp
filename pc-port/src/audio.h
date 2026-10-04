@@ -78,6 +78,9 @@ void Audio_StopSfx(void);
 
 /* ---- misc -------------------------------------------------------------- */
 void Audio_SetMono(int mono);   /* options AUDIO = MONO (0x06025246): L = R = (L+R)/2 */
+/* PC settings (shinobi.ini [audio]): master, music (+ movie sound) and sound-effect
+ * volumes in % (0..100, default 100 = unchanged output). */
+void Audio_SetVolumes(int master, int music, int sfx);
 
 /* Mixer: fills `frames` stereo frames. Called by the SDL callback; public
  * for AUDIO_NO_SDL tests / offline rendering. Do not call it while an SDL

@@ -1,35 +1,81 @@
 #include "input.h"
+#include "config.h"
 #include "pad.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <string.h>
 
 static InputPort s_ports[INPUT_MAX_PORTS];
 static SDL_GameController *s_ctrl[INPUT_MAX_PORTS];
 static int s_scanTimer;
 
-#define STICK_DEADZONE 12000
-
-/* Default gamepad mapping (Xbox naming; PlayStation: A=Cross, B=Circle,
- * X=Square, Y=Triangle). Chosen for comfort with the game's default
- * button layout (Saturn A = shuriken, B = sword/guard, C = jump):
- *   A -> Saturn C (jump)      X -> Saturn B (sword, hold = guard)
- *   B -> Saturn A (shuriken)  Y -> Saturn X (ninjutsu)
- *   LB -> Saturn Y (guard)    RB -> Saturn Z
- *   LT -> Saturn L            RT -> Saturn R
- *   Start -> Start, D-pad / left stick -> directions. */
-static const struct { SDL_GameControllerButton b; uint16_t pad; } kButtons[] = {
-    { SDL_CONTROLLER_BUTTON_A,             PAD_C },
-    { SDL_CONTROLLER_BUTTON_X,             PAD_B },
-    { SDL_CONTROLLER_BUTTON_B,             PAD_A },
-    { SDL_CONTROLLER_BUTTON_Y,             PAD_X },
-    { SDL_CONTROLLER_BUTTON_LEFTSHOULDER,  PAD_Y },
-    { SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, PAD_Z },
-    { SDL_CONTROLLER_BUTTON_START,         PAD_START },
-    { SDL_CONTROLLER_BUTTON_DPAD_UP,       PAD_UP },
-    { SDL_CONTROLLER_BUTTON_DPAD_DOWN,     PAD_DOWN },
-    { SDL_CONTROLLER_BUTTON_DPAD_LEFT,     PAD_LEFT },
-    { SDL_CONTROLLER_BUTTON_DPAD_RIGHT,    PAD_RIGHT },
+/* Saturn pad bit of each config button (config.h order: A B C X Y Z L R Start Up Down Left Right). */
+static const uint16_t kPadBit[CFG_NBUTTONS] = {
+    PAD_A, PAD_B, PAD_C, PAD_X, PAD_Y, PAD_Z, PAD_LT, PAD_RT, PAD_START,
+    PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT
 };
+
+#define MAX_BINDS (CFG_NBUTTONS * CFG_MAX_BINDS)
+#define TRIGGER_THRESHOLD 16000
+
+/* Mapping resolved from shinobi.ini ([keyboard] / [controller], see config.c for the
+ * defaults: keyboard arrows / Z X C / A S D / Q W / Enter; pad Xbox A -> Saturn C (jump),
+ * X -> B (sword), B -> A (shuriken), Y -> X (ninjutsu), LB/RB -> Y/Z, LT/RT -> L/R). */
+static struct { SDL_Scancode sc; uint16_t bit; } s_keys[MAX_BINDS];
+static int s_nkeys;
+static struct {
+    int axis;                   /* 0: button, 1: axis */
+    int id;                     /* SDL_GameControllerButton / SDL_GameControllerAxis */
+    int sign;                   /* axis: +1 / -1 */
+    uint16_t bit;
+} s_padb[MAX_BINDS];
+static int s_npad;
+static int s_stickDpad = 1, s_deadzone = 12000;
+static int s_mapped;
+static uint8_t s_suppress[SDL_NUM_SCANCODES];   /* held keys ignored until released */
+
+void Input_ApplyConfig(void)
+{
+    const Config *c = Config_Get();
+    s_nkeys = s_npad = 0;
+    for (int b = 0; b < CFG_NBUTTONS; b++) {
+        for (int i = 0; i < c->keys[b].n; i++) {
+            const char *name = c->keys[b].name[i];
+            SDL_Scancode sc = SDL_GetScancodeFromName(name);
+            if (sc == SDL_SCANCODE_UNKNOWN) {
+                fprintf(stderr, "[input] [keyboard] %s: unknown key name \"%s\"\n", g_cfgButtonNames[b], name);
+                continue;
+            }
+            s_keys[s_nkeys].sc = sc;
+            s_keys[s_nkeys++].bit = kPadBit[b];
+        }
+        for (int i = 0; i < c->pad[b].n; i++) {
+            const char *name = c->pad[b].name[i];
+            SDL_GameControllerButton btn = SDL_GameControllerGetButtonFromString(name);
+            SDL_GameControllerAxis ax = SDL_GameControllerGetAxisFromString(name);  /* skips a +/- prefix */
+            if (btn != SDL_CONTROLLER_BUTTON_INVALID) {
+                s_padb[s_npad].axis = 0;
+                s_padb[s_npad].id = btn;
+            } else if (ax != SDL_CONTROLLER_AXIS_INVALID) {
+                s_padb[s_npad].axis = 1;
+                s_padb[s_npad].id = ax;
+                s_padb[s_npad].sign = name[0] == '-' ? -1 : 1;
+            } else {
+                fprintf(stderr, "[input] [controller] %s: unknown button name \"%s\"\n", g_cfgButtonNames[b], name);
+                continue;
+            }
+            s_padb[s_npad++].bit = kPadBit[b];
+        }
+    }
+    s_stickDpad = c->stick_as_dpad;
+    s_deadzone = c->deadzone * 32767 / 100;
+    s_mapped = 1;
+}
+
+void Input_SuppressKey(int scancode)
+{
+    if (scancode > 0 && scancode < SDL_NUM_SCANCODES) s_suppress[scancode] = 1;
+}
 
 /* Opens newly plugged controllers / drops unplugged ones (checked about
  * twice a second, so hot-plugging works without event plumbing). */
@@ -61,43 +107,41 @@ static uint16_t read_controller(SDL_GameController *c)
 {
     uint16_t held = 0;
     if (!c) return 0;
-    for (size_t i = 0; i < sizeof kButtons / sizeof kButtons[0]; i++)
-        if (SDL_GameControllerGetButton(c, kButtons[i].b)) held |= kButtons[i].pad;
-    int lx = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX);
-    int ly = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY);
-    if (lx < -STICK_DEADZONE) held |= PAD_LEFT;
-    if (lx >  STICK_DEADZONE) held |= PAD_RIGHT;
-    if (ly < -STICK_DEADZONE) held |= PAD_UP;
-    if (ly >  STICK_DEADZONE) held |= PAD_DOWN;
-    if (SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_TRIGGERLEFT)  > 16000) held |= PAD_LT;
-    if (SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16000) held |= PAD_RT;
+    for (int i = 0; i < s_npad; i++) {
+        if (!s_padb[i].axis) {
+            if (SDL_GameControllerGetButton(c, (SDL_GameControllerButton)s_padb[i].id)) held |= s_padb[i].bit;
+        } else {
+            int v = SDL_GameControllerGetAxis(c, (SDL_GameControllerAxis)s_padb[i].id) * s_padb[i].sign;
+            int trig = s_padb[i].id == SDL_CONTROLLER_AXIS_TRIGGERLEFT || s_padb[i].id == SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
+            if (v > (trig ? TRIGGER_THRESHOLD : s_deadzone)) held |= s_padb[i].bit;
+        }
+    }
+    if (s_stickDpad) {
+        int lx = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX);
+        int ly = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY);
+        if (lx < -s_deadzone) held |= PAD_LEFT;
+        if (lx >  s_deadzone) held |= PAD_RIGHT;
+        if (ly < -s_deadzone) held |= PAD_UP;
+        if (ly >  s_deadzone) held |= PAD_DOWN;
+    }
     return held;
 }
 
-/* Keyboard (port 0): arrows = D-pad, Z/X/C = A/B/C, A/S/D = X/Y/Z,
- * Q/W = L/R, Enter = Start. Keyboard and controller 1 are combined. */
+/* Keyboard (port 0), mapped by [keyboard]. Keyboard and controller 1 are combined. */
 static uint16_t read_keyboard(void)
 {
     const Uint8 *k = SDL_GetKeyboardState(NULL);
     uint16_t held = 0;
-    if (k[SDL_SCANCODE_RIGHT])  held |= PAD_RIGHT;
-    if (k[SDL_SCANCODE_LEFT])   held |= PAD_LEFT;
-    if (k[SDL_SCANCODE_DOWN])   held |= PAD_DOWN;
-    if (k[SDL_SCANCODE_UP])     held |= PAD_UP;
-    if (k[SDL_SCANCODE_RETURN]) held |= PAD_START;
-    if (k[SDL_SCANCODE_Z])      held |= PAD_A;
-    if (k[SDL_SCANCODE_X])      held |= PAD_B;
-    if (k[SDL_SCANCODE_C])      held |= PAD_C;
-    if (k[SDL_SCANCODE_W])      held |= PAD_RT;
-    if (k[SDL_SCANCODE_A])      held |= PAD_X;
-    if (k[SDL_SCANCODE_S])      held |= PAD_Y;
-    if (k[SDL_SCANCODE_D])      held |= PAD_Z;
-    if (k[SDL_SCANCODE_Q])      held |= PAD_LT;
+    for (int sc = 1; sc < SDL_NUM_SCANCODES; sc++)
+        if (s_suppress[sc] && !k[sc]) s_suppress[sc] = 0;
+    for (int i = 0; i < s_nkeys; i++)
+        if (k[s_keys[i].sc] && !s_suppress[s_keys[i].sc]) held |= s_keys[i].bit;
     return held;
 }
 
 void Input_Update(void)
 {
+    if (!s_mapped) Input_ApplyConfig();
     if (--s_scanTimer <= 0) { scan_controllers(); s_scanTimer = 30; }
 
     uint16_t p0 = read_keyboard() | read_controller(s_ctrl[0]);
@@ -107,8 +151,11 @@ void Input_Update(void)
     s_ports[0].connected = 1;
     s_ports[0].raw = (uint16_t)~p0;                    /* hardware is active-low */
 
+    uint16_t p1 = read_controller(s_ctrl[1]);
+    if ((p1 & (PAD_LEFT | PAD_RIGHT)) == (PAD_LEFT | PAD_RIGHT)) p1 &= (uint16_t)~(PAD_LEFT | PAD_RIGHT);
+    if ((p1 & (PAD_UP | PAD_DOWN)) == (PAD_UP | PAD_DOWN))       p1 &= (uint16_t)~(PAD_UP | PAD_DOWN);
     s_ports[1].connected = s_ctrl[1] != NULL;
-    s_ports[1].raw = (uint16_t)~read_controller(s_ctrl[1]);
+    s_ports[1].raw = (uint16_t)~p1;
 }
 
 const InputPort *Input_GetPort(int port)

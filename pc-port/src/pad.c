@@ -71,6 +71,60 @@ static uint16_t mirror_lr(uint16_t v)
     return v;
 }
 
+/* SHINOBI 0x060463DC: scripted pad while the player flags 4 bit 0x10 is set (drop-in of 1-1,
+ * 5-1 jump out of the water, 5-2 lift, end-of-stage walk-outs set by the stage hooks...).
+ * The real pad is ignored; per stage index (jump table 0x06046520, 17 entries):
+ *  0: drop-in (0x060252DC == 0): pressed = jump button if PF2 & 0x1000; else walk right;
+ *  2, 3, 4, 6, 10, 12, 14, 16: walk right;
+ *  8: during the jump-in (0x060F4D38 in 65..0x7FFD) held = right (+ jump as for 0), else walk right;
+ *  9: walk right when the 5-2 hook state 0x060F4D44 is 2, or 7 (then PL+0x1C = 0x8000);
+ *  1, 5, 7, 11, 13, 15, 17: nothing pressed.
+ * "Walk right" (0x0604654A): held = right only when the player flags 2 & 0x4200 == 0x0200 or
+ * both clear (on the ground); when already walking (action 1) the direction-tap / idle /
+ * walk counters 0x060EA42E / 0x060EA430 / 0x060EA43A are set to 1 and pressed = right too. */
+#define PL_F2   0x060EA2B6u
+static void walk_right(void)                     /* 0x0604654A */
+{
+    uint16_t f2 = R16(PL_F2) & 0x4200;
+    if (f2 == 0x0200) { W16(ADDR_GAME_HELD, PAD_RIGHT); return; }
+    if (f2) return;
+    if (R16(0x060EA2BAu) == 1) {                 /* action: walk */
+        W16(0x060EA42Eu, 1); W16(0x060EA430u, 1); W16(0x060EA43Au, 1);
+        W16(ADDR_GAME_PRESSED, PAD_RIGHT);
+    }
+    W16(ADDR_GAME_HELD, PAD_RIGHT);
+}
+
+static void Game_ScriptedInput(void)
+{
+    W16(ADDR_GAME_HELD, 0); W16(ADDR_GAME_PRESSED, 0); W16(ADDR_GAME_PRESSED_PREV, 0);
+    uint16_t st = R16(0x0602526Au);
+    switch (st) {
+    case 0:
+        if (R16(0x060252DCu) != 0) { walk_right(); break; }
+        if (R16(PL_F2) & 0x1000) W16(ADDR_GAME_PRESSED, R16(ADDR_ACTION_BTN2));
+        break;
+    case 2: case 3: case 4: case 6: case 10: case 12: case 14: case 16:
+        walk_right();
+        break;
+    case 8: {
+        int16_t t = (int16_t)R16(0x060F4D38u);
+        if (t != 0x7FFE && t > 64) {
+            W16(ADDR_GAME_HELD, PAD_RIGHT);
+            if (R16(PL_F2) & 0x1000) W16(ADDR_GAME_PRESSED, R16(ADDR_ACTION_BTN2));
+        } else walk_right();
+        break;
+    }
+    case 9: {
+        int16_t s = (int16_t)R16(0x060F4D44u);  /* 0x0606E1F0 */
+        if (s == 7) W16(0x060EA2D0u, 0x8000);   /* PL + 0x1C */
+        if (s == 2 || s == 7) walk_right();
+        break;
+    }
+    default: break;                              /* 1, 5, 7, 11, 13, 15 (17+: index >= 17) */
+    }
+}
+
 int Game_LatchPad1(uint16_t playerFlags4)
 {
     uint16_t held = 0, pressed = 0, pressedPrev = 0;
@@ -95,8 +149,10 @@ int Game_LatchPad1(uint16_t playerFlags4)
     W16(ADDR_GAME_PRESSED, pressed);
     W16(ADDR_GAME_PRESSED_PREV, pressedPrev);
 
-    if (playerFlags4 & PFLAG4_ALT_INPUT)
-        return 1;   /* TODO: port SHINOBI 0x060463DC */
+    if (playerFlags4 & PFLAG4_ALT_INPUT) {
+        Game_ScriptedInput();                    /* tail jump to 0x060463DC */
+        return 1;
+    }
     if (demo & 0x8000)
         return 2;   /* TODO: port SHINOBI 0x06046A98 (demo input) */
     return 0;

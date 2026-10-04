@@ -3,6 +3,41 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.19.0 — 2026-10-04
+- Movies: video clock now follows the audio actually played (ENDING.CPK drifted
+  seconds out of sync); main loop paced at exactly 60 Hz on the performance counter
+  (the integer 16 ms step ran the game at 62.5 fps).
+- Settings file `shinobi.ini` next to the executable (config.c, `--config FILE`), created with
+  commented defaults when missing: window scale 1..6 (default 3), desktop fullscreen, integer
+  scaling, vsync, bilinear filter, aspect native / 4:3, master / music / SFX volume,
+  screenshot format, keyboard and controller bindings per Saturn button, stick-as-D-pad and
+  dead zone. Robust parser (BOM, CRLF, quotes, comments, range clamping, warnings);
+  unit test tests/test_config.c (no SDL).
+- Window: resizable (letterboxed through a 320x224 frame target + SDL logical size),
+  Alt+Enter / F11 toggle desktop fullscreen (cursor hidden), Windows per-monitor DPI aware,
+  initial size shrunk to fit the desktop.
+- F12 screenshot: 320x224 PNG (built-in writer) or BMP in `screenshots/` next to the exe.
+- Input: keyboard / controller mapping from the ini (several keys per button, triggers and
+  stick directions bindable); Alt+Enter no longer presses Start; port 2 also filters
+  opposite directions. 2 controllers and hot-plug unchanged. Esc never quits.
+- Audio: Audio_SetVolumes (master, music + movie sound, SFX); output unchanged at 100 %.
+- Stage audit (tests/audit_stages.c, not part of the suite; PNGs in docs/screenshots/audit/):
+  every stage index / checkpoint played with a scripted pad. Fixes from it:
+  - Scripted pad 0x060463DC ported (player flags 4 bit 0x10, was a TODO): 5-1 jump out of the
+    water onto the mine-cart track (Sho fell back into the water and died forever), 5-2 lift
+    (Sho stuck at the start), end-of-stage walk-outs, 1-1 drop-in jump.
+  - `--stage N` / debug-menu "go to stage" from the title: stages other than 1-1 start at their
+    checkpoint like after a stage clear (0x060252DC = 1) instead of dropping Sho from y = 1248
+    (fell into 5-1 / 6-1 / 8-1 / 9-1 geometry).
+  - Stage 2-2: statue-head fireball 0x1012 (0x0604FADE: aimed beam, hurts Sho, floor blast,
+    debris, burning patch) and rock falls 0x100E (0x0604E6AC) ported: the heads never fired and
+    the rock falls after the heads / on impacts were dropped.
+  - Item kind 8 (mine, 0x06063078) and effect 5 (0x060627C8) ported (were "not ported").
+  - VDP2: layers the stage does not stream (control block +0x20 bits 0x10..0x40) are drawn from
+    their VDP2 name tables through the SclConfig plane / plates (both renderers): no more black
+    holes in the scrolling cloud bands of 1-2 / 6-2 / 8-1 and the 9-1 back wall (their MAP
+    layouts hold extra or 0xFF pages the hardware never displays).
+
 ## 0.18.0 — 2026-10-04
 - PC debug / cheat menu (debug_menu.c, not in the Saturn game): F1 or controller
   Back/Select opens it and pauses the game. Lives, energy refill / infinite energy,

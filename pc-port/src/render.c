@@ -7,7 +7,10 @@
 #include "soft_render.h"
 #include "resource.h"
 #include "stage_hooks.h"
+#include "config.h"
+#include "screenshot.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static SDL_Renderer *s_renderer = NULL;
@@ -22,26 +25,54 @@ static int s_keepQueue;     /* PC debug menu: redraw the last frame while paused
 typedef struct { uint32_t src, key; int w, h; SDL_Texture *tex; } CacheEntry;
 static CacheEntry s_cache[CACHE_SIZE];
 
+/* PC output (shinobi.ini [video]): the frame is drawn at 320x224 into s_scene (Render_BeginFrame),
+ * then Render_Present scales it to the window: SDL logical size (letterbox), optional integer
+ * scale, nearest or bilinear filter, square pixels or 4:3. Without render-target support
+ * everything is drawn straight to the window (no bilinear / 4:3). */
+static SDL_Window *s_window;
+static SDL_Texture *s_scene;
+static int s_shotPending;
+
 int Render_Init(SDL_Window *window)
 {
-    s_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    const Config *cfg = Config_Get();
+    s_window = window;
+    SDL_SetHint(SDL_HINT_RENDER_VSYNC, cfg->vsync ? "1" : "0");   /* also for the fallbacks */
+    if (cfg->vsync) s_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!s_renderer) s_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!s_renderer) s_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     if (!s_renderer) {
         fprintf(stderr, "[render] SDL_CreateRenderer failed: %s\n", SDL_GetError());
         return 0;
     }
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
-    SDL_RenderSetLogicalSize(s_renderer, SCREEN_W, SCREEN_H);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");   /* all game textures */
+    int logicalH = SCREEN_H;
+    if (SDL_RenderTargetSupported(s_renderer))
+        s_scene = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, SCREEN_W, SCREEN_H);
+    if (s_scene) {
+        SDL_SetTextureBlendMode(s_scene, SDL_BLENDMODE_NONE);
+        SDL_SetTextureScaleMode(s_scene, cfg->bilinear ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
+        if (cfg->aspect43) logicalH = SCREEN_W * 3 / 4;       /* 320x240: 224 lines shown 4:3 */
+    } else fprintf(stderr, "[render] no render-target support: bilinear, 4:3 and screenshots unavailable\n");
+    SDL_RenderSetLogicalSize(s_renderer, SCREEN_W, logicalH);
+    SDL_RenderSetIntegerScale(s_renderer, cfg->integer_scaling ? SDL_TRUE : SDL_FALSE);
+    if (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) SDL_ShowCursor(SDL_DISABLE);
+    SDL_RendererInfo info;
+    if (SDL_GetRendererInfo(s_renderer, &info) == 0)
+        printf("[render] %s%s, %s%s%s\n", info.name, (info.flags & SDL_RENDERER_PRESENTVSYNC) ? " + vsync" : "",
+               cfg->bilinear && s_scene ? "bilinear" : "nearest", cfg->integer_scaling ? ", integer scale" : "",
+               cfg->aspect43 && s_scene ? ", 4:3" : "");
     return 1;
 }
 
 /* ---- VDP2 background layers ----
  * NBG0..NBG2 = the stage map layers, drawn page by page from the MAP data (layout desc+0x20,
- * pages desc+0x1C) with the pattern-name format of 0x06046B14 (decoder in soft_render.c);
+ * pages desc+0x1C) with the pattern-name format of 0x06046B14 (decoder in soft_render.c), or,
+ * for the layers the stage does not stream, from their VDP2 name tables (Vdp2_LayerPageAt);
  * NBG3 = the status-bar layer, drawn from its VDP2 VRAM page (map built by 0x06047244). */
 #define LAYERS 4
-static SDL_Texture *s_pageTex[3][256];
-static uint32_t s_pageSum[3][256];   /* PC: checksum of the page's name table (map cells change at runtime) */
+static SDL_Texture *s_pageTex[3][VDP2_PAGE_IDS];    /* MAP pages 0..255, VDP2 VRAM pages above (soft_render.h) */
+static uint32_t s_pageSum[3][VDP2_PAGE_IDS];   /* PC: checksum of the page's name table (map cells change at runtime) */
 static SDL_Texture *s_nbg3Tex;
 static uint32_t s_nbg3Sum;
 
@@ -52,7 +83,7 @@ void Render_InvalidatePalettes(void)
         s_cache[i].tex = NULL;
     }
     for (int l = 0; l < 3; l++)
-        for (int p = 0; p < 256; p++)
+        for (int p = 0; p < VDP2_PAGE_IDS; p++)
             if (s_pageTex[l][p]) { SDL_DestroyTexture(s_pageTex[l][p]); s_pageTex[l][p] = NULL; }
     if (s_nbg3Tex) { SDL_DestroyTexture(s_nbg3Tex); s_nbg3Tex = NULL; }
 }
@@ -346,7 +377,7 @@ void Render_DrawFrame(void)
                 if (tex[k] && (vp[k] == p || !shadow)) draw_sprite(s, tex[k], vp[k] != p);
             }
         }
-        SDL_SetRenderTarget(s_renderer, NULL);
+        SDL_SetRenderTarget(s_renderer, s_scene);      /* back to the frame target (NULL = window) */
     }
     for (int p = 1; p < 8; p++) {
         for (int l = LAYERS - 1; l >= 0; l--)
@@ -384,9 +415,49 @@ void Render_SetKeepQueue(int keep)
     s_keepQueue = keep;
 }
 
+void Render_BeginFrame(void)
+{
+    if (s_renderer && s_scene) SDL_SetRenderTarget(s_renderer, s_scene);
+}
+
+/* F12: the 320x224 frame (debug menu included) -> <exe dir>/screenshots/. */
+static void take_screenshot(void)
+{
+    if (!s_scene) { fprintf(stderr, "[render] screenshot unavailable (no render-target support)\n"); return; }
+    uint8_t *rgb = (uint8_t *)malloc(SCREEN_W * SCREEN_H * 3);
+    char path[1200];
+    if (!rgb) return;
+    SDL_SetRenderTarget(s_renderer, s_scene);
+    if (SDL_RenderReadPixels(s_renderer, NULL, SDL_PIXELFORMAT_RGB24, rgb, SCREEN_W * 3) != 0)
+        fprintf(stderr, "[render] screenshot: %s\n", SDL_GetError());
+    else if (Screenshot_Save(Config_BaseDir(), rgb, SCREEN_W, SCREEN_H, Config_Get()->screenshot_png, path, sizeof path))
+        printf("[render] screenshot %s\n", path);
+    else fprintf(stderr, "[render] cannot write %s\n", path);
+    free(rgb);
+}
+
 void Render_Present(void)
 {
-    if (s_renderer) SDL_RenderPresent(s_renderer);
+    if (!s_renderer) return;
+    if (s_shotPending) { s_shotPending = 0; take_screenshot(); }
+    if (s_scene) {
+        SDL_SetRenderTarget(s_renderer, NULL);
+        SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, 255);
+        SDL_RenderClear(s_renderer);                    /* black borders */
+        SDL_RenderCopy(s_renderer, s_scene, NULL, NULL);
+    }
+    SDL_RenderPresent(s_renderer);
+}
+
+void Render_RequestScreenshot(void) { s_shotPending = 1; }
+
+void Render_ToggleFullscreen(void)
+{
+    if (!s_window) return;
+    int fs = (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN) != 0;
+    if (SDL_SetWindowFullscreen(s_window, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
+        fprintf(stderr, "[render] fullscreen toggle failed: %s\n", SDL_GetError());
+    else SDL_ShowCursor(fs ? SDL_ENABLE : SDL_DISABLE);
 }
 
 void Render_Shutdown(void)
@@ -394,5 +465,6 @@ void Render_Shutdown(void)
     Render_InvalidatePalettes();
     for (int p = 0; p < 8; p++) if (s_sprLayer[p]) { SDL_DestroyTexture(s_sprLayer[p]); s_sprLayer[p] = NULL; }
     s_layersOk = -1;
+    if (s_scene) { SDL_DestroyTexture(s_scene); s_scene = NULL; }
     if (s_renderer) { SDL_DestroyRenderer(s_renderer); s_renderer = NULL; }
 }

@@ -30,9 +30,14 @@ int  Vdp2_LayerEnabled(int nbg);
 /* Top-left screen pixel of the layer in its plane (NBG0-2: descriptor position - 1024 px,
  * NBG3: the VDP2 scroll shadow 0x06024088). */
 void Vdp2_LayerScroll(int nbg, int *sx, int *sy);
-/* Page id at page coordinates (px,py) of NBG0-2 (layout wraps), -1 = empty. */
+/* Page id at page coordinates (px,py) of NBG0-2 (layout wraps), -1 = empty. Layers the stage
+ * does not stream (control block 0x060EA618 +0x20 bit 0x10 << n) give VDP2 name-table pages
+ * instead: VDP2_VRAM_PAGE0 + (VRAM offset / 0x1000), through the SclConfig plane / plates. */
+#define VDP2_VRAM_PAGE0 256
+#define VDP2_PAGE_IDS   (VDP2_VRAM_PAGE0 + 128)   /* 512 KB of VDP2 VRAM / 0x1000 */
 int  Vdp2_LayerPageAt(int nbg, int px, int py);
-/* One 512x512 page of NBG0..NBG2 decoded from the MAP (pattern-name format of 0x06046B14). */
+/* One 512x512 page of NBG0..NBG2 decoded from the MAP (pattern-name format of 0x06046B14), or
+ * from VDP2 VRAM for page ids >= VDP2_VRAM_PAGE0. */
 void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb);
 uint32_t Vdp2_MapPageChecksum(int nbg, int pageId);
 /* NBG3 (status bar): 512x512 from the VRAM page at its SclConfig plate address. */

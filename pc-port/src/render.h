@@ -39,6 +39,11 @@ void Render_InvalidateVram(uint32_t addr, size_t len);
 void Render_Clear(void);
 void Render_DrawFrame(void);
 void Render_Present(void);
+/* PC window helpers (shinobi.ini [video]): call Render_BeginFrame before Render_Clear (selects
+ * the 320x224 frame target that Render_Present scales to the window). */
+void Render_BeginFrame(void);
+void Render_ToggleFullscreen(void);      /* Alt+Enter / F11: desktop fullscreen <-> window */
+void Render_RequestScreenshot(void);     /* F12: saved by the next Render_Present */
 void Render_Shutdown(void);
 void Render_SetKeepQueue(int keep);   /* 1: keep the sprite queue (frame paused) */
 

@@ -135,8 +135,27 @@ void Vdp2_LayerScroll(int nbg, int *sx, int *sy)
 
 static int wrapi(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
 
+/* Layers the stage does not stream (control block +0x20 bit 0x10 << n: 0x06046E54 skips them)
+ * show whatever the stage init wrote into their VDP2 name tables (Layer_FillPage / fill_at /
+ * Layer_FillVram / Layer_PutTile), through the SclConfig plane: 2x2 planes A-D at the plate
+ * addresses, each 1x1, 2x1 or 2x2 pages of 0x1000 bytes, the whole map wrapping. With the
+ * usual 1x1 plane and four identical plates one page repeats every 512 px, e.g. the 1-2 / 8-1
+ * scrolling cloud bands (NBG1); their MAP layouts are wider ([00 FF], [00 01]) but the extra
+ * pages never reach the displayed name table (8-1 fills page 01 into an undisplayed plate). */
+static int layer_static(int nbg) { return nbg >= 0 && nbg < 3 && ((R16(STAGE_CTRL + 0x20) >> (4 + nbg)) & 1); }
+
+static uint32_t vram_page_addr(int pageId) { return VDP2_VRAM_BASE + (uint32_t)(pageId - VDP2_VRAM_PAGE0) * 0x1000u; }
+
 int Vdp2_LayerPageAt(int nbg, int px, int py)
 {
+    if (layer_static(nbg)) {
+        uint32_t c = NBG_CFG + 0x4Cu * (uint32_t)nbg;
+        unsigned ps = Ram_Ptr(c)[3] & 3;                  /* plate size: 0 1x1, 1 2x1, 3 2x2 pages */
+        int pw = (ps & 1) ? 2 : 1, ph = (ps & 2) ? 2 : 1;
+        int mx = wrapi(px, 2 * pw), my = wrapi(py, 2 * ph);
+        uint32_t a = R32(c + 12u + 4u * (uint32_t)((my / ph) * 2 + mx / pw)) + (uint32_t)(((my % ph) * pw + mx % pw) * 0x1000);
+        return VDP2_VRAM_PAGE0 + (int)(((a - VDP2_VRAM_BASE) & (VDP2_VRAM_SIZE - 1)) >> 12);
+    }
     uint32_t lay = R32(desc_of(nbg) + 0x20);
     int pw = Ram_Ptr(lay)[0], ph = Ram_Ptr(lay)[1];
     if (pw <= 0 || ph <= 0) return -1;
@@ -146,9 +165,10 @@ int Vdp2_LayerPageAt(int nbg, int px, int py)
 
 uint32_t Vdp2_MapPageChecksum(int nbg, int pageId)
 {
-    uint32_t a = R32(desc_of(nbg) + 0x1C) + (uint32_t)pageId * 0x800u, h = 2166136261u;
+    int vram = pageId >= VDP2_VRAM_PAGE0;
+    uint32_t a = vram ? vram_page_addr(pageId) : R32(desc_of(nbg) + 0x1C) + (uint32_t)pageId * 0x800u, h = 2166136261u;
     const uint8_t *p = Ram_Ptr(a);
-    for (int i = 0; i < 0x800; i++) h = (h ^ p[i]) * 16777619u;
+    for (int i = 0; i < (vram ? 0x1000 : 0x800); i++) h = (h ^ p[i]) * 16777619u;
     return h;
 }
 
@@ -159,8 +179,34 @@ uint32_t Vdp2_MapPageChecksum(int nbg, int pageId)
  *   off for the stage NBGs), bits 11-1 character pair: character number = base (desc+0x2C) +
  *   (word & 0xFFE) * 4, in 0x20-byte units (one 16x16 8bpp character = 256 bytes).
  * Colour = CRAM[(CRAOFA(nbg) + palette) * 256 + dot], dot 0 transparent. */
+/* A VDP2 name-table page (pageId >= VDP2_VRAM_PAGE0): 32x32 2-word pattern names as written by
+ * Layer_PutTile 0x06046B14 (bit 31 V-flip, 30 H-flip, 22-20 256-colour palette, 14-0 character
+ * in 0x20-byte units), 16x16 characters of 2x2 8bpp cells. */
+static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb)
+{
+    unsigned off = craof(nbg) << 8;
+    for (int ty = 0; ty < 32; ty++)
+        for (int tx = 0; tx < 32; tx++) {
+            uint32_t pn = R32(page + (uint32_t)(ty * 32 + tx) * 4);
+            uint32_t chr = VDP2_VRAM_BASE + (((pn & 0x7FFFu) * 0x20u) & (VDP2_VRAM_SIZE - 1));
+            unsigned pal = off + (((pn >> 20) & 7) << 8);
+            int hf = (pn & 0x40000000u) != 0, vf = (pn & 0x80000000u) != 0;
+            for (int y = 0; y < 16; y++) {
+                int yy = vf ? 15 - y : y;
+                uint32_t *row = argb + (ty * 16 + y) * VDP2_PAGE_PX + tx * 16;
+                for (int x = 0; x < 16; x++) {
+                    int xx = hf ? 15 - x : x;
+                    uint32_t cell = (uint32_t)((yy >> 3) * 2 + (xx >> 3));
+                    uint8_t v = Ram_Ptr(chr + cell * 64 + (uint32_t)(yy & 7) * 8 + (uint32_t)(xx & 7))[0];
+                    row[x] = v ? Vdp2_CramArgb(pal + v) : 0;
+                }
+            }
+        }
+}
+
 void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb)
 {
+    if (pageId >= VDP2_VRAM_PAGE0) { decode_vram_page(nbg, vram_page_addr(pageId), argb); return; }
     uint32_t d = desc_of(nbg);
     uint32_t pages = R32(d + 0x1C) + (uint32_t)pageId * 0x800u;
     uint32_t base = R32(d + 0x2C);

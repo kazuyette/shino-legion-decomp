@@ -21,6 +21,11 @@ typedef struct {
  * port 1 = controller 2. */
 void Input_Update(void);
 void Input_Shutdown(void);
+/* Resolves the [keyboard] / [controller] bindings of shinobi.ini (config.h); unknown names
+ * are reported and skipped. Called by the first Input_Update if not called before. */
+void Input_ApplyConfig(void);
+/* Ignores a held key until it is released (Alt+Enter must not also press Start). */
+void Input_SuppressKey(int scancode);
 
 /* Equivalent of PER_GetPer(): current report for a port. */
 const InputPort *Input_GetPort(int port);

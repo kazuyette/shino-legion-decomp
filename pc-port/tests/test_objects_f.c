@@ -274,6 +274,9 @@ static void stage8(void)
         W32(e + 0xC, (uint32_t)(RS32(k + 0xC) - RS16(hb + 4) * 0x10000 + 0x20000));
         printf("   crate at %.0f,%.0f; elevator top at %.0f\n", px(RS32(k + 8)), px(RS32(k + 0xC)), px(RS32(e + 0xC)) + RS16(hb + 4));
     }
+    /* the elevator locks Sho (+4 |= 0x10: scripted input 0x060463DC, nothing pressed in 5-2
+     * until the stage hook 0x0606DDBC frees him); the hooks don't run here: free him */
+    PW16(P_FLAGS4, P16(P_FLAGS4) & 0xFFEF);
     place_sho(RS32(k + 8) + 0x200000, RS32(k + 0xC));
     for (int i = 0; i < 300; i++) tick(0);
     { uint32_t hb = R32(k + 0x68);

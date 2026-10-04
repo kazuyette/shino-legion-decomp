@@ -25,16 +25,60 @@ it is shown in the window title, printed at startup, and by `--version`.
 
 ## Controls
 
-| Action | Keyboard | Controller (Xbox / PlayStation) |
+Default bindings (all game buttons can be changed in `shinobi.ini`, see Config):
+
+| Action | Saturn | Keyboard | Controller (Xbox / PlayStation) |
+|---|---|---|---|
+| Move / crouch | D-pad | Arrows | D-pad or left stick |
+| Sword (hold = guard) | B | X | X / Square |
+| Jump (hold = higher) | C | C | A / Cross |
+| Shuriken | A | Z | B / Circle |
+| Ninjutsu | X | A | Y / Triangle |
+| Guard | Y | S | LB / L1 |
+| - | Z | D | RB / R1 |
+| - | L / R | Q / W | LT / RT (L2 / R2) |
+| Start | Start | Enter (or keypad Enter) | Start |
+
+PC-only keys (fixed):
+
+| Key | Action |
+|---|---|
+| F1 / controller Back (Select) | debug / cheat menu (pauses the game) |
+| Alt+Enter or F11 | fullscreen (desktop resolution) on/off |
+| F12 | screenshot: 320x224 PNG (or BMP) in `screenshots/` next to the executable |
+| Esc | nothing in game (closes the debug menu); quit by closing the window |
+
+Keyboard + controller 1 = Saturn port 1, controller 2 = port 2. Controllers can be plugged
+in or out while the game runs. A+B+C+Start is the original soft reset.
+
+## Config
+
+`shinobi.ini` lives next to the executable (`--config FILE` to use another one). When it is
+missing it is created with every option at its default value and commented; delete it to
+get the defaults back. Changes are read at startup. Format: `[section]`, `key = value`,
+`;` or `#` comments; unknown keys and bad values are reported in the console and the
+default is kept.
+
+| Section / key | Default | Meaning |
 |---|---|---|
-| Move / crouch | Arrows | D-pad or left stick |
-| Sword (hold = guard) | X | X / Square |
-| Jump (hold = higher) | C | A / Cross |
-| Shuriken | Z | B / Circle |
-| Ninjutsu | A | Y / Triangle |
-| Guard | S | LB / L1 |
-| Start | Enter | Start |
-| Debug / cheat menu (PC only, pauses the game) | F1 | Back / Select |
+| `[video] scale` | 3 | window = scale x 320x224 (1..6), shrunk to fit the desktop; the window can be resized (letterboxed) |
+| `[video] fullscreen` | 0 | start in desktop fullscreen |
+| `[video] integer_scaling` | 0 | only whole zoom factors (sharpest pixels, black borders) |
+| `[video] vsync` | 1 | sync to the monitor refresh |
+| `[video] bilinear` | 0 | smooth upscaling instead of sharp pixels |
+| `[video] aspect` | native | `native` = square pixels (320x224), `4:3` = stretched to 4:3 like on a TV |
+| `[audio] master_volume`, `music_volume`, `sfx_volume` | 100 | 0..100 %; music also covers the movie soundtracks |
+| `[misc] screenshot_format` | png | `png` or `bmp` (F12) |
+| `[keyboard] A B C X Y Z L R Start Up Down Left Right` | see Controls | SDL key (scancode) names, comma separated, up to 4 per button: `Z`, `Space`, `Return`, `Left Shift`, `Right Ctrl`, `Keypad 8`... Names with `;` `#` `,` go in quotes (`";"`); `none` = unbound |
+| `[controller] A B C ... Right` | see Controls | SDL GameController names (Xbox layout) for both controllers: `a b x y start leftshoulder rightshoulder leftstick rightstick dpup dpdown dpleft dpright misc1 paddle1..4 touchpad`, triggers `lefttrigger righttrigger`, stick directions `+leftx -leftx +lefty -lefty +rightx ...` (`-` = left/up) |
+| `[controller] stick_as_dpad` | 1 | the left stick also drives the D-pad |
+| `[controller] deadzone` | 37 | stick dead zone in % of its travel (5..95) |
+
+Keyboard names are physical key positions (US layout names: on AZERTY the default `Z`
+key is the one labelled W). Unknown names are reported as `[input] ... unknown key name`.
+Bilinear, 4:3 and screenshots need render-target support (every SDL hardware renderer and
+the software one have it). Unit test of the parser and image writers (no SDL):
+`gcc -std=c11 -DCONFIG_NO_SDL -Isrc tests/test_config.c src/config.c src/screenshot.c`.
 
 ## Assets
 
@@ -59,7 +103,7 @@ the `.PPB` is decompressed at load time. Without `A.BIN` nothing runs.
 ## Run
 
 ```
-./build/shinobi_legions_pc [--assets DIR] [--skip-intro] [--stage N] [--verbose]
+./build/shinobi_legions_pc [--assets DIR] [--config FILE] [--skip-intro] [--stage N] [--verbose]
 ```
 
 The program follows A.BIN's main loop (`src/boot.c`): DIRECTOR.PPB is loaded first
@@ -73,7 +117,8 @@ stage clear / game over / demo end load DIRECTOR back (`src/director*.c`, `src/s
 - `--verbose`: log the player's action changes.
 
 The loop runs a drift-free ~60fps (measures elapsed time and sleeps off the remainder).
-Arrow keys = D-pad, Z/X/C = A/B/C, A/S/D = X/Y/Z, Q/W = L/R, Enter = Start.
+Default keys: arrows = D-pad, Z/X/C = A/B/C, A/S/D = X/Y/Z, Q/W = L/R, Enter = Start
+(see Controls / Config).
 The input chain is the real one (see `pad.*`): pressed buttons are logged to
 the console, and A+B+C+Start triggers the original soft reset.
 

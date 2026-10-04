@@ -226,6 +226,10 @@ int16_t *Audio_LoadPcmFile(const char *path, uint32_t *frames_out)
 
 #define SFX_CHUNK 1024
 static AudioSfxHooks s_sfx;            /* SFX hook, see Audio_SetSfxHooks */
+/* PC volume settings (shinobi.ini), 256 = 100 %: music also scales the movie sound. */
+static int s_vol_master = 256, s_vol_music = 256, s_vol_sfx = 256;
+static float s_vol_music_f = 1.0f;
+#define VOL(x, v) ((v) == 256 ? (x) : (int32_t)((int64_t)(x) * (v) / 256))
 
 void Audio_Render(int16_t *out, int frames)
 {
@@ -242,7 +246,7 @@ void Audio_Render(int16_t *out, int frames)
     }
     for (k = 0; k < frames; k++) {
         int32_t s[2] = { 0, 0 };
-        if (s_sfx.render) { s[0] = sfx[k * 2]; s[1] = sfx[k * 2 + 1]; }   /* SFX hook */
+        if (s_sfx.render) { s[0] = VOL(sfx[k * 2], s_vol_sfx); s[1] = VOL(sfx[k * 2 + 1], s_vol_sfx); }   /* SFX hook */
         for (c = 0; c < 2; c++) {                         /* level ramp */
             float d = s_gain_tgt[c] - s_gain_cur[c];
             if (d > GAIN_RAMP) s_gain_cur[c] += GAIN_RAMP;
@@ -251,20 +255,21 @@ void Audio_Render(int16_t *out, int frames)
         }
         if (s_music_on) {
             for (c = 0; c < 2; c++)
-                s[c] += (int32_t)lrintf((float)s_music[s_music_pos * 2 + (uint32_t)c] * s_gain_cur[c]);
+                s[c] += (int32_t)lrintf((float)s_music[s_music_pos * 2 + (uint32_t)c] * s_gain_cur[c] * s_vol_music_f);
             if (++s_music_pos >= s_music_frames) {
                 s_music_pos = 0;
                 if (!s_music_loop) s_music_on = 0;
             }
         }
         if (s_ring_count) {
-            s[0] += s_ring[s_ring_r * 2];
-            s[1] += s_ring[s_ring_r * 2 + 1];
+            s[0] += VOL(s_ring[s_ring_r * 2], s_vol_music);
+            s[1] += VOL(s_ring[s_ring_r * 2 + 1], s_vol_music);
             s_ring_r = (s_ring_r + 1) % AUDIO_MOVIE_RING_FRAMES;
             s_ring_count--;
             s_movie_played++;
         }
         if (s_mono) s[0] = s[1] = (s[0] + s[1]) / 2;
+        s[0] = VOL(s[0], s_vol_master); s[1] = VOL(s[1], s_vol_master);
         for (c = 0; c < 2; c++)
             out[k * 2 + c] = (int16_t)(s[c] > 32767 ? 32767 : s[c] < -32768 ? -32768 : s[c]);
     }
@@ -386,6 +391,18 @@ void Audio_SetMusicLevels(int left, int right)
 }
 
 void Audio_SetMusicVolume(int level) { Audio_SetMusicLevels(level, level); }
+
+static int vol256(int pct) { return (pct < 0 ? 0 : pct > 100 ? 100 : pct) * 256 / 100; }
+
+void Audio_SetVolumes(int master, int music, int sfx)
+{
+    LOCK();
+    s_vol_master = vol256(master);
+    s_vol_music = vol256(music);
+    s_vol_sfx = vol256(sfx);
+    s_vol_music_f = (float)s_vol_music / 256.0f;
+    UNLOCK();
+}
 
 void Audio_SetMono(int mono)
 {

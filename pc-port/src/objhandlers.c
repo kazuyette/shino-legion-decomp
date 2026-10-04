@@ -232,9 +232,11 @@ void ObjHandler_Call(uint16_t type)
     case 0x100B: ObjHandler_100B(); break;
     case 0x100C: ObjHandler_100C(); break;
     case 0x100D: ObjHandler_100D(); break;
+    case 0x100E: ObjHandler_100E(); break;
     case 0x100F: ObjHandler_100F(); break;
     case 0x1010: ObjHandler_1010(); break;
     case 0x1011: ObjHandler_1011(); break;
+    case 0x1012: ObjHandler_1012(); break;
     case 0x1013: ObjHandler_1013(); break;
     case 0x1014: ObjHandler_1014(); break;
     case 0x1015: ObjHandler_1015(); break;
