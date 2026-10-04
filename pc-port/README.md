@@ -34,6 +34,7 @@ it is shown in the window title, printed at startup, and by `--version`.
 | Ninjutsu | A | Y / Triangle |
 | Guard | S | LB / L1 |
 | Start | Enter | Start |
+| Debug / cheat menu (PC only, pauses the game) | F1 | Back / Select |
 
 ## Assets
 

@@ -5,6 +5,7 @@
 #include <string.h>
 #include "boot.h"
 #include "render.h"
+#include "debug_menu.h"
 #include "input.h"
 #include "ram.h"
 #include "resource.h"
@@ -19,6 +20,7 @@
  *   --version       print the version and exit
  *   --assets DIR    asset directory (default "assets" next to the working directory)
  *   --skip-intro    no SEGA logo at boot (as on the Saturn, where the BIOS shows it)
+ *   F1 / pad Back   PC debug/cheat menu (lives, energy, shurikens, ninjutsu, stage clear/select)
  *   --stage N       development: boot straight into stage index N (0 = game 1-1 = STAGE7_1,
  *                   ... 12 = 7-1 = STAGE1_1, 17 = 9-2) with new-game variables
  *   --verbose       log player action changes */
@@ -73,14 +75,22 @@ int main(int argc, char **argv)
     int running = 1;
     SDL_Event ev;
     while (running) {
-        while (SDL_PollEvent(&ev))
+        while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_QUIT) running = 0;
+            DebugMenu_HandleEvent(&ev);      /* PC debug/cheat menu: F1 or pad Back */
+        }
 
-        Input_Update();                      /* SMPC report for Pad_Update */
-        Boot_Frame();                        /* one iteration of the A.BIN main loop */
+        int paused = DebugMenu_IsOpen();
+        Render_SetKeepQueue(paused);
+        if (!paused) {
+            Input_Update();                  /* SMPC report for Pad_Update */
+            DebugMenu_BeforeFrame();
+            Boot_Frame();                    /* one iteration of the A.BIN main loop */
+        }
 
         Render_Clear();
         Render_DrawFrame();
+        DebugMenu_Draw(SDL_GetRenderer(window));
         Render_Present();
 
         next_frame += frame_ms;

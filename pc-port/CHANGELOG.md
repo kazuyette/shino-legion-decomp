@@ -3,6 +3,12 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.18.0 — 2026-10-04
+- PC debug / cheat menu (debug_menu.c, not in the Saturn game): F1 or controller
+  Back/Select opens it and pauses the game. Lives, energy refill / infinite energy,
+  shurikens (+/-10, infinite), ninjutsu, "finish the stage" (posts a stage clear like a
+  boss death), go to any stage 1-1..9-2 (from the title too).
+
 ## 0.17.0 — 2026-10-04
 - All enemies ported: regular types 0xA (stone giant), 0xB (bird), 0xC (ceiling golem),
   0x19 (sled launcher); bosses 0x21 (2-1), 0x1A (3-2), 9 (6-2), 6 (7-2 Koryu), 0x17 (8-2),

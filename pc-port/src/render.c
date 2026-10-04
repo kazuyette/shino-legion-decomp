@@ -15,6 +15,7 @@ static SDL_Renderer *s_renderer = NULL;
 #define MAX_QUEUE 256
 static RenderSprite s_queue[MAX_QUEUE];
 static int s_queued;
+static int s_keepQueue;     /* PC debug menu: redraw the last frame while paused */
 
 /* Texture cache keyed by (src, mode, colr, size). */
 #define CACHE_SIZE 1024
@@ -374,7 +375,13 @@ void Render_DrawFrame(void)
             }
         }
     }
-    s_queued = 0;
+    if (!s_keepQueue) s_queued = 0;
+}
+
+void Render_SetKeepQueue(int keep)
+{
+    if (s_keepQueue && !keep) s_queued = 0;
+    s_keepQueue = keep;
 }
 
 void Render_Present(void)

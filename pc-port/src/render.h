@@ -40,5 +40,6 @@ void Render_Clear(void);
 void Render_DrawFrame(void);
 void Render_Present(void);
 void Render_Shutdown(void);
+void Render_SetKeepQueue(int keep);   /* 1: keep the sprite queue (frame paused) */
 
 #endif

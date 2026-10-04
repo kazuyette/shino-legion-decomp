@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 # Port version: bump here (MAJOR.MINOR.PATCH), see CHANGELOG.md.
-project(shinobi_legions_pc VERSION 0.17.0 LANGUAGES C)
+project(shinobi_legions_pc VERSION 0.18.0 LANGUAGES C)
 
 # Short git hash of the build, if git is available.
 set(SL_GIT_HASH "unknown")
@@ -22,6 +22,7 @@ find_package(SDL2 REQUIRED)
 
 add_executable(shinobi_legions_pc
     src/main.c
+    src/debug_menu.c
     src/boot.c
     src/sys.c
     src/sound.c
