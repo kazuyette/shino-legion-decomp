@@ -9,3 +9,5 @@ pc-port/bin/
 notes/tmp_director/
 projet/
 Claude outputs/
+# player packages built by tools/make_dist.py (pc-port/dist/)
+dist/

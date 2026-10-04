@@ -3,6 +3,33 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.21.0 — 2026-10-04
+- Game files from the player's own disc image, so the port is distributed without game data:
+  - src/extract.c/.h (plain C, no SDL): Extract_FromCue(cue_or_bin, out_dir, progress) parses the
+    cue sheet (single or multi .bin, MODE1/2352, MODE1/2048, MODE2, AUDIO, PREGAP/POSTGAP), also
+    a lone .bin or a plain .iso (data track only: music missing, warning), reads the ISO9660
+    tree, copies the files, writes DIRECTOR.dec.bin / SHINOBI.dec.bin (lz.c) and rips CD-DA
+    tracks 2/3 to TRACK02.WAV / TRACK03.WAV like tools/rip_cdda.py (TITLE.PCM / ENDING.PCM
+    extents; the DW0536 cue's track-3 index is 150 frames late). Each file is written to
+    NAME.part, verified (size + CRC-32) and renamed. Checks the Saturn header (product T-2301H,
+    area U): clear errors for a non-Saturn image, wrong disc, other region, bad / truncated dump
+    (mismatching files listed, not installed); a WAV that differs (audio read offset) is kept
+    with a warning.
+  - src/asset_manifest.h (115 files: name, size, CRC-32, source), generated from
+    bin/windows/assets by tools/gen_manifest.py.
+  - main.c: `--extract IMG [--assets DIR]` (console progress, exit 0 / 2 = music missing / 1);
+    a .cue/.bin/.iso as argument (dropped on the exe) is extracted, then the game starts; at
+    startup an incomplete asset folder (names + sizes) makes the exe offer to extract the *.cue
+    found next to it (Yes/No box), or explain how to provide the disc image, then quit.
+    Default asset folder: assets/ in the working directory when it holds A.BIN, else
+    assets/ next to the executable. `--no-asset-check` skips the check.
+  - tests/test_extract.c (no SDL): error paths on synthetic images, then the real image is
+    extracted to a temp folder: 115/115 files identical to bin/windows/assets (also checked
+    by hand: a Redump-style 3-file image, 115/115; extracted/track1.iso, 113/115 + warning).
+  - tools/make_dist.py: dist/ShinobiLegionsPC-<version>-win64.zip from a given exe + SDL2.dll
+    + packaging/README.txt (players, FR + EN) + packaging/NOTICE.txt (no game data) +
+    CHANGELOG; refuses game-data files; `--dry-run`, `--self-test`. dist/ added to .gitignore.
+
 ## 0.20.0 — 2026-10-04
 - Ground truth: the real game (BizHawk Saturn core, Lua file bridge tools/bizhawk/) is now the
   reference. tests/snap_compare.c (not in the suite) transplants BizHawk dumps of HWRAM / LWRAM /

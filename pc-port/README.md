@@ -80,11 +80,68 @@ Bilinear, 4:3 and screenshots need render-target support (every SDL hardware ren
 the software one have it). Unit test of the parser and image writers (no SDL):
 `gcc -std=c11 -DCONFIG_NO_SDL -Isrc tests/test_config.c src/config.c src/screenshot.c`.
 
+## Getting the game files / Obtenir les fichiers du jeu
+
+**English.** The port ships without any game data. Players build the `assets/` folder from
+their own *Shinobi Legions (USA)* disc image (Saturn product T-2301H): a `.cue` + `.bin`
+(single `.bin` or one `.bin` per track), or a plain `.iso` (data track only: no CD audio,
+so the title / ending music is missing). Three ways:
+
+1. put the `.cue` and its `.bin` file(s) next to the executable and start it: when the
+   asset folder is missing or incomplete, it offers to extract them (Yes/No box);
+2. drag the `.cue` (or `.bin` / `.iso`) onto the executable: extraction, then the game starts;
+3. command line: `shinobi_legions_pc --extract "Shinobi Legions (USA).cue" [--assets DIR]`
+   (console progress; exit code 0 = ok, 2 = ok but music missing / different, 1 = error).
+
+The files (115, about 400 MB) go to `assets/` next to the executable (or `--assets DIR`).
+Each one is written as `NAME.part`, checked against the manifest of the original disc
+(size + CRC-32, `src/asset_manifest.h`) and renamed. Errors name the problem: not a Saturn
+image, wrong disc, other region (Japanese *Shinobiden*, European *Shinobi X*), bad /
+truncated dump (the files that differ are listed and not installed). A music track that
+differs from the reference rip (other audio read offset) is installed with a warning.
+
+**Français.** Le portage est distribué sans aucune donnée du jeu. Le joueur crée le dossier
+`assets/` à partir de l'image de son propre disque *Shinobi Legions (USA)* (référence
+Saturn T-2301H) : un `.cue` + `.bin` (un seul `.bin` ou un `.bin` par piste), ou un `.iso`
+simple (piste de données seule : pas d'audio CD, donc pas de musique au titre ni à la fin).
+Trois façons :
+
+1. mettre le `.cue` et son ou ses `.bin` à côté de l'exécutable et le lancer : si le dossier
+   des fichiers manque ou est incomplet, il propose de les extraire (boîte Oui/Non) ;
+2. faire glisser le `.cue` (ou le `.bin` / `.iso`) sur l'exécutable : extraction puis lancement ;
+3. en ligne de commande : `shinobi_legions_pc --extract "Shinobi Legions (USA).cue" [--assets DIR]`
+   (progression dans la console ; code de sortie 0 = ok, 2 = ok mais musique absente /
+   différente, 1 = erreur).
+
+Les fichiers (115, environ 400 Mo) sont écrits dans `assets/` à côté de l'exécutable (ou
+`--assets DIR`), chacun vérifié (taille + CRC-32 du disque original) avant d'être installé.
+Les erreurs indiquent la cause : image non Saturn, mauvais disque, autre région (*Shinobiden*
+japonais, *Shinobi X* européen), image abîmée ou tronquée (fichiers en cause listés).
+
+Developers / développeurs:
+- `src/extract.c` (plain C, no SDL) reads the cue sheet (FILE / TRACK / INDEX / PREGAP /
+  POSTGAP, MODE1/2352, MODE1/2048, MODE2, AUDIO), the ISO9660 tree of the data track, copies
+  the files, decompresses `DIRECTOR.PPB` / `SHINOBI.PPB` to `.dec.bin` (`lz.c`) and rips CD-DA
+  tracks 2 and 3 exactly like `tools/rip_cdda.py` (the `TITLE.PCM` / `ENDING.PCM` ISO extents
+  give the LBAs; the DW0536 cue's track-3 INDEX 01 is 150 frames late).
+- `src/asset_manifest.h` is generated from the reference set:
+  `python3 tools/gen_manifest.py [pc-port/bin/windows/assets] [pc-port/src/asset_manifest.h]`.
+- Test (no SDL, run from `pc-port/`): `gcc -std=c11 -O2 -Isrc tests/test_extract.c src/extract.c
+  src/lz.c -o test_extract && ./test_extract [--iso ../extracted/track1.iso] [IMAGE.cue] [REF_DIR]
+  [OUT_DIR]` extracts the real image to a temp folder and compares all 115 files byte for byte
+  with `bin/windows/assets`.
+- `--no-asset-check` skips the startup check (development asset folders).
+- Player package (no game data): `python3 tools/make_dist.py --exe build/shinobi_legions_pc.exe
+  --sdl SDL2.dll` -> `pc-port/dist/ShinobiLegionsPC-<version>-win64.zip` (exe, SDL2.dll,
+  `packaging/README.txt` FR+EN, `packaging/NOTICE.txt`, CHANGELOG); `--dry-run`, `--self-test`.
+
 ## Assets
 
-The executable reads the disc files from an `assets/` folder (or `--assets DIR`); the
-layout is the one of `extracted/` (`python3 tools/iso_extract.py extracted/track1.iso NAME
-extracted/NAME` extracts one file from the data track):
+The executable reads the disc files from an `assets/` folder (default: `assets/` in the
+working directory when it holds `A.BIN`, else `assets/` next to the executable; or
+`--assets DIR`). It is built by the extractor above; the layout is the one of `extracted/`
+(`python3 tools/iso_extract.py extracted/track1.iso NAME extracted/NAME` extracts one file
+from the data track):
 
 | file(s) | used for |
 |---|---|
@@ -95,7 +152,7 @@ extracted/NAME` extracts one file from the data track):
 | `TITLE.PBC`, `STGCLEAR.PBC`, `STAFFROL.PBC` | title, stage clear, staff roll pictures |
 | `STAGEn_m.CHR/.MAP/.SPR` (n = 1..9, m = 1..2) | stage graphics/maps (game 1-1 = `STAGE7_1`, see docs/director.md §4.1) |
 | `*.CPK` | movies (not played yet: the movie player is a stub, every movie is skipped) |
-| `*.SND`, `TITLE.PCM`, `ENDING.PCM` | sound banks / CD-DA tracks (not handled yet, only logged) |
+| `*.SND`, `TRACK02.WAV`, `TRACK03.WAV` | sound banks / CD-DA tracks (`TITLE.PCM` = track 2, `ENDING.PCM` = track 3) |
 
 `X.dec.bin` is `X.PPB` already decompressed (`tools/ppb_decompress.py`); when it is absent
 the `.PPB` is decompressed at load time. Without `A.BIN` nothing runs.
@@ -103,7 +160,9 @@ the `.PPB` is decompressed at load time. Without `A.BIN` nothing runs.
 ## Run
 
 ```
-./build/shinobi_legions_pc [--assets DIR] [--config FILE] [--skip-intro] [--stage N] [--verbose]
+./build/shinobi_legions_pc [--assets DIR] [--config FILE] [--skip-intro] [--stage N] [--verbose] [--no-asset-check]
+./build/shinobi_legions_pc --extract DISC.cue|.bin|.iso [--assets DIR]
+./build/shinobi_legions_pc DISC.cue|.bin|.iso        # extract, then play (drag and drop)
 ```
 
 The program follows A.BIN's main loop (`src/boot.c`): DIRECTOR.PPB is loaded first
