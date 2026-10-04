@@ -3,6 +3,17 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.17.0 — 2026-10-04
+- All enemies ported: regular types 0xA (stone giant), 0xB (bird), 0xC (ceiling golem),
+  0x19 (sled launcher); bosses 0x21 (2-1), 0x1A (3-2), 9 (6-2), 6 (7-2 Koryu), 0x17 (8-2),
+  0x1F (9-2 Kazuma, orbs + NYORAI finish -> ending). No "not ported" left in any stage.
+- Ninjutsu: player cast 0x060437C0, effect state machine 0x06063554 (ZIRYU, BISYAMON,
+  burst/shield, NYORAI), magic kinds 0-6 (shield, damage, heal, armed sword, boss kill).
+- Player stubs ported (on-hit, command buffer, terrain damage, afterimages, sword clink,
+  shuriken fan, third slash, hang posture); __modsi3 (0x0600A604) fixed at its callers.
+- LZ decompressor fix: header holds word count - 1 (A.BIN 0x06004EE8); SHINOBI.dec.bin
+  regenerated (last word was lost), Sho sprites no longer lose their last 2 pixels.
+
 ## 0.16.0 — 2026-10-04
 - Stage frame hooks: SHINOBI 0x0606BCD0 (17 per-stage handlers, table 0x060B10CC),
   per-stage hook inits 0x0606C618 (table 0x060B1114), layer animation (line/cell scroll,

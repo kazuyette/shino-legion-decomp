@@ -81,7 +81,7 @@ static void add16(uint32_t a, int v) { W16(a, (uint32_t)(RS16(a) + v)); }
 static void clear_hv(void) { for (uint32_t i = 0; i < 10; i++) W32(HV + 4 * i, 0); }
 
 /* 0x0606F8D8: write the whole 32x32-tile page of a layer around its position into VRAM */
-static void Layer_FillPage(uint32_t d)
+void Layer_FillPage(uint32_t d)
 {
     for (int32_t y = 0; y < 0x2000000; y += 0x100000)
         for (int32_t x = 0; x < 0x2000000; x += 0x200000) {
@@ -1158,28 +1158,4 @@ void Stage_FrameHooks(void)
     LayerAnim_Commit();                                      /* 0x0606EF9C */
 }
 
-/* ================= ninjutsu effects (0x06063538 / 0x06063554) ================= */
-
-void Ninjutsu_Init(void)
-{
-    W16(0x060F4BF0u, 0); W16(0x060F4BF2u, 0); W16(0x060F4BF4u, 0); W16(0x060F4BF6u, 0);
-    W32(0x060F4BF8u, 0);
-    W16(0x060F4CA8u, 0);
-}
-
-/* 0x06063554: request 0x060F4CA8 (2 / 5 / 6 start an effect: 0x0606369C / 0x06063870 /
- * 0x06063A6C) and the per-ninjutsu effect state machine on 0x060F4BF0 (states 2, 5, 6, 7 with
- * sub-step 0x060F4BF6: screen flashes, NBG2 waves, fades). Both are only reached from the
- * player's ninjutsu 0x060437C0 (0x0604391C writes 0x060F4BF0), which is not ported: only the
- * idle path runs. */
-int Ninjutsu_Update(void)
-{
-    int16_t req = RS16(0x060F4CA8u);
-    if (req >= 1 && req <= 6) {
-        W16(0x060F4CA8u, 0);
-        if (req == 2 || req == 5 || req == 6) ONCE("0x06063554: ninjutsu effect start (0x0606369C/0x06063870/0x06063A6C) not ported");
-    }
-    if (RS16(0x060F4BF0u) == 0) return 1;
-    ONCE("0x06063554: ninjutsu effect states not ported");
-    return 0;
-}
+/* Ninjutsu effects 0x06063538 / 0x06063554: ninjutsu.c */

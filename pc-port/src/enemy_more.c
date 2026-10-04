@@ -93,10 +93,25 @@ void Enemy22_Load(void);   void EnemyHandler_0022(void);   /* enemy_t22.c 0x0608
 void Enemy24_Load(void);   void EnemyHandler_0024(void);   /* enemy_t24.c 0x06093B34 / 0x06093B96 */
 uint16_t Enemy18_Load(void); void EnemyHandler_0018(void); /* enemy_boss18.c 0x0609FFF4 / 0x060A00EA */
 void Enemy15_Load(void);   void EnemyHandler_0015(void);   /* enemy_boss15.c 0x06071B24 / 0x06071E04 */
+void EnemyHandler_0021(void);                              /* enemy_boss21.c (no loader) / 0x06089E40 */
+void Enemy1A_Load(void);   void EnemyHandler_001A(void);   /* enemy_boss1a.c 0x0607AD88 / 0x0607AFC0 */
+void Enemy9_Load(void);    void EnemyHandler_0009(void);   /* enemy_boss09.c 0x0609ABA8 / 0x0609B448 */
+void Enemy6_Load(void);    void EnemyHandler_0006(void);   /* enemy_boss06.c 0x0606A150 / 0x0606A264 (7-2 boss) */
+void Enemy17_Load(void);   void EnemyHandler_0017(void);   /* enemy_boss17.c 0x06076024 / 0x0607619A (8-2 boss) */
+void Enemy1F_Load(void);   void EnemyHandler_001F(void);   /* enemy_boss1f.c 0x0607E490 / 0x0607E840 (9-2 boss) */
+
+void EnemyA_Load(void);    void EnemyHandler_000A(void);   /* enemy_t0a.c 0x060A1B2C / 0x060A1CC8 */
+void EnemyB_Load(void);    void EnemyHandler_000B(void);   /* enemy_t0b.c 0x060A28AC / 0x060A2A86 */
+void EnemyC_Load(void);    void EnemyHandler_000C(void);   /* enemy_t0c.c 0x060A3FF4 / 0x060A47A4 */
+void Enemy19_Load(void);   void EnemyHandler_0019(void);   /* enemy_t19.c 0x0609F380 / 0x0609F3D0 */
 
 int EnemyMore_Load(uint16_t t)
 {
     switch (t) {
+    case 0x0A: EnemyA_Load(); return 1;
+    case 0x0B: EnemyB_Load(); return 1;
+    case 0x0C: EnemyC_Load(); return 1;
+    case 0x19: Enemy19_Load(); return 1;
     case 0x02: Enemy2_Load(); return 1;
     case 0x0F: EnemyF_Load(); return 1;
     case 0x23: Enemy23_Load(); return 1;
@@ -107,6 +122,11 @@ int EnemyMore_Load(uint16_t t)
     case 0x24: Enemy24_Load(); return 1;
     case 0x18: Enemy18_Load(); return 1;
     case 0x15: Enemy15_Load(); return 1;
+    case 0x1A: Enemy1A_Load(); return 1;
+    case 0x09: Enemy9_Load(); return 1;
+    case 0x06: Enemy6_Load(); return 1;
+    case 0x17: Enemy17_Load(); return 1;
+    case 0x1F: Enemy1F_Load(); return 1;
     default: return 0;
     }
 }
@@ -114,6 +134,10 @@ int EnemyMore_Load(uint16_t t)
 int EnemyMore_Handler(uint16_t t)
 {
     switch (t) {
+    case 0x0A: EnemyHandler_000A(); return 1;
+    case 0x0B: EnemyHandler_000B(); return 1;
+    case 0x0C: EnemyHandler_000C(); return 1;
+    case 0x19: EnemyHandler_0019(); return 1;
     case 0x02: EnemyHandler_0002(); return 1;
     case 0x0F: EnemyHandler_000F(); return 1;
     case 0x23: EnemyHandler_0023(); return 1;
@@ -124,6 +148,12 @@ int EnemyMore_Handler(uint16_t t)
     case 0x24: EnemyHandler_0024(); return 1;
     case 0x18: EnemyHandler_0018(); return 1;
     case 0x15: EnemyHandler_0015(); return 1;
+    case 0x21: EnemyHandler_0021(); return 1;
+    case 0x1A: EnemyHandler_001A(); return 1;
+    case 0x09: EnemyHandler_0009(); return 1;
+    case 0x06: EnemyHandler_0006(); return 1;
+    case 0x17: EnemyHandler_0017(); return 1;
+    case 0x1F: EnemyHandler_001F(); return 1;
     default: return 0;
     }
 }
@@ -245,6 +275,13 @@ void EM_Trail(int active, uint32_t o)                       /* 0x06049BF0 -> 0x0
 {
     const uint32_t EXTRA = 0x060FFE40u;                     /* PC scratch: the zeroed 8 bytes */
     W32(EXTRA, 0); W32(EXTRA + 4, 0);
+    EM_TrailEx(active, o, EXTRA);
+}
+
+/* 0x06049C10: the trail with an explicit extra record {u32 flags (1 bank, 2 rotation),
+ * u16 bank, u16 rotation} at emulated address EXTRA (used as is by boss 0x1F) */
+void EM_TrailEx(int active, uint32_t o, uint32_t EXTRA)
+{
     if (!FROZEN) {
         if (RS16(TR_STEP) != 0) W16(TR_STEP, R16(TR_STEP) - 1);
         else {

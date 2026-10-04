@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 # Port version: bump here (MAJOR.MINOR.PATCH), see CHANGELOG.md.
-project(shinobi_legions_pc VERSION 0.16.0 LANGUAGES C)
+project(shinobi_legions_pc VERSION 0.17.0 LANGUAGES C)
 
 # Short git hash of the build, if git is available.
 set(SL_GIT_HASH "unknown")
@@ -35,6 +35,7 @@ add_executable(shinobi_legions_pc
     src/pad.c
     src/player.c
     src/player_stubs.c
+    src/ninjutsu.c
     src/ram.c
     src/physics.c
     src/lz.c
@@ -69,6 +70,10 @@ add_executable(shinobi_legions_pc
     src/enemy_t4.c
     src/enemy_boss42.c
     src/enemy_more.c
+    src/enemy_t0a.c
+    src/enemy_t0b.c
+    src/enemy_t0c.c
+    src/enemy_t19.c
     src/enemy_t02.c
     src/enemy_soldier_sub_d.c
     src/enemy_t23.c
@@ -79,6 +84,12 @@ add_executable(shinobi_legions_pc
     src/enemy_t24.c
     src/enemy_boss18.c
     src/enemy_boss15.c
+    src/enemy_boss06.c
+    src/enemy_boss17.c
+    src/enemy_boss1f.c
+    src/enemy_boss21.c
+    src/enemy_boss1a.c
+    src/enemy_boss09.c
     src/shinobi.c
     src/director.c
     src/director_font.c

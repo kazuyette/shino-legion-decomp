@@ -278,7 +278,12 @@ static void stage8(void)
     for (int i = 0; i < 300; i++) tick(0);
     { uint32_t hb = R32(k + 0x68);
       printf("   Sho %.0f,%.0f action %d; crate hb %d %d %d %d %d; cam %.0f,%.0f\n", px(P32(P_X)), px(P32(P_Y)), P16(P_ACTION), RS16(hb), RS16(hb + 2), RS16(hb + 4), RS16(hb + 6), RS16(hb + 8), px(RS32(CAM_X)), px(RS32(CAM_Y))); }
-    assert(slash(k, RS32(k + 0xC), gone));
+    {   /* slash from the crate's foot: higher up the sword clinks on the wall above it
+         * (0x0604592E cancels the swing), so lower the elevator to the crate's bottom */
+        int32_t foot = RS32(k + 0xC) + RS16(R32(k + 0x68) + 8) * 0x10000;
+        W32(e + 0xC, (uint32_t)(foot - RS16(R32(e + 0x68) + 4) * 0x10000 + 0x20000));
+        assert(slash(k, foot, gone));
+    }
     printf("0x1044 crate broken: parts %d, items %d -> %d\n", fx_count(6), it, items());
     assert(fx_count(6) > 0);
 }

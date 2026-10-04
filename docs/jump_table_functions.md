@@ -2279,3 +2279,143 @@ priority register, +0x18 draw priority), +0x5A = anim part, Hitbox_Test(o, 0, Sh
 - Not ported yet: types 6 (7-2 boss), 9 (6-2 boss), 0xA / 0xB (8-1), 0xC (6-1), 0x17 (8-2
   boss), 0x19 (9-1, with projectile 0x23), 0x1A (3-2 boss), 0x1F (9-2 boss), 0x21 (2-1 boss
   0x06089E40: own RNG 0x060F828C, projectiles 0x26 / 0x27).
+
+## Enemy types 0xA / 0xB (8-1), 0xC (6-1), 0x19 (9-1) + projectiles 9 / 0x23 (2026-10-04, pc-port enemy_t0a.c / enemy_t0b.c / enemy_t0c.c / enemy_t19.c)
+
+- Dispatch: the four loaders/handlers are in `EnemyMore_Load` / `EnemyMore_Handler`
+  (enemy_more.c); projectiles 9 and 0x23 in the fx.c dispatch. Tests: tests/test_enemy_more2.c.
+- Type 0xA stone giant (8-1): loader 0x060A1B2C (6 palettes 0x060E93B8 + 0x20 n), handler
+  0x060A1CC8, init 0x060A1BF0 (5 HP), decision 0x060A25AA (8-px units: |dy| < 5 && |dx| < 12 ->
+  mode 2 sweep, |dx| < 40 -> mode 1 stomp, < 512 -> 0), face 0x060A266A, cut-down halves
+  0x060A26BA (anim 7) / 0x060A27DC (anim 8). Body sprite drawn at the home position
+  +0x1E/+0x20. Stomp (mode 1 act 3, mode 5 act 10; anim event 1 / 2): sounds 0x217 + 0x10E,
+  0x0605D838 rocks from the ceiling (C+4 - 64 px), 0x0605DBEC rubble 88 px ahead, shake
+  C+0x20 (0x060EA638) |= 0x80. Hurt -> act 5 -> acts 0xB/0xA/0xC (3 stomps, banks +2..+5).
+  Death: act 9 (sword kinds 0-3, 30 frames) or 6, then Enemy_DeathBurst + 800. Rand =
+  (rand >> 8) / 10 (A.BIN 0x0600A55C). Collides with the map (0x06045340 w 1 h 1).
+  **Original bug kept**: the sweep's rubble (0x060A1FEA `add r15,r4`) is spawned at x + r15
+  (stack pointer 0x0600xxxx => ~1536 px to the right).
+- Type 0xB bird (8-1): loader 0x060A28AC, handler 0x060A2A86, init 0x060A2918 (1 HP, gravity
+  off, mode 6), decision 0x060A37E0, aim 0x060A3904 (Atan8 + 0x80), velocity 0x060A3940,
+  face 0x060A399C, cut halves 0x060A39FC / 0x060A3B2C (anim 8 frames 0/1), feathers 0x060A3BFC
+  (projectile 9, +2 |= (rand/7) & 7, angle 0x80). Mode 6 = flying in on the background layer
+  (sprite relative to the layer scroll 0x060EA5E8/EC, 3 px/frame) until 352 px away, then
+  enters at camX + 480 / camX - 160 (mode 3 turn: acts 1/3/0xC), mode 1 dive (speed +0x4A up to
+  0x500, act 5 pull-up when level), mode 2 swoop to a random point 100-163 px past Sho (target
+  +0x4C/+0x50, heading +0x54), mode 8 brake, mode 4 hurt (3 feathers), mode 5 fall (act 10 /
+  7), mode 7 dead: 300 points, item cleared (+0x18 = -1), respawns from home (+4 bit 0x20)
+  once its home is 512 px off screen. The handler negates +0x30 after every 0x060A3940.
+  Projectile 9 0x060A3C60: feather (anim 0xD, rotated by +0x14), sway amplitudes by +2 & 7,
+  harmless. Rand divisor 7.
+- Type 0xC ceiling golem (6-1): loader 0x060A3FF4, handler 0x060A47A4, init 0x060A408C (4 HP,
+  invulnerable + gravity off while hidden), decision 0x060A41E4, face 0x060A4486 (pivot 72 px
+  AHEAD of it: Sho inside that band makes it turn back and forth, as on the Saturn), death
+  overlays 0x060A44FC (anim 9, falling) / 0x060A45D0 (anim 10), idle part 0x060A4698 (anim 0xB,
+  script ((+0x4C & 0xFF) >> 2) % 12 via A.BIN 0x0600A604), death bursts 0x060A508C (7 x 24 px),
+  aim 0x060A50F4 (Atan8 from its muzzle +-72,+112 px -> 0/1/2 = act 4/5/6; no match returns
+  flags2). Sho within 56 px: it jumps 160 px right, drops 110 px (2 px/frame, debris 0x0605A16C
+  at home + 100 px) and (unless +0x12 bit 1) drops a second one 80 px left (flags 1). Every 32
+  frames: turn / shoot (rand % 16 >= 5) / pause (act 0xD) within 200 px, climb back (mode 6)
+  at 200-792 px. Hit: flashes (bank +3) 32 frames; dead: act 0xC or 8, 800 points.
+  **SHINOBI.PPB is one word longer than SHINOBI.dec.bin was**: the word-LZ header holds
+  words - 1 (A.BIN 0x06004EE8 loops to header + 1, `add #1,r3` 0x06004F0E). The last word
+  (0xA254) completes the script pointer 0x060EA2A8 -> 0x060EA254 of type 0xC's anim 0xD;
+  without it the golem's pause never ended. Fixed in lz.c (`Lz_Decompress` emits header + 1
+  words, keeps the final reference's overshoot, clamps to the buffer) and
+  tools/ppb_decompress.py; extracted/ and bin/windows/assets/ SHINOBI.dec.bin regenerated
+  (697004 bytes). The same off-by-one cut the last 2 pixels of every SHOU.CHR frame.
+- Type 0x19 (9-1): loader 0x0609F380 (256 colours 0x060E703C), handler 0x0609F3D0 (jump table
+  0x0609FD80 on +0x12 & 0xF), launch 0x0609FE68 (0x06048B64 type 0x19 flags 0). Sub 0 = sled:
+  -3.125 px/frame, carries Sho (0x06060268 == 2 -> PL+0x38), its kind-2 box on Sho's body ->
+  11 projectiles 0x23 (delays 1/8/16) + shake + sub 0xC (16 frames blinking). Sub 1/2/6-0xB,
+  3, 4, 5 = launchers armed by Sho walking past (every 256 / 128 frames, 416 or 704 px ahead,
+  sound 0x210). Sub 0xD = palette controller (A.BIN 0x06006000 towards 0x060E723C / 0x060E703C,
+  lightning 0x060E743C + frame-step * 0x100 while 0x060F8328 > 0, else the map palette
+  +0xE00). Subs 0xE/0xF are past the jump table and just draw. Projectile 0x23 0x0609FE92:
+  explosion (anim 1) after +0x14 frames (sound 0x121), 10 damage (mode 0xC100).
+
+## Bosses 0x21 (2-1), 0x1A (3-2), 9 (6-2) (2026-10-04, pc-port enemy_boss21.c / enemy_boss1a.c / enemy_boss09.c, agent "bossesA")
+
+- Dispatch through `EnemyMore_Load` / `EnemyMore_Handler` (0x21 has no type loader: its init loads
+  SAKYOU.PBC + 0xF4 chars itself). Projectiles 0x26 / 0x27 / 0x2A / 0x2B / 0x2C / 0xA added to the
+  fx.c dispatch. `Crystal_Burst` (0x0605AF84, objhandlers_f4.c) is now exported for the 6-2 boss.
+  Test: tests/test_bosses_a.c (each boss on its real stage: appears, attacks, hurt by the sword,
+  dies, stage clear posted).
+- **Hidden division arguments** (A.BIN 0x060092BC signed r1 / r0, 0x0600A55C unsigned r1 / r0,
+  0x0600CEF4 unsigned r1 % r0, 0x0600A604 signed r1 % r0 — Ghidra drops r0/r1): 0x21 uses its own
+  16-bit RNG 0x060F828C (rng * 5 + 0x3573 every frame); 0x1A draws `(rand / 7) >> 5`; 9 draws
+  `(rand >> 8) / 10`. Divisors read from the delay slots: see the comments in each file.
+- Boss 0x21 (2-1, slot 3 of stage 2): registered by the 2-1 frame hook (tail 0x0606C9E4:
+  `Obj_Register(0x21, 1914, 1503)`, CTRL+0x1E = slot, CTRL+0x20 |= 0xB). Handler 0x06089E40, init
+  0x06089B3C, graphics 0x06089A18, charge glow 0x06089C34 (anim 0xF, scale from 0x060F8290),
+  death body 0x0608BD30 (anim 7) / flash 0x0608BE9C (anim 0xC, frame (41 - +0x54) / 6), retreat
+  0x0608BF74 (jump height = |target - x| / 8 px - 32, >= 3), shot 0x0608B998 (projectile 0x26
+  0x0608BA64: spinning shuriken, Collide(1, 0x3000)), blast 0x0608B9E8 (0x27 0x0608BBEC). HP
+  0x060BF670[diff] = 15/18/21. Patterns cycle shots (rng & 3 repeats) -> jump + 2 aimed shots ->
+  charge (dashes to the midpoint between itself and the wall 0x628 / 0x72D, centre 0x6A2) ->
+  ...; hurt -> big jump to the far screen side with a 7-shot fan; dodges Sho's shurikens (1/2,
+  > 200 px). Death (6 or 7 by the attack kind): releases the camera (CTRL+0x20 &= 0xFFF4,
+  CTRL+0x1E = -1, Sho flags4 |= 0x10), 1500 points; the stage ends at the 2-1 exit box.
+- Boss 0x1A (3-2): loader 0x0607AD88, handler 0x0607AFC0 (mode +0x4E / action +6 state machine,
+  ported with the original's goto structure), init 0x0607AEA8 (intro mode 0xF, Sho locked by
+  flags4 0x400), face 0x0607D47C, decision 0x0607CF9E (tables 0x060BA52E.. / 0x060BA57E.., 10
+  entries per distance band), spawners 0x0607D4CC / 0x0607D53E / 0x0607D5A4, debris 0x0607E038,
+  death body 0x0607DEE8 + overlay 0x0607E3B0 / 0x0607E3E0, turn 0x0607E362, clear 0x0607E320.
+  HP 0x060BA528[diff] = 20/25/30, invulnerable 32 frames per hit. Projectiles 0x2A 0x0607DBAE
+  (piece), 0x2B 0x0607D638 (puff; its spawn delay is zeroed on the first frame, kept), 0x2C
+  0x0607D800 (spore: arc speeds 0x060E06EC / 0x060E070C, Collide(1, 0xC100)).
+- Boss 9 (6-2): loader 0x0609ABA8, handler 0x0609B448, init 0x0609B338, face 0x0609D2DE, decision
+  0x0609D0A4 (tables 0x060C4C4E..0x060C4C8A; far below/above: mode 0x15), run 0x0609D34E, sweep
+  0x0609D660, wall jump 0x0609D6C8, fire 0x0609D4C4 / 0x0609D530 -> projectile 0xA 0x0609AD74
+  (spawner 0x0609ACF8; the big wave patches the floor row in VDP2 VRAM 0x25E60E80, collapses the
+  walls 0x1039 within 32 px and throws debris 0x103A), glow 0x0609E060, flash 0x0609DDB8, hurt
+  aura 0x0609D3B4 / 0x0609D3FC, death ring 0x0609DD58 / 0x0609D740 (sets +0x48 of every wall
+  0x1039 inside its radius, rubble 0x0609DF0C, CTRL+0x20 |= 0x80 shake), body 0x0609DC18, head
+  0x0609DADC / 0x0609DB48, clear 0x0609DA9A. HP 0x060C4C94[diff] = 25/30/35. Quirks kept: the
+  shuriken box of the idle dodge uses x - 64 px as its top; the weapon damage of 0x0604931E comes
+  from a stack slot written only for some actions (PC: last value written).
+
+## Bosses 6 (7-2), 0x17 (8-2), 0x1F (9-2) (2026-10-04, pc-port enemy_boss06.c / enemy_boss17.c / enemy_boss1f.c)
+
+- Dispatch: `EnemyMore_Load/Handler` cases 6, 0x17, 0x1F; projectiles 2, 3, 8, 0x15-0x18, 0x1B, 0x1C and
+  effects 0x12-0x14 through `BossB_Projectile` / `BossB_Effect` (enemy_boss06.c), called by fx.c.
+  `EM_TrailEx` (enemy_more.c) = 0x06049C10 with the {u32 flags, u16 bank, u16 rotation} record;
+  `Boss1F_OrbTaken` (objhandlers_f4.c, 0x060842F8) is now exported. Effect table: 0x06062088.. =
+  braf table 0x060620BC (0x12 0x06077B24, 0x13 0x06077C4C, 0x14 0x060841E4).
+- Boss 6, Koryu (7-2, idx 13): loader 0x0606A150 (0x3F chars 0x060D9A9C, palettes 0x060DA154 /
+  0x060DA354), handler 0x0606A264, init 0x0606B282 (KORYU1.PBC), end 0x060698F8 (fade to white,
+  state |= 10), graphics 0x0606B364 (intro, chars 0x76.., KORYU2.PBC) / 0x0606B470 (death), death
+  overlay 0x06069AA4 (anim 0xD at 0x060F4D04, when cut by attack kinds 0-3 kept in 0x060F4D24),
+  shots 0x06069B30 / 0x06069BF8 (projectile 2), 0x06069EF8 (projectile 3). Decision every 8 frames
+  (+0x48 next, +0x52 previous, +0x54 close-range cycle, 0x060F4D00 breath alternation); HP
+  0x060B0F14 = 30/35/40. Projectile 2 0x06069CAC fire (pulsing scale, hurts 2), 3 0x06069FA8
+  rock (falls to the 0x06046FE2 floor). 0x060DA874..880: four u32 written only.
+- Boss 0x17 (8-2, idx 15): loader 0x06076024, handler 0x0607619A, init 0x06076D4C, setter 0x0607841A,
+  pick 0x06078348, combat 0x06077F7A, draw 0x06078004, segment easing 0x06077D60 (A.BIN-style
+  divide 0x060A51DC), joint placement 0x06079C70 (the parent segment is passed BY VALUE on the
+  stack after a 0x0600A6CC copy: Ghidra loses those arguments), layout 0x06079D24, death poses
+  0x06079AE4, palette 0x0607A3AA, bubbles 0x0607A4E4, dash overlay 0x0607A784, afterimage records
+  0x0607A934 (8 x 0x1E4 copies of 0x060F6894.., counts 0x060F7A8C), shards 0x0607A888 (0x103C),
+  fx 0x0607AC34 / blow-up 0x0607ACB6, laser impact 0x0607A844. Segments 0x060F6938 (16 bytes: x, y,
+  angle, anim, priority), targets 0x060F69D8, previous 0x060F6898, parent 0x060F6A78, offsets
+  0x060F6A8C / 0x060F6AB4, count 0x060F6ADC. HP 0x060B7958. Projectiles 0x15 0x060775E4 (hand),
+  0x16 0x06076ED8 (laser: line test vs Sho's boxes, breaks on walls: shards or ceiling rocks =
+  projectile 8 0x0605E0E0 via 0x0605E65C / 0x0605E6F4, ported here), 0x17 0x060776FC (beam).
+- Hurt flash 0x0604990A (enemy code, shared): `Enemy_HurtFlash` in enemy_boss17.c (0x060F2064..68).
+- Boss 0x1F, Kazuma (9-2, idx 17): loader 0x0607E490, handler 0x0607E840 (action 0x060F7AE0 separate
+  from the anim id +6), init 0x06080664, setter 0x06080C00, decision 0x06080A0E with the tables
+  0x060BC35C..0x060BC548 {s16 threshold, s16 if-true, u32 condition, s16 if-false} walked by
+  0x06080B7E (conditions 0x06081AA0 / AA4 / A24 / ABA), reaction 0x06081730, wall test 0x060819A8,
+  damage 0x060812BC, flash overlay 0x060812D2, palette 0x06081AF4, phase graphics 0x0607E5F4,
+  death graphics 0x0607E768, specials 0x06081C64 (0x3F7), 0x06082110 (0x3F8, storm: 0x06082794 /
+  0x060828EC / embers 0x06082A28 0x104E, VDP2 shadow 0x0603B478 / 0x0603B494 with dirty bits via
+  A.BIN 0x06009254, 0x0606EDD4 / 0x0606EDDC = 0x060F4D46 1 / 0), 0x06082FC8 (0x3F9, dragon), edge
+  stop 0x060820C4, ring wrap 0x060840FA, sparks 0x06084124 (0x104F), orb drop 0x0605F4BE (A.BIN
+  0x0600A7AC = shift left), orb call 0x0605FE48. HP 0x300 cannot be emptied by the sword: each hit
+  drops an orb; at 6 orbs NYORAI (ninjutsu 6) sets HP 0x8001 -> action 0x1B -> fade to white,
+  state |= 10. 9-2 clear: Stage_UpdateState -> stage 18 -> -1, mode 7 -> DIRECTOR request 8
+  (tally "9"), then story -1 = ENDING movie + staff roll (director.c / director_gameover.c).
+  Projectiles 0x18 0x06080868 (blade), 0x1B 0x06082AE0 (pendulum flame), 0x1C 0x060833AC (dragon,
+  path ring 0x060F7B30 x 0x8C); effect 0x14 0x060841E4.
+- Tests: tests/test_bosses_b.c (each boss on its stage: acts, shoots, is hurt, dies, end posted; 9-2
+  also the ending path and the 0x3F8 / 0x3F9 specials). Needs `Fade_Init()` for the NYORAI finish.

@@ -16,8 +16,8 @@ static uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t
  * 0x80000000 | (words - 1), then [u16 flags, MSB first] + 16 items (1 = literal
  * word, 0 = ref: dist = w >> 4 words back in a 4096-word ring, len = (w & 15) + 3).
  * The streaming decoder stops after the item that makes the count reach `words`
- * (a ref may overshoot; the Saturn writes the overshoot too). Note: one item more
- * than lz.c's Lz_Decompress, which treats the header as the exact word count.
+ * (a ref may overshoot; the Saturn writes the overshoot too). lz.c's Lz_Decompress
+ * now also decodes header + 1 words (A.BIN 0x06004EE8).
  * Returns the bytes produced (malloc'd in *out), 0 on error. */
 static size_t lz_block(const uint8_t *src, size_t len, size_t *consumed, uint8_t **out, int *wrefs)
 {

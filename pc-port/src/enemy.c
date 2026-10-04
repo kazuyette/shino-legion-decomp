@@ -560,7 +560,7 @@ void Soldier_Draw(uint16_t p)                                /* 0x06093930 */
     else if (sub == 3 || sub == 0xB) {
         W16(SPR + 0xC, 0xFFFF); W16(SPR + 0x10, (R16(o + 2) & 0x8000) | 0x200); W32(SPR + 0x18, 0xFFFFFFFFu);
     } else { W16(SPR + 0xC, 0); W16(SPR + 0x10, R16(o + 2) & 0x8000); }
-    if ((sub == 3 || sub == 0xB) && (a == 7 || a == 8)) W16(SPR + 0xE, (uint32_t)sub_0600A604());
+    if ((sub == 3 || sub == 0xB) && (a == 7 || a == 8)) W16(SPR + 0xE, (uint32_t)sub_0600A604((int32_t)R16(0x060143EAu), 4));   /* frame % 4 */
     else if (a == 0x0E || a == 0x11 || a == 0x12)        W16(SPR + 0xE, R16(o + 0x58) & 3);
     else W16(SPR + 0xE, (a == 0x0F && (R16(o + 0x58) & 3) == 1) ? (p & 3) : 0);
     Anim_Tick(o + 0x58);

@@ -3,6 +3,7 @@
  * (0x0606B634), 4 loading sprite one more frame (0x0606B56C), 5 load the stage (0x0606B6EC),
  * 6 stage frames (0x0606B8FA), 7 stage-clear bonuses (0x0606BA08), 9 game over (0x0606B58C),
  * 11 back to DIRECTOR (0x0606BAA4); 1, 2, 8, 10 do nothing. */
+#include "ninjutsu.h"
 #include "shinobi.h"
 #include "boot.h"
 #include "ram.h"
@@ -131,6 +132,7 @@ static void Game_LoadStage(void)
     }
     W16(0x060F4CCEu, 0); W16(0x060F4CCCu, 0);        /* 0x0606694C */
     Stage_SpawnPlayer();
+    Ninjutsu_PlayerStageInit();                      /* part of 0x06044E18 */
     Ninjutsu_Init();                                 /* 0x06063538 */
     StageHooks_Init();                               /* 0x0606C618 (after 0x0606694C) */
     Fade_StageIntro();                               /* 0x0606B7C6-0x0606B838 */
@@ -173,6 +175,7 @@ static void Game_StageFrame(void)
     Scroll_Update();                                 /* 0x060443D8 */
     Game_LatchPad1(P16(P_FLAGS4));                   /* 0x06040CAC */
     Player_Tick();                                   /* 0x06040B72 */
+    PlayerFx_Update();                               /* 0x060465B8 (kind-4 sword flashes) */
     Stage_UpdateState();                             /* 0x06046190 */
     /* PC approximation of 0x0606E440 (stage 1-1 hook) for the other stages entered first
      * with --stage: the drop-in ends when Sho lands */

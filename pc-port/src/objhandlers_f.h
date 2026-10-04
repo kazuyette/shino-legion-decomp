@@ -56,6 +56,7 @@ void ObjHandler_1050(void);   /* 0x0605ED0C  9-1 scenery */
 /* Spawn helpers called by enemy / projectile code (return the slot or -1). */
 int  ObjF_RubbleSpawn(int32_t x, int32_t y, uint16_t part, uint16_t kind, uint16_t mirror); /* 0x0605AA34 */
 int  ObjF_DebrisSpawn(int32_t x, int32_t y, uint16_t flags, uint16_t set, uint16_t mirror); /* 0x0605A688 */
+void Crystal_Burst(int32_t x, int32_t y);                                                  /* 0x0605AF84 */
 void ObjF_RockfallSpawn(int32_t x, int32_t y);                                           /* 0x0605D838 */
 void ObjF_Rubble2Spawn(int32_t x, int32_t y, int16_t kind);                              /* 0x0605DBEC */
 int  ObjF_ShardSpawn(int32_t dx, int32_t dy);                                            /* 0x0605E76C */

@@ -28,7 +28,7 @@ static uint32_t rnd_div(uint32_t d) { return f_rnd() / d; }
 /* ======================================================= 6-2: 0x1038-0x103B */
 
 /* 0x0605AF84: 8 fragments (0x1038 flags 1, table 0x060AC010 {angle, dx, dy, part}) around p. */
-static void Crystal_Burst(int32_t x, int32_t y)
+void Crystal_Burst(int32_t x, int32_t y)                     /* also the 6-2 boss (enemy_boss09.c) */
 {
     SFX(0x20A);
     for (int16_t i = 0; i < 8; i++) {
@@ -549,7 +549,7 @@ void ObjHandler_1050(void)
 
 /* 0x060842F8: boss (enemy type 0x1F) phase step when an orb is taken (boss code, ported here
  * because 0x104C drives it; state 0x060F81D2..0x060F81D6, tables 0x060BC338 / 0x060BC33E). */
-static void Boss1F_OrbTaken(uint32_t b)
+void Boss1F_OrbTaken(uint32_t b)                           /* exported: also called by enemy_boss1f.c */
 {
     int16_t hp = RS16(b + 0x16);
     if (hp > RS16(0x060F81D6u)) return;

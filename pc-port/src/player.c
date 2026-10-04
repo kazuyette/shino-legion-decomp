@@ -453,14 +453,13 @@ int Player_SelectAction_Stand(void)
     if (a == ACT_EDGE_IDLE_Q) return a;
     if (a == ACT_IDLE && R16(G_IDLE_CTR) > 0x1E) set_act(ACT_IDLE_FIDGET1);
     if (R16(G_STAGE) == 0x11 && RS16(G_STAGE11_OBJ + 0x16) < 1) return RS16(G_STAGE11_OBJ + 0x16);
-    if ((v = sub_0600A604()) != 0) return v;
+    /* fidget every 0x060EA444 frames of idling: idle counter % timer == 0 (A.BIN __modsi3) */
+    if ((v = sub_0600A604((int32_t)R16(G_IDLE_CTR), RS16(G_FIDGET_TMR))) != 0) return v;
     set_act(ACT_IDLE_FIDGET2);
     {
         int16_t t = 0xB4;
-        if (RS16(G_FIDGET_TMR) > 0x40) {
-            sub_0602DDD2();
-            t = (int16_t)(sub_0600CEF4() * 0x60 + 0x20);
-        }
+        if (RS16(G_FIDGET_TMR) > 0x40)                   /* next one in 0x20 + 0x60 * (rand % 5) */
+            t = (int16_t)(sub_0600CEF4((uint32_t)sub_0602DDD2() >> 8, 5) * 0x60 + 0x20);
         W16(G_FIDGET_TMR, (uint16_t)t);
     }
     return ACT_IDLE_FIDGET2;
@@ -833,10 +832,16 @@ void Player_SelectPosture(void)
     AND16(PLAYER + P_FLAGS4, 0xF7FF);
 }
 
-/* 0x06043FDA: animate the player and submit its sprite (position history
- * ring and riding-platform rotation not ported yet). */
+/* 0x06043FDA: animate the player and submit its sprite (riding-platform rotation not
+ * ported yet). */
 void Player_Draw(void)
 {
+    if (!(R16(G_SYSFLAGS) & 0x8000)) {                   /* position history ring (afterimages) */
+        uint32_t e = 0x060EA446u + (uint32_t)R16(0x060EA546u) * 4u;
+        W16(e, (uint32_t)P32(P_X) >> 16);
+        W16(e + 2, (uint32_t)P32(P_Y) >> 16);
+        W16(0x060EA546u, (R16(0x060EA546u) + 1u) & 63u);
+    }
     uint16_t saved = R16(G_SYSFLAGS);
     int a = Player_Action();
     if (a == ACT_NINJUTSU || a == ACT_CROUCH_NINJUTSU || a == 0x4A || a == ACT_AIR_NINJUTSU)
@@ -905,6 +910,7 @@ void Player_Init(void)
     W16(0x060EA426u, 0xFFFF);                                   /* force first palette load */
     Player_InitChars();                                         /* 0x06044A78: streamed char slots */
     PW16(P_PREVACT, 0xFFFF);                                    /* start the idle anim */
+    W16(G_FIDGET_TMR, (uint16_t)(sub_0600CEF4((uint32_t)sub_0602DDD2() >> 8, 5) * 0x60 + 0x20));   /* 0x06044FD8 */
     if (R32(0x0601440Cu) == 0) W32(0x0601440Cu, 0x00024000);   /* walk speed if A.BIN not loaded */
     PW32(P_X, 0x00A00000);                                      /* overwritten by Stage_SpawnPlayer */
     PW32(P_Y, 0x00C00000);

@@ -126,6 +126,7 @@ static void Fx_Slash(uint32_t e)                                       /* 0x0606
     fx_tick(e);
 }
 
+int  BossB_Effect(uint16_t t, uint32_t e);                              /* enemy_boss06.c (bosses 0x17 / 0x1F) */
 void Effects_Update(void)
 {
     for (uint32_t i = 0; i < 64; i++) {
@@ -145,7 +146,8 @@ void Effects_Update(void)
         case 8: case 9: Fx_Shard(e); break;                      /* objhandlers_e.c, 0x0604E180 */
         case 0xE: Fx_Splash0E(e); break;                         /* enemy_more.c, 0x0605B08A */
         case 0xA: case 0xB: case 0xC: case 0xD: Fx_Sparkle(e); break;   /* fx_b.c */
-        default: once("effect type", t); W16(e, 0xFFFF); break;
+        default: if (BossB_Effect(t, e)) break;                  /* 0x12-0x14 (bosses 0x17 / 0x1F) */
+                 once("effect type", t); W16(e, 0xFFFF); break;
         }
     }
 }
@@ -416,6 +418,12 @@ void Proj_Flame28(uint32_t e);                                         /* enemy_
 void Proj_Grenade29(uint32_t e);                                       /* enemy_t24.c */
 void Proj_FirePillar10(uint32_t e); void Proj_Fireball11(uint32_t e);   /* enemy_boss18.c */
 void Proj_Dust0E(uint32_t e); void Proj_Slash0F(uint32_t e);           /* enemy_boss15.c */
+void Proj_Feather09(uint32_t e);                                       /* enemy_t0b.c */
+void Proj_Blast23(uint32_t e);                                         /* enemy_t19.c */
+void Proj_Shuriken26(uint32_t e); void Proj_Blast27(uint32_t e);      /* enemy_boss21.c */
+void Proj_Piece2A(uint32_t e); void Proj_Puff2B(uint32_t e); void Proj_Spore2C(uint32_t e);   /* enemy_boss1a.c */
+void Proj_FireWave0A(uint32_t e);                                      /* enemy_boss09.c */
+int  BossB_Projectile(uint16_t t, uint32_t e);                          /* enemy_boss06.c: 7-2 / 8-2 / 9-2 bosses */
 void Projectiles_Update(void)
 {
     for (int i = 0; i < 64; i++) {
@@ -427,6 +435,8 @@ void Projectiles_Update(void)
         else if (t == 1) Proj_EnemyShuriken(e);
         else if (t == 5) Proj_Explosion05(e);                          /* enemy_more.c */
         else if (t == 6) Proj_ShockWave06(e);                          /* enemy_t07.c (type 7) */
+        else if (t == 9) Proj_Feather09(e);                            /* enemy_t0b.c (type 0xB) */
+        else if (t == 0x23) Proj_Blast23(e);                           /* enemy_t19.c (type 0x19) */
         else if (t == 0x13) Proj_Bomb13(e);                            /* enemy_t16.c (type 0x16) */
         else if (t == 0x14) Proj_Blast14(e);
         else if (t == 0x28) Proj_Flame28(e);                           /* enemy_t22.c (type 0x22) */
@@ -439,6 +449,13 @@ void Projectiles_Update(void)
         else if (t == 0x21) Proj_Boss42Bolt(e);
         else if (t == 0x24) Proj_CannonBall(e);                        /* objhandlers_e2.c (0x101B) */
         else if (t == 0x25) Proj_Rock(e);                              /* objhandlers_e2.c (0x101A) */
+        else if (t == 0x26) Proj_Shuriken26(e);                        /* enemy_boss21.c (2-1 boss) */
+        else if (t == 0x27) Proj_Blast27(e);
+        else if (t == 0x2A) Proj_Piece2A(e);                           /* enemy_boss1a.c (3-2 boss) */
+        else if (t == 0x2B) Proj_Puff2B(e);
+        else if (t == 0x2C) Proj_Spore2C(e);
+        else if (t == 0xA) Proj_FireWave0A(e);                         /* enemy_boss09.c (6-2 boss) */
+        else if (BossB_Projectile(t, e)) { }                           /* 2, 3, 0x15-0x18, 0x1B, 0x1C (bosses 6 / 0x17 / 0x1F) */
         else { once("projectile type", t); W16(e, 0xFFFF); }
     }
 }

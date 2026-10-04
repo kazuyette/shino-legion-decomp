@@ -34,4 +34,5 @@ uint16_t EM_ProjTouch(uint32_t p, int16_t kp, uint32_t *who, int16_t ko);
 /* 0x06049BA4 / 0x06049BF0: the bosses' afterimage trail (8 copies, one every 4 frames) */
 void EM_TrailReset(void);
 void EM_Trail(int active, uint32_t o);
+void EM_TrailEx(int active, uint32_t o, uint32_t extra);  /* 0x06049C10 with an extra record */
 #endif

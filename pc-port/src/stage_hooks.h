@@ -52,8 +52,9 @@ void CellList_Set(int list, int idx, uint16_t type, int16_t cols, int32_t value)
 /* 0x0606FA48: adds a sine (cos if flags & 1) wave to the line table of NBG0/NBG1/NBG2 */
 void LineWave_Apply(int layer, int phase, int start, int lines, int32_t len, int32_t amp, int flags);
 
-void Ninjutsu_Init(void);            /* 0x06063538 */
-int  Ninjutsu_Update(void);          /* 0x06063554 (request dispatch only, see .c) */
+void Ninjutsu_Init(void);            /* 0x06063538 (ninjutsu.c) */
+int  Ninjutsu_Update(void);          /* 0x06063554 (ninjutsu.c) */
+void Layer_FillPage(uint32_t desc);  /* 0x0606F8D8: write a layer's whole 32x32-tile page */
 
 /* A.BIN VBlank side of the HBlank line table (0x06004FD4 -> 0x0600527C, 0x060051C8).
  * Call once per frame after the game frame and the fader (Boot_Frame). */
