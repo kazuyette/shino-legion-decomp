@@ -3,6 +3,7 @@
 #define _POSIX_C_SOURCE 200809L          /* mkdir with -std=c11 */
 #endif
 #include "screenshot.h"
+#include "u8path.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,11 +11,11 @@
 #include <time.h>
 #ifdef _WIN32
 #include <direct.h>
-#define MAKE_DIR(p) _mkdir(p)
+#define MAKE_DIR(p) u8_mkdir(p)
 #else
 #include <sys/stat.h>
 #include <sys/types.h>
-#define MAKE_DIR(p) mkdir((p), 0755)
+#define MAKE_DIR(p) u8_mkdir(p)
 #endif
 
 static void put16(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
@@ -36,7 +37,7 @@ int Screenshot_WriteBmp(const char *path, const uint8_t *rgb, int w, int h)
     put32(hd + 34, img);
     put32(hd + 38, 2835);                  /* 72 dpi */
     put32(hd + 42, 2835);
-    FILE *f = fopen(path, "wb");
+    FILE *f = u8_fopen(path, "wb");
     if (!f) return 0;
     uint8_t *row = (uint8_t *)calloc(stride, 1);
     int ok = row && fwrite(hd, 1, 54, f) == 54;
@@ -103,7 +104,7 @@ int Screenshot_WritePng(const char *path, const uint8_t *rgb, int w, int h)
     be32(ihdr, (uint32_t)w); be32(ihdr + 4, (uint32_t)h);
     ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = ihdr[11] = ihdr[12] = 0;   /* 8-bit RGB */
     static const uint8_t sig[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
-    FILE *f = fopen(path, "wb");
+    FILE *f = u8_fopen(path, "wb");
     int ok = f != NULL;
     if (ok) ok = fwrite(sig, 1, 8, f) == 8 && chunk(f, "IHDR", ihdr, 13) && chunk(f, "IDAT", z, (uint32_t)o) && chunk(f, "IEND", NULL, 0);
     if (f && fclose(f) != 0) ok = 0;
@@ -124,7 +125,7 @@ int Screenshot_Save(const char *dir, const uint8_t *rgb, int w, int h, int png, 
     for (int n = 1; n < 1000; n++) {
         if (n == 1) snprintf(path, sizeof path, "%s/shinobi_%s.%s", folder, stamp, ext);
         else snprintf(path, sizeof path, "%s/shinobi_%s_%d.%s", folder, stamp, n, ext);
-        FILE *f = fopen(path, "rb");
+        FILE *f = u8_fopen(path, "rb");
         if (!f) break;
         fclose(f);
     }

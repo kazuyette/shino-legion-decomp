@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 # Port version: bump here (MAJOR.MINOR.PATCH), see CHANGELOG.md.
-project(shinobi_legions_pc VERSION 0.21.0 LANGUAGES C)
+project(shinobi_legions_pc VERSION 0.21.1 LANGUAGES C)
 
 # Short git hash of the build, if git is available.
 set(SL_GIT_HASH "unknown")
@@ -43,6 +43,7 @@ add_executable(shinobi_legions_pc
     src/physics.c
     src/lz.c
     src/extract.c
+    src/u8path.c
     src/anim.c
     src/sprite.c
     src/collision.c

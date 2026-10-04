@@ -20,6 +20,7 @@
  *   YUV -> RGB: r = Y + 2V, g = Y - U/2 - V, b = Y + 2U (U, V signed bytes), clipped.
  */
 #include "cpk.h"
+#include "u8path.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -289,7 +290,7 @@ fail:
 CpkMovie *Cpk_Open(const char *path) {
     CpkMovie *m = (CpkMovie *)calloc(1, sizeof *m);
     if (!m) { g_err = "out of memory"; return NULL; }
-    m->fp = fopen(path, "rb");
+    m->fp = u8_fopen(path, "rb");
     if (!m->fp) { free(m); g_err = "cannot open file"; return NULL; }
     return open_common(m);
 }

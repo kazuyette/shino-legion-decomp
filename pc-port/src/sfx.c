@@ -1,5 +1,6 @@
 /* SCSP sound banks + sequence/voice engine, see sfx.h and docs/sound.md. */
 #include "sfx.h"
+#include "u8path.h"
 #include "audio.h"
 
 #include <stdio.h>
@@ -107,7 +108,7 @@ SfxBank *SfxBank_Parse(const uint8_t *buf, size_t len, const char *name)
 
 SfxBank *SfxBank_Load(const char *path)
 {
-    FILE *f = fopen(path, "rb");
+    FILE *f = u8_fopen(path, "rb");
     long n;
     uint8_t *buf;
     SfxBank *b;

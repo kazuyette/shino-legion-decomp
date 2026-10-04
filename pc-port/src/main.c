@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "u8path.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -101,7 +102,7 @@ static int run_extract(const char *image, const char *assets, int gui)
 /* "assets" in the working directory when it holds A.BIN (development), else next to the exe. */
 static void default_assets(char *out, size_t n)
 {
-    FILE *f = fopen("assets/A.BIN", "rb");
+    FILE *f = u8_fopen("assets/A.BIN", "rb");
     if (f) { fclose(f); snprintf(out, n, "assets"); return; }
     snprintf(out, n, "%sassets", Config_BaseDir());
 }
@@ -132,6 +133,7 @@ static int ensure_assets(const char *assets)
 
 int main(int argc, char **argv)
 {
+    u8_console_init();                       /* Windows: UTF-8 console output */
     const char *assetsArg = NULL, *extractImg = NULL, *droppedImg = NULL;
     const char *configPath = NULL;
     int stage = -1, skipIntro = 0, assetCheck = 1;

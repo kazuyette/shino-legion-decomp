@@ -1,5 +1,6 @@
 /* File loading of A.BIN (resource requests, queue, overlay loads), see resource.h. */
 #include "resource.h"
+#include "u8path.h"
 #include "audio.h"
 #include "sfx.h"
 #include "ram.h"
@@ -64,7 +65,7 @@ static uint8_t *read_file(const char *name, size_t *len)
 {
     char p[600];
     snprintf(p, sizeof p, "%s/%s", s_assetDir, name);
-    FILE *f = fopen(p, "rb");
+    FILE *f = u8_fopen(p, "rb");
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long n = ftell(f);

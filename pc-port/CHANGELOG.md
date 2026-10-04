@@ -3,6 +3,12 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.21.1 — 2026-10-04
+- Unicode file paths on Windows (u8path.c): every file access (assets, disc image, .cue
+  contents, shinobi.ini, screenshots) goes through UTF-8 -> UTF-16 wide APIs, so folders or
+  disc images with accents / non-Latin characters work; a .cue saved in the ANSI code page
+  still works (fallback). Console output in UTF-8.
+
 ## 0.21.0 — 2026-10-04
 - Game files from the player's own disc image, so the port is distributed without game data:
   - src/extract.c/.h (plain C, no SDL): Extract_FromCue(cue_or_bin, out_dir, progress) parses the

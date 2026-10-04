@@ -8,6 +8,7 @@
 #  endif
 #endif
 #include "extract.h"
+#include "u8path.h"
 #include "asset_manifest.h"
 #include "lz.h"
 #include <ctype.h>
@@ -139,39 +140,21 @@ static int is_abs(const char *p)
     return is_sep(p[0]) || (isalpha((unsigned char)p[0]) && p[1] == ':');
 }
 
-/* size of a regular file, -1 if missing */
+/* size of a regular file, -1 if missing (UTF-8 paths, see u8path.h) */
 static int64_t file_size(const char *path)
 {
-#ifdef _WIN32
-    struct _stat64 st;
-    if (_stat64(path, &st) != 0 || (st.st_mode & _S_IFMT) != _S_IFREG) return -1;
-    return (int64_t)st.st_size;
-#else
-    struct stat st;
-    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return -1;
-    return (int64_t)st.st_size;
-#endif
+    int64_t sz; int dir;
+    if (u8_stat(path, &sz, &dir) != 0 || dir) return -1;
+    return sz;
 }
 
 static int is_dir(const char *path)
 {
-#ifdef _WIN32
-    struct _stat64 st;
-    return _stat64(path, &st) == 0 && (st.st_mode & _S_IFMT) == _S_IFDIR;
-#else
-    struct stat st;
-    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
-#endif
+    int dir;
+    return u8_stat(path, NULL, &dir) == 0 && dir;
 }
 
-static void mkdir1(const char *p)
-{
-#ifdef _WIN32
-    _mkdir(p);
-#else
-    mkdir(p, 0777);
-#endif
-}
+static void mkdir1(const char *p) { u8_mkdir(p); }
 
 static int make_dirs(const char *path)
 {
@@ -264,7 +247,7 @@ static char *kw(char *s, const char *k)
 
 static int parse_cue(Image *im, const char *cuePath)
 {
-    FILE *f = fopen(cuePath, "rb");
+    FILE *f = u8_fopen(cuePath, "rb");
     if (!f) { set_err("cannot open %s", cuePath); return EXTRACT_ERR_OPEN; }
     char dir[PATHLEN], line[PATHLEN + 128];
     dir_of(cuePath, dir, sizeof dir);
@@ -344,7 +327,7 @@ static int parse_cue(Image *im, const char *cuePath)
             snprintf(alt, sizeof alt, "%.*s.bin", (int)(n > 4 ? n - 4 : n), cuePath);
             if ((sz = file_size(alt)) >= 0) snprintf(fl->path, PATHLEN, "%s", alt);
         }
-        if (sz >= 0) fl->fp = fopen(fl->path, "rb");
+        if (sz >= 0) fl->fp = u8_fopen(fl->path, "rb");
         if (!fl->sector) fl->sector = RAW;
         fl->frames = fl->fp ? sz / fl->sector : 0;
     }
@@ -379,7 +362,7 @@ static int open_raw(Image *im, const char *path)
     uint8_t s[RAW];
     snprintf(fl->path, PATHLEN, "%s", path);
     int64_t sz = file_size(path);
-    if (sz < 0 || !(fl->fp = fopen(path, "rb"))) { set_err("cannot open %s", path); return EXTRACT_ERR_OPEN; }
+    if (sz < 0 || !(fl->fp = u8_fopen(path, "rb"))) { set_err("cannot open %s", path); return EXTRACT_ERR_OPEN; }
     im->nfiles = im->ntracks = 1;
     memset(t, 0, sizeof *t);
     t->num = 1;
@@ -614,7 +597,7 @@ static int out_open(OutFile *o, const char *dir, const char *name)
     snprintf(o->tmp, sizeof o->tmp, "%s.part", o->dst);
     o->crc = 0;
     o->n = 0;
-    o->f = fopen(o->tmp, "wb");
+    o->f = u8_fopen(o->tmp, "wb");
     return o->f != NULL;
 }
 
@@ -629,7 +612,7 @@ static void out_abort(OutFile *o)
 {
     if (o->f) fclose(o->f);
     o->f = NULL;
-    remove(o->tmp);
+    u8_remove(o->tmp);
 }
 
 static int out_commit(OutFile *o)
@@ -638,13 +621,9 @@ static int out_commit(OutFile *o)
     ok &= fclose(o->f) == 0;
     o->f = NULL;
     if (ok) {
-#ifdef _WIN32
-        ok = MoveFileExA(o->tmp, o->dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
-#else
-        ok = rename(o->tmp, o->dst) == 0;
-#endif
+        ok = u8_rename_replace(o->tmp, o->dst) == 0;
     }
-    if (!ok) remove(o->tmp);
+    if (!ok) u8_remove(o->tmp);
     return ok;
 }
 
@@ -837,35 +816,22 @@ int Extract_CheckAssets(const char *dir, char *firstBad, size_t n)
     return bad;
 }
 
+typedef struct { char best[PATHLEN]; } FindCue;
+
+static int find_cue_cb(const char *name, void *ud)
+{
+    FindCue *fc = (FindCue *)ud;
+    if (has_ext(name, ".cue") && (!fc->best[0] || strcmp(name, fc->best) < 0))
+        snprintf(fc->best, sizeof fc->best, "%s", name);
+    return 0;
+}
+
 int Extract_FindImage(const char *dir, char *out, size_t n)
 {
-    char best[PATHLEN] = "";
-    const char *d = dir && *dir ? dir : ".";
-#ifdef _WIN32
-    char pat[PATHLEN];
-    WIN32_FIND_DATAA fd;
-    join(pat, sizeof pat, d, "*.cue");
-    HANDLE h = FindFirstFileA(pat, &fd);
-    if (h == INVALID_HANDLE_VALUE) return 0;
-    do {
-        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && has_ext(fd.cFileName, ".cue")
-            && (!best[0] || strcmp(fd.cFileName, best) < 0))
-            snprintf(best, sizeof best, "%s", fd.cFileName);
-    } while (FindNextFileA(h, &fd));
-    FindClose(h);
-#else
-    DIR *dp = opendir(d);
-    struct dirent *de;
-    if (!dp) return 0;
-    while ((de = readdir(dp)) != NULL) {
-        if (!has_ext(de->d_name, ".cue") || (best[0] && strcmp(de->d_name, best) >= 0)) continue;
-        char p[PATHLEN];
-        join(p, sizeof p, d, de->d_name);
-        if (file_size(p) >= 0) snprintf(best, sizeof best, "%s", de->d_name);
-    }
-    closedir(dp);
-#endif
-    if (!best[0]) return 0;
-    join(out, n, dir && *dir ? dir : "", best);
+    FindCue fc;
+    fc.best[0] = 0;
+    u8_list_files(dir && *dir ? dir : ".", find_cue_cb, &fc);
+    if (!fc.best[0]) return 0;
+    join(out, n, dir && *dir ? dir : "", fc.best);
     return 1;
 }

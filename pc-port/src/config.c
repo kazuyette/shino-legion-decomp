@@ -1,5 +1,6 @@
 /* PC port settings (shinobi.ini), see config.h. */
 #include "config.h"
+#include "u8path.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -307,7 +308,7 @@ int Config_ParseText(Config *c, const char *text, const char *source)
 
 int Config_LoadFile(Config *c, const char *path)
 {
-    FILE *f = fopen(path, "rb");
+    FILE *f = u8_fopen(path, "rb");
     if (!f) return 0;
     char *buf = NULL;
     long n = -1;
@@ -326,7 +327,7 @@ int Config_LoadFile(Config *c, const char *path)
 
 int Config_WriteDefault(const char *path)
 {
-    FILE *f = fopen(path, "w");          /* text mode: CRLF on Windows */
+    FILE *f = u8_fopen(path, "w");          /* text mode: CRLF on Windows */
     if (!f) return 0;
     int ok = fputs(kDefaultText, f) >= 0;
     if (fclose(f) != 0) ok = 0;

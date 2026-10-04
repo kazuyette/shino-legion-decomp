@@ -1,4 +1,5 @@
 #include "soft_render.h"
+#include "u8path.h"
 #include "ram.h"
 #include "sprite.h"
 #include "stage.h"
@@ -725,7 +726,7 @@ int Soft_WritePng(const char *path, const uint32_t *argb, int w, int h)
         o += n; p += n;
     }
     put32(z + o, s2 << 16 | s1); o += 4;
-    f = fopen(path, "wb");
+    f = u8_fopen(path, "wb");
     if (!f) goto done;
     uint8_t ihdr[13];
     put32(ihdr, (uint32_t)w); put32(ihdr + 4, (uint32_t)h);

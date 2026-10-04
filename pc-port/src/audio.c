@@ -11,6 +11,7 @@
 #  endif
 #endif
 #include "audio.h"
+#include "u8path.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -164,7 +165,7 @@ int AudioResampler_Process(AudioResampler *r, const int16_t *in, int in_frames,
 
 int16_t *Audio_LoadPcmFile(const char *path, uint32_t *frames_out)
 {
-    FILE *f = fopen(path, "rb");
+    FILE *f = u8_fopen(path, "rb");
     uint8_t *buf;
     long len;
     AudioWavInfo wi;
