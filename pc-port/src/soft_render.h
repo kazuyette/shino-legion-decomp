@@ -49,6 +49,19 @@ uint32_t Vdp2_MapPageChecksum(int nbg, int pageId);
  * page, pageId ignored) keeping only the characters whose SPR bit equals sp. */
 int  Vdp2_SpecialPrioMode(int nbg);
 void Vdp2_DecodePageSp(int nbg, int pageId, uint32_t *argb, int sp);
+/* Per-pixel flags of a layer pixel (pattern name / CRAM): SPR bit, special colour-calc (SCC)
+ * bit, MSB of the dot's CRAM word. Vdp2_DecodePageSel keeps the pixels whose flags & mask ==
+ * val (mask 0 = the whole page; NBG3: pageId ignored). */
+#define VDP2_PF_SP   1
+#define VDP2_PF_SCC  2
+#define VDP2_PF_CMSB 4
+void Vdp2_DecodePageSel(int nbg, int pageId, uint32_t *argb, unsigned mask, unsigned val);
+/* VDP2 colour calculation of NBGn as the top screen (CCCTL bit n, SFCCMD mode, CCRNA/CCRNB):
+ * the ratio register value r (0..31; result = layer * (31 - r) / 32 + second screen * (r + 1)
+ * / 32, or layer + second screen when *add, CCCTL bit 8), -1 = off. *sel = the pixel flag that
+ * enables it (0 = every pixel: SFCCMD 0, VDP2_PF_SCC: 1 per character, VDP2_PF_CMSB: 3 colour
+ * MSB; mode 2, per dot / SFCODE, is not used by the game and treated as off). */
+int  Vdp2_LayerColorCalc(int nbg, unsigned *sel, int *add);
 /* NBG3 (status bar): 512x512 from the VRAM page at its SclConfig plate address. */
 void Vdp2_DecodeNbg3(uint32_t *argb);
 uint32_t Vdp2_Nbg3Checksum(void);

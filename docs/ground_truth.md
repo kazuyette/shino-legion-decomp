@@ -109,6 +109,17 @@ flags are 0), 0x060FFE00-0x060FFEFF (PC scratch for the originals' stack records
 
 All tests/test_*.c (except test_audio / test_cpk) pass; the SDL executable builds and boots.
 
+## Live VDP2 registers (after v0.22.0)
+
+The transplants above carry the real game's VDP2 register shadow (0x0603B46C), so they validated
+the renderers but not the port's own register setup. In the PC game itself SHINOBI's VDP2 init
+0x060400B0 and SCL_SetColMix 0x0602B344 were only partly ported: SFPRMD, CCCTL, SFCCMD, SDCTL,
+PRIR and CCRSA..D stayed 0 (no special priority per character, no colour calculation), e.g. the
+1-1 temple pillar (NBG0 SPR characters, priority 5) fell behind Sho. Fixed (CHANGELOG
+"Unreleased"): the PC shadow in 1-1 is now identical to s11a/s11m/s11c/s11cp
+(SPCTL 2003, SDCTL 0100, SFPRMD 0015, CCCTL 004F, SFCCMD 0155, PRIR 0006, CCRSA..D 0800 1810
+1F1F 1F1F); `ramdiff.py` (region "VDP2 shadows") compares a PC HWRAM dump with a real one.
+
 ## Remaining divergences
 
 - VDP1 distorted sprites are mapped affinely (soft) or as two GPU triangles (SDL); the VDP1 walks

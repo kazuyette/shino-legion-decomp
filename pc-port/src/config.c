@@ -55,6 +55,10 @@ static const char kDefaultText[] =
 "crt_mask = aperture\n"
 "; crt mode screen curvature, 0 (flat) .. 100.\n"
 "crt_curvature = 0\n"
+"; Graphics backend: auto (SDL's choice: direct3d on Windows), direct3d, direct3d11,\n"
+"; direct3d12, opengl, opengles2 or software. The one in use is printed at startup; if it\n"
+"; cannot be created the automatic choice is used.\n"
+"renderer = auto\n"
 "\n"
 "[audio]\n"
 "; 0..100 (%). Music also covers the movie soundtracks.\n"
@@ -303,6 +307,14 @@ int Config_ParseText(Config *c, const char *text, const char *source)
                 else if (streqi(v, "slot")) c->crt_mask = 2;
                 else warn(&x, "crt_mask: \"%s\" is not none, aperture or slot", v);
             } else if (streqi(key, "crt_curvature")) set_int(&x, key, v, &c->crt_curvature, 0, 100);
+            else if (streqi(key, "renderer")) {
+                static const char *const names[] = { "auto", "direct3d", "direct3d11", "direct3d12", "opengl",
+                                                     "opengles2", "software", "metal" };
+                int k, n = (int)(sizeof names / sizeof names[0]);
+                for (k = 0; k < n && !streqi(v, names[k]); k++) ;
+                if (k == n) warn(&x, "renderer: \"%s\" is not auto, direct3d, direct3d11, direct3d12, opengl, opengles2 or software", v);
+                else snprintf(c->renderer, sizeof c->renderer, "%s", k == 0 ? "" : names[k]);
+            }
             else warn(&x, "unknown key %s in [video]", key);
         } else if (sec == SEC_AUDIO) {
             if (streqi(key, "master_volume")) set_int(&x, key, v, &c->master_volume, 0, 100);

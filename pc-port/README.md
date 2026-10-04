@@ -73,6 +73,7 @@ default is kept.
 | `[video] crt_strength` | 70 | 0..100: darkness of the scanlines / mask |
 | `[video] crt_mask` | aperture | `crt` mode phosphor mask: `aperture` (grille), `slot` (best at 1440p and up), `none` |
 | `[video] crt_curvature` | 0 | `crt` mode screen curvature 0..100 (bent picture, darker corners) |
+| `[video] renderer` | auto | graphics backend: `auto` (SDL's choice: Direct3D 9 on Windows), `direct3d`, `direct3d11`, `direct3d12`, `opengl`, `opengles2`, `software`. The console shows `[render] renderer: <name> (... available: ...)` and how the VDP1 framebuffer is emulated (`sprite layer targets` after a blend self-test, else `portable path`); a backend that cannot be created falls back to `auto`. Useful to compare backends when a picture looks wrong |
 | `[audio] master_volume`, `music_volume`, `sfx_volume` | 100 | 0..100 %; music also covers the movie soundtracks |
 | `[misc] screenshot_format` | png | `png` or `bmp` (F12) |
 | `[keyboard] A B C X Y Z L R Start Up Down Left Right` | see Controls | SDL key (scancode) names, comma separated, up to 4 per button: `Z`, `Space`, `Return`, `Left Shift`, `Right Ctrl`, `Keypad 8`... Names with `;` `#` `,` go in quotes (`";"`); `none` = unbound |

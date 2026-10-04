@@ -25,10 +25,17 @@
 
 int g_shinobiVerbose = 0;
 
-/* 0x060400B0 (partial, see shinobi.h). The SCL/VDP2 register writes that follow are not
- * emulated; the renderer takes the layer setup from the stage descriptors. */
+/* VDP2 register shadow 0x0603B46C (mirror of 0x25F800E0.., see soft_render.h) */
+#define SH(o) (VDP2_SHADOW_ADDR + (uint32_t)(o))
+static void sh_and_or(uint32_t off, uint16_t and_, uint16_t or_) { W16(SH(off), (uint16_t)((R16(SH(off)) & and_) | or_)); }
+
+/* 0x060400B0. Two SBL calls at the start (0x06028178 / 0x060293EC, VDP2 cycle / VRAM setup)
+ * have no PC equivalent. Each register write of the original is preceded by the SBL dirty
+ * macro 0x06009254 (VBlank flush; the PC renderers read the shadow directly). */
 void Shinobi_InitVdp2(void)
 {
+    Scl_SetColMix(4, 0); Scl_SetColMix(8, 0);        /* NBG0..NBG3: colour calc on, ratio 0 */
+    Scl_SetColMix(0x10, 0); Scl_SetColMix(0x20, 0);
     static const uint32_t vram[4] = { 0x25E60000u, 0x25E64000u, 0x25E68000u, 0x25E6C000u };
     for (uint32_t n = 0; n < 4; n++) {
         uint32_t c = 0x06020D08u + 0x4Cu * n;
@@ -46,6 +53,40 @@ void Shinobi_InitVdp2(void)
     }
     W16(0x0603A608u, 0);
     W16(0x0603A598u + 8, 0); W16(0x0603A598u + 10, 0); W16(0x0603A598u + 12, 0); W16(0x0603A598u + 14, 0);
+    /* 0x06040214..0x06040A6C: the VDP2 register shadow. Before v0.22.1 none of this was done,
+     * so on PC (unlike the BizHawk transplants, which carry the real registers) SFPRMD,
+     * SFCCMD, CCCTL, CCRSA.. and SDCTL stayed 0: no special priority per character (1-1's
+     * temple pillar, 2-1's grass... behind Sho instead of in front) and no colour calculation. */
+    sh_and_or(0x04, 0xFFF0, 0); sh_and_or(0x04, 0xFF0F, 0);    /* CRAOFA (set per stage later) */
+    sh_and_or(0x04, 0xF0FF, 0); sh_and_or(0x04, 0x0FFF, 0);
+    sh_and_or(0x06, 0xFFF0, 0); sh_and_or(0x06, 0xFF0F, 0);    /* CRAOFB */
+    sh_and_or(0x00, 0x0FFF, 0x2000); sh_and_or(0x00, 0xF0FF, 0);   /* SPCTL: SPCCCS 2 (prio >= 0), */
+    sh_and_or(0x00, 0xFFDF, 0); sh_and_or(0x00, 0xFFF0, 3);        /* palette sprites, type 3 */
+    sh_and_or(0x00, 0xFFEF, 0);
+    sh_and_or(0x10, 0xFFF0, 7); sh_and_or(0x10, 0xF0FF, 0x0600);  /* PRISA..PRISD */
+    sh_and_or(0x12, 0xFFF0, 4); sh_and_or(0x12, 0xF0FF, 0x0200);
+    sh_and_or(0x14, 0xFFF0, 0); sh_and_or(0x14, 0xF0FF, 0);
+    sh_and_or(0x16, 0xFFF0, 0); sh_and_or(0x16, 0xF0FF, 0);
+    sh_and_or(0x1E, 0xFF00, 0); sh_and_or(0x1E, 0x00FF, 0x0800);  /* CCRSA..CCRSD: 0 8 16 24 31 31 31 31 */
+    sh_and_or(0x20, 0xFF00, 0x10); sh_and_or(0x20, 0x00FF, 0x1800);
+    sh_and_or(0x22, 0xFF00, 0x1F); sh_and_or(0x22, 0x00FF, 0x1F00);
+    sh_and_or(0x24, 0xFF00, 0x1F); sh_and_or(0x24, 0x00FF, 0x1F00);
+    for (uint16_t b = 1; b <= 0x20; b <<= 1) sh_and_or(0x08, (uint16_t)~b, 0);   /* LNCLEN */
+    sh_and_or(0x0A, 0xFFFC, 1); sh_and_or(0x0A, 0xFFF3, 4);       /* SFPRMD: NBG0..NBG2 per character */
+    sh_and_or(0x0A, 0xFFCF, 0x10); sh_and_or(0x0A, 0xFF3F, 0); sh_and_or(0x0A, 0xFCFF, 0);
+    sh_and_or(0x18, 0xFF00, 6); sh_and_or(0x18, 0x00FF, 0x0400);  /* PRINA, PRINB, PRIR */
+    sh_and_or(0x1A, 0xFF00, 2); sh_and_or(0x1A, 0x00FF, 0x0700);
+    W16(SH(0x1C), 6);
+    static const uint16_t ccclr[] = { 0x7FFF, 0x8FFF, 0xFBFF, 0xFDFF, 0xFEFF, 0xFFBF, 0xFFDF, 0xFFEF };
+    for (unsigned k = 0; k < sizeof ccclr / sizeof ccclr[0]; k++) sh_and_or(0x0C, ccclr[k], 0);   /* CCCTL */
+    sh_and_or(0x0C, 0xFFF7, 8); sh_and_or(0x0C, 0xFFFB, 4); sh_and_or(0x0C, 0xFFFD, 2); sh_and_or(0x0C, 0xFFFE, 1);
+    sh_and_or(0x0E, 0xFFFC, 1); sh_and_or(0x0E, 0xFFF3, 4);       /* SFCCMD: per character (SCC bit) */
+    sh_and_or(0x0E, 0xFFCF, 0x10); sh_and_or(0x0E, 0xFF3F, 0x40); sh_and_or(0x0E, 0xFCFF, 0x100);
+    for (uint16_t b = 1; b <= 0x40; b <<= 1) sh_and_or(0x2E, (uint16_t)~b, b);  /* CLOFEN: all */
+    for (uint16_t b = 1; b <= 0x40; b <<= 1) sh_and_or(0x30, (uint16_t)~b, 0);  /* CLOFSL: offset A */
+    for (uint32_t o = 0x32; o <= 0x3C; o += 2) W16(SH(o), 0);                  /* COAR..COBB */
+    for (uint16_t b = 1; b <= 0x20; b <<= 1) sh_and_or(0x02, (uint16_t)~b, 0); /* SDCTL */
+    sh_and_or(0x02, 0xFEFF, 0x100);                                            /* TPSDSL */
 }
 
 /* 0x06040000 */
@@ -100,7 +141,7 @@ static void Game_Start(void)
 static void Game_InitScreens(void)
 {
     Shinobi_InitVdp2();                              /* 0x060400B0 */
-    /* 0x0602B344(0,0) / (0x100,0): colour-calc rates, not emulated */
+    Scl_SetColMix(0, 0); Scl_SetColMix(0x100, 0);    /* 0x0602B344: sprite colour calc on, S0 ratio 0 */
     for (uint32_t n = 0; n < 4; n++) Ram_Ptr(0x06020D08u + 0x4Cu * n)[0] = 0;   /* NBGs off */
     W16(0x0603B49Eu, 0); W16(0x0603B4A0u, 0); W16(0x0603B4A2u, 0);           /* COAR/G/B */
     Fade_Reset();                                    /* 0x06006F56 */
@@ -122,6 +163,7 @@ static void Game_LoadStage(void)
     W16(0x060F4D32u, (uint32_t)(st == 17 ? 3 : (st & 1) + 3));    /* stage tune */
     sub_06007E00(); sub_06007CDE(RS16(0x060F4D32u));              /* StopAll + Snd_Play */
     Shinobi_InitVdp2();                              /* 0x060400B0 */
+    Scl_SetColMix(0, 0); Scl_SetColMix(0x100, 0);    /* 0x0602B344 (CCCTL 0x004F, as on the Saturn) */
     W32(0x06024058u, 0); W32(0x0602405Cu, 0); W32(0x06024060u, 0x10000); W32(0x06024064u, 0x10000);
     W32(SPR_ZOOM, 0x10000);
     {

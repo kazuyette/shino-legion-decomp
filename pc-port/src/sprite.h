@@ -47,6 +47,10 @@ void Spr2_DistSpr(int prty, uint16_t ctrl, uint16_t pmod, uint16_t colr, uint16_
  * (1 RBG0, 2/4 NBG0, 8/0x80 NBG1, 0x10 NBG2, 0x20 NBG3, 0x100 << n sprite register n)
  * in the VDP2 register shadow (PRISA 0x0603B47C.., PRINA 0x0603B484, PRIR 0x0603B488). */
 void Scl_SetPriority(unsigned mask, unsigned prio);
+/* 0x0602B344 (SBL SCL_SetColMix): VDP2 colour-calculation enable + ratio (0..31; >= 32 =
+ * off) of the screens in `surface` (bits as Scl_SetPriority), in the register shadow (CCCTL
+ * 0x0603B478, CCRSA.. 0x0603B48A, CCRNA 0x0603B492, CCRNB, CCRR). */
+void Scl_SetColMix(unsigned surface, unsigned rate);
 /* 0x06044AF8: stream the player frame (double-buffered char slots 1/2), then draw. */
 void Player_SubmitSprite(uint32_t spr);
 /* 0x06005C8C: copy `n` RGB555 colours to the shadow CRAM with an RGB offset. */

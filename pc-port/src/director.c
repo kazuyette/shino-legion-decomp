@@ -45,7 +45,7 @@ void Director_Init(void)
     /* SclConfig display enable of NBG0..NBG3 off: DIRECTOR draws only VDP1 sprites */
     Ram_Ptr(0x06020D08u)[0] = 0; Ram_Ptr(0x06020D08u + 0x4C)[0] = 0;
     Ram_Ptr(0x06020D08u + 0x98)[0] = 0; Ram_Ptr(0x06020D08u + 0xE4)[0] = 0;
-    /* 0x0602B344(0,0), 0x0602B344(0x100,0): VDP2 colour-calculation rates (not emulated) */
+    Scl_SetColMix(0, 0); Scl_SetColMix(0x100, 0);   /* 0x0602B344: sprite colour calc on, S0 ratio 0 */
     W16(0x0603B46Cu, (R16(0x0603B46Cu) & 0x0FFF) | 0x2000);          /* SPCTL */
     W16(0x0603B46Cu, R16(0x0603B46Cu) & 0xF0FF);
     W16(0x0603B46Cu, (R16(0x0603B46Cu) & 0xFFF0) | 3);              /* sprite type 3 */

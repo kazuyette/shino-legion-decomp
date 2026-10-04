@@ -3,6 +3,42 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.22.1 — 2026-10-04
+- VDP2 register setup of the real game (bug report: 1-1 temple wall, Sho's hand / kunai drawn
+  over the stone pillar, pillar looking see-through). SHINOBI's VDP2 init 0x060400B0 was only
+  partly ported and SBL SCL_SetColMix 0x0602B344 not at all, so in the PC game (unlike the
+  BizHawk transplants of docs/ground_truth.md, which carry the real registers) the shadow
+  0x0603B46C kept SFPRMD, CCCTL, SFCCMD, SDCTL, PRIR, CCRSA..CCRSD at 0: no special priority per
+  character, no colour calculation. The 1-1 pillar column is NBG0 characters with the SPR bit
+  (priority 4 | 1 = 5) plus priority-5 sprites for its edges and ornament; with SFPRMD = 0 the
+  column fell to priority 4 = Sho's sprite priority, and sprites win ties, so Sho was drawn over
+  the column but cut by the edge sprites. Same cause for every per-character foreground (2-1
+  grass, 1-1 ground band / bushes...).
+  - shinobi.c: Shinobi_InitVdp2 now writes the whole register shadow like 0x06040214..0x06040A6C
+    (CRAOFA/B, SPCTL, PRISA..D, CCRSA..D = 0 8 16 24 31 31 31 31, LNCLEN, SFPRMD = 0x0015, PRINA/B,
+    PRIR, CCCTL, SFCCMD = 0x0155, CLOFEN/CLOFSL, colour offsets, SDCTL = 0x0100) after
+    SCL_SetColMix(NBG0..NBG3, 0); Game_InitScreens / Game_LoadStage call SCL_SetColMix(0,0) and
+    (0x100,0) like 0x0606B634 / 0x0606B6EC: CCCTL = 0x004F. In 1-1 the shadow is now identical
+    to the real game's dumps (s11a/s11m/s11c/s11cp).
+  - sprite.c: Scl_SetColMix (0x0602B344): CCCTL enable bits + ratio registers (sprites CCRSA..D,
+    NBG0..3 CCRNA/CCRNB, RBG0 CCRR), CCRTMD / CCMD cleared. Also called by Director_Init
+    (0x06040094), the movie VDP2 setup 0x060409C0 and the 3-2 hook 0x0606D7F2 (NBG2 ratio 15).
+  - render.c: NBG colour calculation (CCCTL bits 0-3, SFCCMD per screen / per character / colour
+    MSB, CCRNA/CCRNB ratio, add mode), drawn as alpha (or additive) blending of page variants:
+    the page textures are split by SPR bit (special priority) and by the colour-calc flag. Plain
+    SDL_BLENDMODE_BLEND / ADD + alpha mod: works on every backend. soft_render.c uses the same
+    register decoding (Vdp2_LayerColorCalc, Vdp2_DecodePageSel).
+  - render.c: the sprite-layer composite (custom blend modes in render targets) is checked once
+    at startup by a read-back self-test (draw, erase, premultiplied colour calculation, copy); if
+    a backend gets it wrong the portable path (sprites grouped by priority) is used. The console
+    prints which one.
+  - shinobi.ini `[video] renderer = auto | direct3d | direct3d11 | direct3d12 | opengl |
+    opengles2 | software` (SDL_HINT_RENDER_DRIVER; falls back to auto if it cannot be created);
+    the renderer in use and the available ones are printed at startup.
+  - Checked: the pillar spot (1-1 checkpoint 2, x 8888) in soft_render, SDL software and SDL
+    OpenGL, before / after (`Claude outputs/bugs/pillar_1-1/`); all tests/test_*.c pass; the 17
+    ground-truth screens of docs/ground_truth.md unchanged (soft / OpenGL / software).
+
 ## 0.22.0 — 2026-10-04
 - Attract demo (docs/director.md §1.4): the recorded demo input is ported — Demo_InputInit
   0x060469FE (tail of Player_InitForStage) and Demo_Input 0x06046A98 (pad.c, called by the pad

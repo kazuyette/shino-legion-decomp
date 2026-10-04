@@ -38,6 +38,7 @@ typedef struct {
     int crt_strength;     /* 0..100 */
     int crt_mask;         /* crt mode phosphor mask: 0 none, 1 aperture grille, 2 slot */
     int crt_curvature;    /* crt mode screen curvature 0..100 */
+    char renderer[16];    /* SDL render driver (SDL_HINT_RENDER_DRIVER), "" = auto */
     /* [audio] 0..100 */
     int master_volume, music_volume, sfx_volume;
     /* [misc] */

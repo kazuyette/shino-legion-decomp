@@ -834,7 +834,7 @@ static void hook_05(void)                                    /* 0x0606D7F2 (3-2)
     if (R16(PF2) & 0x400) OR16(CTRL + 0x20, 0x200);
     if (FROZEN) return;
     if (!(R16(V3C) & 1)) {
-        /* 0x0602B344(0x10, 0xF): colour calculation ratio, not emulated */
+        Scl_SetColMix(0x10, 0xF);                             /* 0x0602B344: NBG2 colour calc ratio 15 */
         if (RS16(V38) == 0x3F) {
             OR16(V3C, 1);
             W16(CTRL + 0x2E, 2);                              /* NBG2 priority (read by 0x060472D2) */

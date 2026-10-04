@@ -182,6 +182,41 @@ void Scl_SetPriority(unsigned mask, unsigned prio)
     if (mask & 1)    W16(VDP2_PRINA + 4, prio);                                      /* PRIR */
 }
 
+/* 0x0602B344 (SBL SCL_SetColMix): colour-calculation ratio of the screens in `surface` (same
+ * bits as Scl_SetPriority). rate < 32 enables the screen's colour calculation (CCCTL bit) and
+ * writes the 5-bit ratio register (sprite register n -> CCRSA..CCRSD byte n, NBG0/NBG1 ->
+ * CCRNA low/high, NBG2/NBG3 -> CCRNB low/high, RBG0 -> CCRR); rate >= 32 disables it. CCRTMD
+ * and CCMD (CCCTL bits 9 / 8) are always cleared: ratio mode, ratio of the top screen. The
+ * original also flags the registers dirty (0x06009254) for the VBlank flush. */
+#define VDP2_CCCTL 0x0603B478u
+#define VDP2_CCRSA 0x0603B48Au
+#define VDP2_CCRNA 0x0603B492u
+static void ccctl_bit(unsigned bit, int on)
+{
+    W16(VDP2_CCCTL, (uint16_t)((R16(VDP2_CCCTL) & ~(1u << bit)) | (unsigned)on << bit));
+}
+static void ratio_byte(uint32_t a, int high, unsigned rate)
+{
+    W16(a, (uint16_t)(high ? (R16(a) & 0x00FFu) | rate << 8 : (R16(a) & 0xFF00u) | rate));
+}
+void Scl_SetColMix(unsigned surface, unsigned rate)
+{
+    rate &= 0xFF;
+    int on = rate < 32;
+    W16(VDP2_CCCTL, R16(VDP2_CCCTL) & 0xFDFFu);
+    W16(VDP2_CCCTL, R16(VDP2_CCCTL) & 0xFEFFu);
+    for (int n = 0; n < 8; n++)                      /* SPCCEN + CCRSA..CCRSD */
+        if (surface & (0x100u << n)) {
+            ccctl_bit(6, on);
+            if (on) ratio_byte(VDP2_CCRSA + 2u * (uint32_t)(n >> 1), n & 1, rate);
+        }
+    if (surface & 6)    { ccctl_bit(0, on); if (on) ratio_byte(VDP2_CCRNA, 0, rate); }     /* NBG0 */
+    if (surface & 0x88) { ccctl_bit(1, on); if (on) ratio_byte(VDP2_CCRNA, 1, rate); }     /* NBG1 */
+    if (surface & 0x10) { ccctl_bit(2, on); if (on) ratio_byte(VDP2_CCRNA + 2, 0, rate); } /* NBG2 */
+    if (surface & 0x20) { ccctl_bit(3, on); if (on) ratio_byte(VDP2_CCRNA + 2, 1, rate); } /* NBG3 */
+    if (surface & 1)    { ccctl_bit(4, on); if (on) W16(VDP2_CCRNA + 4, (uint16_t)rate); } /* RBG0 */
+}
+
 #define SHOU_FRAMES  0x060CB020u   /* {u32 offset in SHOU.CHR, s16 w, s16 h} */
 #define SHOU_BASE    0x00200000u   /* SHOU.CHR loaded in LWRAM */
 #define SLOT_OFFS    0x060EA2ACu   /* VRAM offset of slot 0/1 (u32) */

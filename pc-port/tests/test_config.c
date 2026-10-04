@@ -76,6 +76,14 @@ int main(void)
     assert(c.pad[CFG_BTN_Z].n == 1 && !strcmp(c.pad[CFG_BTN_Z].name[0], "paddle1"));
     assert(c.deadzone == 95 && c.stick_as_dpad == 0 && c.screenshot_png == 0);
 
+    /* [video] renderer: SDL driver names, auto = "" (SDL's choice), bad value keeps the old one */
+    Config_SetDefaults(&c);
+    assert(c.renderer[0] == 0);
+    assert(Config_ParseText(&c, "[video]\nrenderer = Direct3D11\n", NULL) == 0 && !strcmp(c.renderer, "direct3d11"));
+    assert(Config_ParseText(&c, "[video]\nrenderer = vulkan\n", NULL) == 1 && !strcmp(c.renderer, "direct3d11"));
+    assert(Config_ParseText(&c, "[video]\nrenderer = opengl\n", NULL) == 0 && !strcmp(c.renderer, "opengl"));
+    assert(Config_ParseText(&c, "[video]\nrenderer = auto\n", NULL) == 0 && c.renderer[0] == 0);
+
     /* key outside a section, missing '=', missing ']' */
     Config_SetDefaults(&c);
     assert(Config_ParseText(&c, "scale = 2\n[video\nscale = 2\n", NULL) == 2 && c.scale == 3);

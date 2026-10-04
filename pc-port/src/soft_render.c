@@ -212,9 +212,9 @@ uint32_t Vdp2_MapPageChecksum(int nbg, int pageId)
 
 /* One page = 32x32 MAP words, each a 16x16 character of 2x2 8x8 cells (TL,TR,BL,BR), 256
  * colours (8bpp). The words are what 0x06046B14 turns into VDP2 2-word pattern names:
- *   bit 15 H-flip, bit 14 V-flip, bit 13 special priority (unused: SFPRMD stays 0 = per screen),
- *   bit 12 palette bit 4 (+256 colours), bit 0 special colour calc (no effect: colour calc is
- *   off for the stage NBGs), bits 11-1 character pair: character number = base (desc+0x2C) +
+ *   bit 15 H-flip, bit 14 V-flip, bit 13 special priority (SPR: SFPRMD 0x0015, per character),
+ *   bit 12 palette bit 4 (+256 colours), bit 0 special colour calc (SCC: SFCCMD 0x0155, per
+ *   character), bits 11-1 character pair: character number = base (desc+0x2C) +
  *   (word & 0xFFE) * 4, in 0x20-byte units (one 16x16 8bpp character = 256 bytes).
  * Colour = CRAM[(CRAOFA(nbg) + palette) * 256 + dot], dot 0 transparent. */
 /* A VDP2 name-table page (pageId >= VDP2_VRAM_PAGE0): 32x32 2-word pattern names as written by
@@ -222,9 +222,9 @@ uint32_t Vdp2_MapPageChecksum(int nbg, int pageId)
  * in 0x20-byte units), 16x16 characters of 2x2 8bpp cells. */
 /* Per-pixel flags of the decoders below (NULL = not wanted): bit 0 special priority (SPR bit of the
  * pattern name), bit 1 special colour calculation (SCC bit), bit 2 MSB of the dot's CRAM word. */
-#define PF_SP   1
-#define PF_SCC  2
-#define PF_CMSB 4
+#define PF_SP   VDP2_PF_SP
+#define PF_SCC  VDP2_PF_SCC
+#define PF_CMSB VDP2_PF_CMSB
 static uint8_t cram_msb(unsigned idx) { return (R16(SHADOW_CRAM + 2u * (idx & 0x7FF)) & 0x8000) ? PF_CMSB : 0; }
 
 static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb, uint8_t *fl)
@@ -323,12 +323,29 @@ void Vdp2_DecodeNbg3(uint32_t *argb) { decode_nbg3(argb, NULL); }
 
 int Vdp2_SpecialPrioMode(int nbg) { return nbg >= 0 && nbg < 4 ? (R16(VDP2_SHADOW_ADDR + 0x0A) >> (2 * nbg)) & 3 : 0; }
 
-void Vdp2_DecodePageSp(int nbg, int pageId, uint32_t *argb, int sp)
+void Vdp2_DecodePageSel(int nbg, int pageId, uint32_t *argb, unsigned mask, unsigned val)
 {
     static uint8_t fl[VDP2_PAGE_PX * VDP2_PAGE_PX];
     if (nbg == 3) decode_nbg3(argb, fl); else decode_map_page(nbg, pageId, argb, fl);
+    if (!mask) return;
     for (int i = 0; i < VDP2_PAGE_PX * VDP2_PAGE_PX; i++)
-        if (((fl[i] & PF_SP) != 0) != (sp != 0)) argb[i] = 0;
+        if ((fl[i] & mask) != (val & mask)) argb[i] = 0;
+}
+
+void Vdp2_DecodePageSp(int nbg, int pageId, uint32_t *argb, int sp)
+{
+    Vdp2_DecodePageSel(nbg, pageId, argb, PF_SP, sp ? PF_SP : 0);
+}
+
+int Vdp2_LayerColorCalc(int nbg, unsigned *sel, int *add)
+{
+    uint16_t ccctl = R16(VDP2_SHADOW_ADDR + 0x0C);
+    if (nbg < 0 || nbg > 3 || !((ccctl >> nbg) & 1)) return -1;
+    int mode = (R16(VDP2_SHADOW_ADDR + 0x0E) >> (2 * nbg)) & 3;
+    if (mode == 2) return -1;
+    *sel = mode == 0 ? 0u : mode == 1 ? (unsigned)PF_SCC : (unsigned)PF_CMSB;
+    *add = (ccctl >> 8) & 1;
+    return (R16(VDP2_SHADOW_ADDR + 0x26 + 2u * (uint32_t)(nbg >> 1)) >> (8 * (nbg & 1))) & 0x1F;
 }
 
 /* ---- line / cell scroll ---- */
@@ -606,7 +623,10 @@ void Soft_ComposeFrame(uint32_t *fb, const RenderSprite *spr, int n, uint32_t ba
     for (int k = 0; k < n; k++) soft_sprite(&spr[order[k]], pr.sptype);
     free(order);
 
-    uint16_t spctl = R16(SH_REG(0x00)), ccctl = R16(SH_REG(0x0C)), sfprmd = R16(SH_REG(0x0A)), sfccmd = R16(SH_REG(0x0E));
+    uint16_t spctl = R16(SH_REG(0x00)), ccctl = R16(SH_REG(0x0C)), sfprmd = R16(SH_REG(0x0A));
+    int lcc[4], ladd[4] = { 0, 0, 0, 0 };
+    unsigned lsel[4] = { 0, 0, 0, 0 };
+    for (int l = 0; l < 4; l++) lcc[l] = Vdp2_LayerColorCalc(l, &lsel[l], &ladd[l]);
     int type = pr.sptype & 7, mixed = spctl ? (spctl >> 5) & 1 : 1;
     int spccs = (spctl >> 12) & 3, spccn = (spctl >> 8) & 7, ccadd = (ccctl >> 8) & 1;
     unsigned sprofs = ((R16(SH_REG(0x06)) >> 4) & 7) << 8;   /* CRAOFB: sprite colour RAM offset */
@@ -650,13 +670,8 @@ void Soft_ComposeFrame(uint32_t *fb, const RenderSprite *spr, int n, uint32_t ba
                 int r = (R16(SH_REG(0x1E) + 2u * (uint32_t)(sccr >> 1)) >> (8 * (sccr & 1))) & 0x1F;
                 out = cc_mix(topc, secc, r, ccadd);
             }
-        } else if (top >= 0 && ((ccctl >> top) & 1)) {
-            int mode = (sfccmd >> (2 * top)) & 3;
-            int on = mode == 0 || (mode == 1 && (s_lfl[top][i] & PF_SCC)) || (mode == 3 && (s_lfl[top][i] & PF_CMSB));
-            if (on) {
-                int r = (R16(SH_REG(0x26) + 2u * (uint32_t)(top >> 1)) >> (8 * (top & 1))) & 0x1F;
-                out = cc_mix(topc, secc, r, ccadd);
-            }
+        } else if (top >= 0 && lcc[top] >= 0 && (!lsel[top] || (s_lfl[top][i] & lsel[top]))) {
+            out = cc_mix(topc, secc, lcc[top], ladd[top]);
         }
         if (s_fb1sh[i] && top != 4) out = (0xFF000000u | ((out & 0xFEFEFEu) >> 1));
         fb[i] = out;

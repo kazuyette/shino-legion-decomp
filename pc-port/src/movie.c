@@ -58,10 +58,11 @@ static void open_mem(uint32_t addr, uint32_t size)
     if (!MovieBk_OpenMem(addr, size)) printf("[movie] cannot open movie at %08X\n", (unsigned)addr);
 }
 
-/* 0x060409C0: VDP2 for movies: colour mix rates (0x0602B344, not emulated), shadow dirty,
+/* 0x060409C0: VDP2 for movies: colour mix rates (0x0602B344(0,0), (0x100,0)), shadow dirty,
  * SPCTL bit 5 (mixed palette / RGB sprites). */
 static void movie_setup_vdp2(void)
 {
+    Scl_SetColMix(0, 0); Scl_SetColMix(0x100, 0);
     Ram_Ptr(0x0603B4ACu)[0] = (uint8_t)((Ram_Ptr(0x0603B4ACu)[0] & 0x7F) | 0x80);
     W16(0x0603B46Cu, (R16(0x0603B46Cu) & 0xFFDF) | 0x20);
     W32(MOVIE_STATE, R32(MOVIE_STATE) + 1);

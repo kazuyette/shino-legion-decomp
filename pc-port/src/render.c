@@ -34,14 +34,39 @@ static SDL_Window *s_window;
 static SDL_Texture *s_scene;
 static int s_shotPending;
 
+static int sprite_layers_ok(void);
+
+static SDL_Renderer *create_renderer(SDL_Window *window, int vsync)
+{
+    SDL_Renderer *r = NULL;
+    if (vsync) r = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!r) r = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!r) r = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+    return r;
+}
+
 int Render_Init(SDL_Window *window)
 {
     const Config *cfg = Config_Get();
     s_window = window;
     SDL_SetHint(SDL_HINT_RENDER_VSYNC, cfg->vsync ? "1" : "0");   /* also for the fallbacks */
-    if (cfg->vsync) s_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (!s_renderer) s_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!s_renderer) s_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+    /* shinobi.ini [video] renderer: SDL render driver (auto = SDL's choice: direct3d on Windows) */
+    char avail[256] = "";
+    for (int i = 0; i < SDL_GetNumRenderDrivers(); i++) {
+        SDL_RendererInfo di;
+        if (SDL_GetRenderDriverInfo(i, &di) == 0 && strlen(avail) + strlen(di.name) + 3 < sizeof avail) {
+            if (*avail) strcat(avail, ", ");
+            strcat(avail, di.name);
+        }
+    }
+    const char *want = cfg->renderer[0] ? cfg->renderer : "auto";
+    if (strcmp(want, "auto") != 0) SDL_SetHint(SDL_HINT_RENDER_DRIVER, want);
+    s_renderer = create_renderer(window, cfg->vsync);
+    if (!s_renderer && strcmp(want, "auto") != 0) {
+        fprintf(stderr, "[render] renderer \"%s\" not available (%s): automatic choice\n", want, SDL_GetError());
+        SDL_SetHint(SDL_HINT_RENDER_DRIVER, "");
+        s_renderer = create_renderer(window, cfg->vsync);
+    }
     if (!s_renderer) {
         fprintf(stderr, "[render] SDL_CreateRenderer failed: %s\n", SDL_GetError());
         return 0;
@@ -59,10 +84,17 @@ int Render_Init(SDL_Window *window)
     SDL_RenderSetIntegerScale(s_renderer, cfg->integer_scaling ? SDL_TRUE : SDL_FALSE);
     if (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) SDL_ShowCursor(SDL_DISABLE);
     SDL_RendererInfo info;
-    if (SDL_GetRendererInfo(s_renderer, &info) == 0)
+    if (SDL_GetRendererInfo(s_renderer, &info) == 0) {
+        printf("[render] renderer: %s (shinobi.ini renderer = %s; available: %s)\n", info.name, want, avail);
+        if (strcmp(want, "auto") != 0 && strcmp(want, info.name) != 0)
+            fprintf(stderr, "[render] requested renderer \"%s\" not available: using %s\n", want, info.name);
         printf("[render] %s%s, %s%s%s\n", info.name, (info.flags & SDL_RENDERER_PRESENTVSYNC) ? " + vsync" : "",
                cfg->bilinear && s_scene ? "bilinear" : "nearest", cfg->integer_scaling ? ", integer scale" : "",
                cfg->aspect43 && s_scene ? ", 4:3" : "");
+    }
+    printf("[render] VDP1 framebuffer emulation: %s\n", sprite_layers_ok()
+           ? "sprite layer targets (custom blend modes verified)"
+           : "portable path (sprites grouped by priority)");
     Crt_Init(cfg->crt, cfg->crt_strength, cfg->crt_mask, cfg->crt_curvature);   /* crt.c, F10 */
     if (cfg->crt && s_scene)
         printf("[render] CRT filter: %s, strength %d, mask %s, curvature %d\n", Crt_ModeName(cfg->crt),
@@ -80,11 +112,16 @@ static SDL_Texture *s_pageTex[3][VDP2_PAGE_IDS];    /* MAP pages 0..255, VDP2 VR
 static uint32_t s_pageSum[3][VDP2_PAGE_IDS];   /* PC: checksum of the page's name table (map cells change at runtime) */
 static SDL_Texture *s_nbg3Tex;
 static uint32_t s_nbg3Sum;
-/* special priority per character (SFPRMD mode 1): each page split by the SPR bit, the halves
- * drawn at priority (p & 6) and (p & 6) | 1 (e.g. 2-1's grass in front of Sho's feet; checked
- * against the real game) */
-static SDL_Texture *s_halfTex[2][LAYERS][VDP2_PAGE_IDS];
-static uint32_t s_halfSum[2][LAYERS][VDP2_PAGE_IDS];
+/* Page variants = the pixels of a page selected by their flags (Vdp2_DecodePageSel):
+ *  - special priority per character (SFPRMD mode 1, all stages): split by the SPR bit, drawn at
+ *    priority (p & 6) and (p & 6) | 1 (2-1's grass in front of Sho's feet, 1-1's temple pillar
+ *    in front of Sho; checked against the real game);
+ *  - colour calculation per character / colour MSB (SFCCMD 1 / 3): split into the blended and
+ *    the opaque pixels.
+ * Variant index = SPR value | CC value << 1; the selection mask is part of the cache key. */
+#define NVAR 4
+static SDL_Texture *s_varTex[NVAR][LAYERS][VDP2_PAGE_IDS];
+static uint32_t s_varSum[NVAR][LAYERS][VDP2_PAGE_IDS];
 
 void Render_InvalidatePalettes(void)
 {
@@ -96,10 +133,10 @@ void Render_InvalidatePalettes(void)
         for (int p = 0; p < VDP2_PAGE_IDS; p++)
             if (s_pageTex[l][p]) { SDL_DestroyTexture(s_pageTex[l][p]); s_pageTex[l][p] = NULL; }
     if (s_nbg3Tex) { SDL_DestroyTexture(s_nbg3Tex); s_nbg3Tex = NULL; }
-    for (int h = 0; h < 2; h++)
+    for (int v = 0; v < NVAR; v++)
         for (int l = 0; l < LAYERS; l++)
             for (int p = 0; p < VDP2_PAGE_IDS; p++)
-                if (s_halfTex[h][l][p]) { SDL_DestroyTexture(s_halfTex[h][l][p]); s_halfTex[h][l][p] = NULL; }
+                if (s_varTex[v][l][p]) { SDL_DestroyTexture(s_varTex[v][l][p]); s_varTex[v][l][p] = NULL; }
 }
 
 static SDL_Texture *argb_texture(const uint32_t *argb)
@@ -134,22 +171,27 @@ static SDL_Texture *nbg3_texture(void)
     return s_nbg3Tex = argb_texture(argb);
 }
 
-static SDL_Texture *half_texture(int l, int pid, int half)
+static SDL_Texture *var_texture(int l, int pid, int var, unsigned mask, unsigned val)
 {
     static uint32_t argb[VDP2_PAGE_PX * VDP2_PAGE_PX];
     if (l == 3) pid = 0;
-    uint32_t sum = l == 3 ? Vdp2_Nbg3Checksum() : Vdp2_MapPageChecksum(l, pid);
-    SDL_Texture **t = &s_halfTex[half][l][pid];
-    if (*t && s_halfSum[half][l][pid] != sum) { SDL_DestroyTexture(*t); *t = NULL; }
-    s_halfSum[half][l][pid] = sum;
+    uint32_t sum = (l == 3 ? Vdp2_Nbg3Checksum() : Vdp2_MapPageChecksum(l, pid)) ^ (mask * 0x9E3779B1u);
+    SDL_Texture **t = &s_varTex[var][l][pid];
+    if (*t && s_varSum[var][l][pid] != sum) { SDL_DestroyTexture(*t); *t = NULL; }
+    s_varSum[var][l][pid] = sum;
     if (*t) return *t;
-    Vdp2_DecodePageSp(l, pid, argb, half);
+    Vdp2_DecodePageSel(l, pid, argb, mask, val);
     return *t = argb_texture(argb);
 }
 
 static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 
-static int s_half = -1;                                 /* blit_region: -1 whole pages, 0/1 SPR halves */
+/* blit_region state: page variant (s_var < 0 = whole pages) and the VDP2 colour calculation of
+ * the pixels drawn (s_ccAlpha 255 = opaque; s_ccAdd = CCCTL add mode) */
+static int s_var = -1;
+static unsigned s_varMask, s_varVal;
+static Uint8 s_ccAlpha = 255;
+static int s_ccAdd;
 
 /* Screen rect [x0,x0+w) x [y0,y0+h) showing layer pixels (sx + x, sy + y). */
 static void blit_region(int l, int sx, int sy, int x0, int y0, int w, int h)
@@ -158,13 +200,17 @@ static void blit_region(int l, int sx, int sy, int x0, int y0, int w, int h)
     for (int py = floordiv(wy0, VDP2_PAGE_PX); py * VDP2_PAGE_PX < wy1; py++)
         for (int px = floordiv(wx0, VDP2_PAGE_PX); px * VDP2_PAGE_PX < wx1; px++) {
             SDL_Texture *t;
-            if (l == 3) t = s_half >= 0 ? half_texture(3, 0, s_half) : nbg3_texture();   /* one page, all plates the same */
+            if (l == 3) t = s_var >= 0 ? var_texture(3, 0, s_var, s_varMask, s_varVal) : nbg3_texture();   /* one page, all plates the same */
             else {
                 int pid = Vdp2_LayerPageAt(l, px, py);
                 if (pid < 0) continue;
-                t = s_half >= 0 ? half_texture(l, pid, s_half) : page_texture(l, pid);
+                t = s_var >= 0 ? var_texture(l, pid, s_var, s_varMask, s_varVal) : page_texture(l, pid);
             }
             if (!t) continue;
+            /* VDP2 colour calculation with the screens below: plain alpha (or additive) blending,
+             * supported by every SDL renderer (no custom blend mode) */
+            SDL_SetTextureBlendMode(t, s_ccAdd ? SDL_BLENDMODE_ADD : SDL_BLENDMODE_BLEND);
+            SDL_SetTextureAlphaMod(t, s_ccAlpha);
             int ax = wx0 > px * VDP2_PAGE_PX ? wx0 : px * VDP2_PAGE_PX;
             int ay = wy0 > py * VDP2_PAGE_PX ? wy0 : py * VDP2_PAGE_PX;
             int bx = wx1 < (px + 1) * VDP2_PAGE_PX ? wx1 : (px + 1) * VDP2_PAGE_PX;
@@ -175,11 +221,15 @@ static void blit_region(int l, int sx, int sy, int x0, int y0, int w, int h)
         }
 }
 
-static void draw_layer(int l, int half)
+/* var < 0: the whole layer; else the page variant var (see s_varTex), mask / val its pixel
+ * selection. cc = colour-calculation ratio of these pixels (-1 = none), add = add mode. */
+static void draw_layer(int l, int var, unsigned mask, unsigned val, int cc, int add)
 {
     int sx, sy;
     if (!Vdp2_LayerEnabled(l)) return;
-    s_half = half;
+    s_var = mask ? var : -1; s_varMask = mask; s_varVal = val;
+    s_ccAlpha = cc < 0 || add ? 255 : (Uint8)((255 * (31 - cc) + 16) / 32);
+    s_ccAdd = cc >= 0 && add;
     if (l != 3) {                                       /* line scroll / cell scroll: strips */
         static Vdp2LineScroll ls;
         Vdp2_GetLineScroll(l, &ls);
@@ -269,6 +319,75 @@ static SDL_Texture *s_sprLayer[8];
 static SDL_BlendMode s_erase, s_premulDraw, s_premulCopy;
 static int s_layersOk = -1;
 
+/* One untransformed textured quad through SDL_RenderGeometry (the path draw_sprite uses). */
+static int test_quad(SDL_Texture *t, float x, float y, SDL_Color c)
+{
+    static const int idx[6] = { 0, 1, 2, 0, 2, 3 };
+    SDL_Vertex v[4];
+    for (int i = 0; i < 4; i++) {
+        v[i].position.x = x + ((i == 1 || i == 2) ? 1.0f : 0.0f);
+        v[i].position.y = y + (i >= 2 ? 1.0f : 0.0f);
+        v[i].color = c;
+        v[i].tex_coord.x = (i == 1 || i == 2) ? 1.0f : 0.0f;
+        v[i].tex_coord.y = i >= 2 ? 1.0f : 0.0f;
+    }
+    return SDL_RenderGeometry(s_renderer, t, v, 4, idx, 6);
+}
+
+static int near8(uint32_t px, int r, int g, int b)
+{
+    int pr = (int)(px >> 16 & 255), pg = (int)(px >> 8 & 255), pb = (int)(px & 255);
+    return abs(pr - r) <= 6 && abs(pg - g) <= 6 && abs(pb - b) <= 6;
+}
+
+/* The sprite-layer composite relies on custom blend modes in render targets, which SDL reports
+ * as supported on every GPU backend; check the actual result once (draw + erase + premultiplied
+ * colour calculation in a target, premultiplied copy over an opaque target, read back), so a
+ * backend that gets it wrong (driver quirk, D3D/GL differences) uses the portable path instead
+ * of showing holes or see-through layers. */
+static int blend_self_test(void)
+{
+    SDL_Texture *old = SDL_GetRenderTarget(s_renderer);
+    SDL_Texture *red = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, 1, 1);
+    SDL_Texture *dst = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, 4, 1);
+    uint32_t px[4] = { 0, 0, 0, 0 }, one = 0xFFFF0000u;
+    int ok = red && dst;
+    SDL_Color white = { 255, 255, 255, 255 }, half = { 128, 128, 128, 128 };
+    SDL_Rect r4 = { 0, 0, 4, 1 };
+    if (ok) ok = SDL_UpdateTexture(red, NULL, &one, 4) == 0;
+    if (ok) {
+        SDL_SetRenderTarget(s_renderer, s_sprLayer[1]);
+        SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_NONE);
+        SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, 0);
+        SDL_RenderClear(s_renderer);
+        SDL_SetTextureBlendMode(red, SDL_BLENDMODE_BLEND);
+        test_quad(red, 0, 0, white);                    /* x0: opaque sprite dot */
+        test_quad(red, 1, 0, white);                    /* x1: dot erased by another priority */
+        SDL_SetTextureBlendMode(red, s_erase);
+        test_quad(red, 1, 0, white);
+        SDL_SetTextureBlendMode(red, s_premulDraw);     /* x2: colour-calculated dot, 50 % */
+        test_quad(red, 2, 0, half);
+        SDL_SetTextureBlendMode(red, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderTarget(s_renderer, dst);
+        SDL_SetRenderDrawColor(s_renderer, 0, 0, 255, 255);
+        SDL_RenderClear(s_renderer);
+        SDL_Rect src = { 0, 0, 4, 1 };
+        SDL_RenderCopy(s_renderer, s_sprLayer[1], &src, &r4);   /* s_premulCopy */
+        if (SDL_RenderReadPixels(s_renderer, &r4, SDL_PIXELFORMAT_ARGB8888, px, 16) != 0) {
+            fprintf(stderr, "[render] blend self-test: read back failed (%s), assumed fine\n", SDL_GetError());
+        } else {
+            ok = near8(px[0], 255, 0, 0) && near8(px[1], 0, 0, 255) && near8(px[2], 128, 0, 127) && near8(px[3], 0, 0, 255);
+            if (!ok)
+                fprintf(stderr, "[render] blend self-test failed: %06X %06X %06X %06X (want FF0000 0000FF 80007F 0000FF)\n",
+                        px[0] & 0xFFFFFFu, px[1] & 0xFFFFFFu, px[2] & 0xFFFFFFu, px[3] & 0xFFFFFFu);
+        }
+    }
+    SDL_SetRenderTarget(s_renderer, old);
+    if (red) SDL_DestroyTexture(red);
+    if (dst) SDL_DestroyTexture(dst);
+    return ok;
+}
+
 static int sprite_layers_ok(void)
 {
     if (s_layersOk >= 0) return s_layersOk;
@@ -294,6 +413,10 @@ static int sprite_layers_ok(void)
         return 0;
     }
     for (int p = 1; p < 8; p++) SDL_SetTextureBlendMode(s_sprLayer[p], s_premulCopy);
+    if (!blend_self_test()) {
+        for (int p = 1; p < 8; p++) { SDL_DestroyTexture(s_sprLayer[p]); s_sprLayer[p] = NULL; }
+        return 0;
+    }
     return s_layersOk = 1;
 }
 
@@ -460,13 +583,26 @@ void Render_DrawFrame(void)
         }
         SDL_SetRenderTarget(s_renderer, s_scene);      /* back to the frame target (NULL = window) */
     }
+    /* per layer: special priority per character (LSB of the priority = SPR bit, 0 = hidden)
+     * and colour calculation (whole layer, or the pixels with the SCC bit / CRAM MSB) */
+    int lsp[LAYERS], lcc[LAYERS], ladd[LAYERS];
+    unsigned lsel[LAYERS];
+    for (int l = 0; l < LAYERS; l++) {
+        lsp[l] = Vdp2_SpecialPrioMode(l) == 1;
+        ladd[l] = 0; lsel[l] = 0;
+        lcc[l] = Vdp2_LayerColorCalc(l, &lsel[l], &ladd[l]);
+    }
     for (int p = 1; p < 8; p++) {
         for (int l = LAYERS - 1; l >= 0; l--) {
-            if (Vdp2_SpecialPrioMode(l) == 1) {         /* per character: LSB = SPR bit (0 = hidden) */
-                int b = pr.nbg[l] & 6;
-                if (b && p == b) draw_layer(l, 0);
-                if (pr.nbg[l] && p == (b | 1)) draw_layer(l, 1);
-            } else if (pr.nbg[l] == p) draw_layer(l, -1);
+            if (!pr.nbg[l]) continue;
+            unsigned ccMask = lcc[l] >= 0 ? lsel[l] : 0, mask = (lsp[l] ? VDP2_PF_SP : 0u) | ccMask;
+            for (int v = 0; v < NVAR; v++) {
+                int vsp = v & 1, vcc = v >> 1;
+                if ((vsp && !lsp[l]) || (vcc && !ccMask)) continue;
+                if ((lsp[l] ? ((pr.nbg[l] & 6) | vsp) : pr.nbg[l]) != p) continue;
+                int cc = lcc[l] >= 0 && (!ccMask || vcc) ? lcc[l] : -1;
+                draw_layer(l, v, mask, (vsp ? VDP2_PF_SP : 0u) | (vcc ? ccMask : 0u), cc, ladd[l]);
+            }
         }
         if (!(used & (1u << p))) continue;
         if (split) { SDL_RenderCopy(s_renderer, s_sprLayer[p], NULL, NULL); continue; }
