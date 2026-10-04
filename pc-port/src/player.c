@@ -482,10 +482,12 @@ static void Player_OnActionChange(void)
     if (a == prev) return;
     PW16(P_PREVACT, (uint16_t)a);
     Anim_Start(PLAYER + P_ANIM, 0x060A522Cu, 0x060CA5ACu, 0, a);   /* A.BIN 0x0600648C, anim id = action id */
-    if (prev == ACT_RECOVER && a == ACT_GUARD_START)              PW16(P_5A, (uint16_t)(5 - old5a));
-    if (prev == ACT_CROUCH_IDLE2 && a == ACT_CROUCH_GUARD_START) PW16(P_5A, (uint16_t)(4 - old5a));
-    if (prev == ACT_AIR_RECOVER && a == ACT_AIR_GUARD_START)    PW16(P_5A, (uint16_t)(5 - old5a));
-    if (a == ACT_DEAD && prev == ACT_AIR_DEAD)                   PW16(P_5A, 7);
+    /* The original then tests (+0x22 == 0x1F && action == 0x20) -> 0x5A = 5 - old, (0x30, 0x2D)
+     * -> 4 - old, (0x47, 0x43) -> 5 - old, (action 0x13, +0x22 == 0x3F) -> 7, but it reads +0x22
+     * after storing the new action there (0x06043E0A), so none of them can ever match: dead code,
+     * kept dead. (The port used the previous action: Sho's death after a fall started its
+     * animation at frame 7, diverging from the real game in 9-1, docs/ground_truth.md.) */
+    (void)old5a; (void)prev;
     if (a == ACT_WALK && (PRESSED & DIR_LR))
         W16(G_DIR_TAP, (P16(P_FLAGS2) & 0x8000) | 1);             /* start double-tap window */
     else if (a != ACT_IDLE)

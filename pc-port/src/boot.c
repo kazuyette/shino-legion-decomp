@@ -63,9 +63,8 @@ void Overlay_Entry(void)
 
 void Boot_Frame(void)
 {
-    /* VBlank interrupt side: peripheral read + frame counter */
+    /* VBlank-OUT interrupt 0x060050A4: peripheral read */
     Pad_Update(2);                               /* 0x0600572A */
-    W16(0x060143EAu, R16(0x060143EAu) + 1u);
     /* main loop 0x060041C6: 0x0602CCC4 (frame sync) */
     Sys_SoftReset();                             /* 0x060042B8 */
     Res_ProcessQueue();                          /* 0x0600446A */
@@ -75,7 +74,12 @@ void Boot_Frame(void)
     /* 0x0602894C, NBG0..3 config (0x06029B40 with the SclConfig blocks 0x06020D08 +
      * 0x4C*n; byte 0 = display enable, read by render.c) */
     Fade_Update();                               /* 0x06007084 */
-    LineTable_VBlank();                          /* VBlank 0x06004FD4/0x060050A4: HBlank line table */
+    /* VBlank-IN interrupt 0x06004FD4 (the frame is done): frame counter, HBlank line table.
+     * The real game is paused here between frames (BizHawk dumps: 0x0603A4A4 = 1), so the
+     * counter the next frame's logic reads is the one incremented here. */
+    W16(0x060143EAu, R16(0x060143EAu) + 1u);
+    W32(0x0603B4ACu, 0);                         /* VDP2 shadow uploaded: "changed" bits cleared (as in the real game) */
+    LineTable_VBlank();                          /* 0x0600527C at VBlank-IN, DMA armed at VBlank-OUT 0x060051C8 */
     /* 0x0600863E sound scheduler: sound.c (not part of the headless build) */
 }
 

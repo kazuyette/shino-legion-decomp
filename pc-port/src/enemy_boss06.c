@@ -32,7 +32,7 @@
 #define B06_DEFS 0x060AF284u
 #define B06_SCR  0x060DA830u
 #define G_FLAG   0x060DA874u          /* u32 x4, written only */
-#define K_ALT    0x060F4D00u          /* u16 breath 7 / 0x10 alternation */
+#define K_ALT    0x060F4D00u          /* u32 (mov.l in 0x0606A4F8 / 0x0606A56C / 0x0606AE5C / 0x06069CEA): breath 7 / 0x10 alternation */
 #define K_OVL    0x060F4D04u          /* death overlay anim state */
 #define K_KIND   0x060F4D24u          /* s16 Sho's attack kind of the last hit (-1) */
 #define PROJ(i)  (PROJECTILES + (uint32_t)((int16_t)(i) * 0x40))
@@ -76,7 +76,7 @@ static void Koryu_Init(void)                                /* 0x0606B282 */
     W16(K_KIND, 0xFFFF);
     EM_TrailReset();
     Res_Request(2, 0, 0, 0xFFFFFFFFu, 0, 0x060B0F1Cu);      /* "KORYU1.PBC" */
-    W16(K_ALT, 0);
+    W32(K_ALT, 0);                                          /* 0x0606B322 */
 }
 
 static void Koryu_End(void)                                 /* 0x060698F8 */
@@ -157,8 +157,8 @@ static void set_next(uint32_t o, uint16_t n) { W16(o + 0x48, n); W16(o + 0x52, n
 
 static void pick_breath(uint32_t o)
 {
-    W16(K_ALT, ~R16(K_ALT) & 1);
-    W16(o + 0x48, R16(K_ALT) == 0 ? 7 : 0x10);
+    W32(K_ALT, ~R32(K_ALT) & 1);                           /* 32-bit: the port used the high half */
+    W16(o + 0x48, (R32(K_ALT) & 1) ? 0x10 : 7);
 }
 
 static void Koryu_Decide(uint32_t o)                        /* inline in 0x0606A264 */
@@ -296,9 +296,9 @@ void EnemyHandler_0006(void)                                /* 0x0606A264 */
         if (a != 9 && a != 10 && !(R16(o + 2) & 0x4000) && a != 0xE && a == 0 && R16(o + 0x4A) == 0)
             Koryu_Decide(o);
     }
-    switch (RS16(o + 6)) {
-    case 1: case 2: case 6: OR16(o + 4, 4); break;
-    default: AND16(o + 4, 0xFFFB); break;
+    switch (RS16(o + 6)) {                                          /* 0x0606A80E: flags word +2 */
+    case 1: case 2: case 6: OR16(o + 2, 4); break;                  /* (was +4 before v0.19.x: found */
+    default: AND16(o + 2, 0xFFFB); break;                           /*  against the real game) */
     }
     if (RS16(o + 6) == 10 && (R16(o + 0x58) & 3) == 1) { Koryu_Burst(); AND16(o + 0x58, 0xFFFE); }
     if (RS16(o + 6) == 0xE && (R16(o + 0x58) & 3) == 1) AND16(o + 0x58, 0xFFFE);
@@ -379,7 +379,7 @@ void Proj_KoryuFire02(uint32_t e)
 {
     if (R16(e + 4) & 1) {
         int anim = 0xC;
-        if (!(R16(e + 0x10) & 1) && (R16(K_ALT) & 1)) anim = 0xF;
+        if (!(R16(e + 0x10) & 1) && (R32(K_ALT) & 1)) anim = 0xF;
         Anim_Start(e + 0x20, B06_DEFS, B06_SCR, 0x60, anim);
         AND16(e + 4, 0xFFFE);
     }

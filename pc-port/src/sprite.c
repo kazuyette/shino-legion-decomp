@@ -108,7 +108,7 @@ void Sprite_Draw(uint32_t spr)
         int32_t cx = (int32_t)((uint32_t)(int32_t)SPR16(spr, 1) << 16);
         int32_t cy = (int32_t)((uint32_t)(int32_t)SPR16(spr, 2) << 16);
         int32_t zoom = RS32(SPR_ZOOM);
-        if (zoom == 0) zoom = 0x10000;              /* PC: 0x0606B58C / 0x0604455A not ported yet */
+        if (zoom == 0) zoom = 0x10000;              /* 0x0604455A (camera.c Zoom_Update) keeps it 1.0 in normal play */
         if (zoom != 0x10000 && !(fl & 0x0100)) {    /* global zoom around (*0x060250E4, *0x060250E8) */
             if (!(fl & 0x1000)) sclX = 0x10000;
             if (!(fl & 0x0800)) sclY = 0x10000;

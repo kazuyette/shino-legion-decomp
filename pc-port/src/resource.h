@@ -44,6 +44,8 @@ void Load_DirectorPPB(void);                                 /* 0x06004EAC */
 void Res_PendingDecompress(void);                            /* 0x06004E1C */
 
 int  Res_OverlayResident(void);                              /* OVL_* */
+/* PC: tell which overlay a RAM image transplanted from the real game holds (snap_compare). */
+void Res_SetOverlayResident(int ovl);
 
 /* Sound banks: kind-2 requests parse the .SND into sfx.c (resident bank). */
 void Res_LoadStageSoundBank(int stage);                      /* SHINOBI 0x0606BB0C */

@@ -1,6 +1,7 @@
 #include "camera.h"
 #include "ram.h"
 #include "pad.h"
+#include "fixmath.h"
 
 #define PX        RS32(0x060EA2BCu)
 #define PY        RS32(0x060EA2C0u)
@@ -94,5 +95,50 @@ void Scroll_Update(void)
     }
     for (uint32_t n = 0; n < 3; n++)                        /* layers follow the frame-start camera */
         Layer_FromCamera(RS32(0x060252A8u), RS32(0x060252ACu), D + n * 0x30);
-    /* VDP2 scroll registers ((pos - 1024) & 0x07FFFFFF) are derived by the renderer. */
+    /* NBG0..NBG2 scroll shadows (uploaded to SCXIN0.. by the main loop): (pos - 1024) & 0x07FFFFFF.
+     * The renderers take the layer positions from the descriptors directly. */
+    for (uint32_t n = 0; n < 3; n++) {
+        W32(0x06024058u + 16u * n, (R32(D + n * 0x30) + 0xFC000000u) & 0x07FFFFFFu);
+        W32(0x0602405Cu + 16u * n, (R32(D + n * 0x30 + 4) + 0xFC000000u) & 0x07FFFFFFu);
+    }
+    Zoom_Update();                                          /* 0x0604455A */
+}
+
+/* 0x0604455A: zoom of sprites (0x060250E0, around Sho's screen position 0x060250E4/E8) and of
+ * NBG0/NBG1 (scroll shadow +8/+12 coordinate increments, scroll moved to keep Sho in place),
+ * driven by the distance between Sho and the object in slot control+0x1E. The target zoom is
+ * 1 + FixMul(closeness, *0x06014410); that factor is only changed by SHINOBI's debug menu
+ * (0x06087406 / 0x060875CE), so in normal play the zoom stays 1.0 (checked against the real
+ * game). Quirk kept: the "no object" test compares the sign-extended word with 0x0000FFFF, so
+ * 0xFFFF never matches and slot -1 (0x060EC5E4) is read. */
+void Zoom_Update(void)
+{
+    const uint32_t C = 0x060EA618u, P = 0x060EA2B4u;
+    int32_t target, zoom;
+    if (R16(C + 0x1E) == 0xFFFF) target = 0x10000;
+    else {
+        uint32_t o = 0x060EC65Cu + (uint32_t)(int32_t)(int16_t)(RS16(C + 0x1E) * 120);
+        int32_t dx = RS32(o + 8) - RS32(P + 8), dy = RS32(o + 0xC) - RS32(P + 0xC);
+        if (dx < 0) dx = -dx;
+        if (dy < 0) dy = -dy;
+        int32_t d = dx + dy - 0x300000;
+        if (d < 0) d = 0;
+        if (d > 0xC00000) d = 0xC00000;
+        target = 0x10000 + FixMul(FixDiv(0xC00000 - d, 0xC00000), RS32(0x06014410u));
+        if (R16(P + 4) & 0x0400) target = 0x10000;
+    }
+    int32_t step = target - RS32(0x060250E0u);
+    if (step > 0x400) step = 0x400;
+    else if (step < -0x400) step = -0x400;
+    W32(0x060250E0u, (uint32_t)(RS32(0x060250E0u) + step));
+    zoom = RS32(0x060250E0u);
+    W32(0x060250E4u, (uint32_t)(RS32(P + 8) - RS32(CAM_X)));
+    W32(0x060250E8u, (uint32_t)(RS32(P + 0xC) - RS32(CAM_Y)));
+    for (uint32_t b = 0x06024058u; b <= 0x06024068u; b += 0x10) {
+        int32_t zx = RS32(0x060250E4u), zy = RS32(0x060250E8u);
+        W32(b, (uint32_t)(RS32(b) + (zx - FixDiv(zx, zoom))));
+        W32(b + 4, (uint32_t)(RS32(b + 4) + (zy - FixDiv(zy, zoom))));
+        W32(b + 8, (uint32_t)zoom);
+        W32(b + 12, (uint32_t)zoom);
+    }
 }

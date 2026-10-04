@@ -19,8 +19,12 @@ void Vdp2_GetPriorities(Vdp2Prio *p);
 /* Priority register number held in a sprite's colour data for the VDP2 sprite type. */
 int  Vdp2_SpritePrioReg(const RenderSprite *s, int type);
 
+/* VDP2 colour-calculation ratio (0..31) of a sprite of VDP2 priority `prio`, -1 = none. */
+int  Vdp2_SpriteColorCalc(const RenderSprite *s, int prio);
+
 uint32_t Vdp_Rgb555ToArgb(uint16_t c);            /* opaque ARGB8888 */
 uint32_t Vdp2_CramArgb(unsigned idx);             /* shadow CRAM colour idx (0..0x7FF) */
+uint32_t Vdp2_BackColor(void);                    /* VDP2 back screen colour (BKTA) */
 
 /* VDP1 character (CMDPMOD colour modes 0-5) -> w*h ARGB, 0 = transparent. */
 void Vdp1_DecodeChar(const RenderSprite *s, uint32_t *argb);
@@ -40,6 +44,11 @@ int  Vdp2_LayerPageAt(int nbg, int px, int py);
  * from VDP2 VRAM for page ids >= VDP2_VRAM_PAGE0. */
 void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb);
 uint32_t Vdp2_MapPageChecksum(int nbg, int pageId);
+/* Special priority (SFPRMD shadow 0x0603B476, real game 0x0015): mode of NBGn (1 = per character:
+ * the priority's LSB is the pattern name's SPR bit). Vdp2_DecodePageSp decodes a page (NBG3: its
+ * page, pageId ignored) keeping only the characters whose SPR bit equals sp. */
+int  Vdp2_SpecialPrioMode(int nbg);
+void Vdp2_DecodePageSp(int nbg, int pageId, uint32_t *argb, int sp);
 /* NBG3 (status bar): 512x512 from the VRAM page at its SclConfig plate address. */
 void Vdp2_DecodeNbg3(uint32_t *argb);
 uint32_t Vdp2_Nbg3Checksum(void);

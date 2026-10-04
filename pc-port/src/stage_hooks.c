@@ -347,6 +347,7 @@ void LineTable_VBlank(void)
 }
 
 int LineTable_DmaActive(void) { return s_lineDma; }
+void LineTable_SetDmaActive(int flags) { s_lineDma = flags & 0x6000; }
 
 /* ================= per-stage inits (0x060B1114) ================= */
 

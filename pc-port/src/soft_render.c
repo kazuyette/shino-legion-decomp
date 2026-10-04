@@ -25,6 +25,15 @@ uint32_t Vdp_Rgb555ToArgb(uint16_t c)
     return 0xFF000000u | r << 16 | g << 8 | b;
 }
 
+/* Back screen colour: one RGB555 word in VDP2 VRAM at BKTAU/BKTAL (register shadow 0x0603A570
+ * + 0xAC/0xAE, VRAM word address); the game leaves them 0 (word 0 of VDP2 VRAM, 0 = black in
+ * every real-game dump). */
+uint32_t Vdp2_BackColor(void)
+{
+    uint32_t a = ((uint32_t)(R16(0x0603A570u + 0xACu) & 7) << 16 | R16(0x0603A570u + 0xAEu)) * 2u;
+    return Vdp_Rgb555ToArgb(R16(VDP2_VRAM_BASE + (a & (VDP2_VRAM_SIZE - 1))));
+}
+
 uint32_t Vdp2_CramArgb(unsigned idx)
 {
     return Vdp_Rgb555ToArgb(R16(SHADOW_CRAM + 2u * (idx & 0x7FF)));
@@ -67,6 +76,29 @@ int Vdp2_SpritePrioReg(const RenderSprite *s, int type)
         if (c & 0x8000) return 0;
     }
     return (c >> shift[type]) & ((1 << bits[type]) - 1);
+}
+
+/* VDP2 colour calculation of a sprite whose priority (register value) is `prio`: the ratio
+ * register value r (0..31, result = sprite * (31 - r) / 32 + second screen * (r + 1) / 32), or
+ * -1 when no colour calculation applies (CCCTL bit 6, SPCTL condition SPCCCS / SPCCN, colour-calc
+ * register from the sprite's colour data; RGB dots in mixed mode use register 0). LUT sprites:
+ * colour of dot 1 (like Vdp2_SpritePrioReg). Used by the SDL renderer (per sprite). */
+int Vdp2_SpriteColorCalc(const RenderSprite *s, int prio)
+{
+    static const uint8_t ccs[8] = { 11, 11, 11, 11, 10, 11, 10, 9 }, ccb[8] = { 3, 2, 3, 2, 3, 1, 2, 3 };
+    uint16_t spctl = R16(VDP2_SHADOW_ADDR), ccctl = R16(VDP2_SHADOW_ADDR + 0x0C);
+    int type = spctl ? (spctl & 0xF) : 3, mixed = spctl ? (spctl >> 5) & 1 : 1;
+    int spccs = (spctl >> 12) & 3, spccn = (spctl >> 8) & 7;
+    unsigned cm = (s->mode >> 3) & 7;
+    uint16_t c = s->colr;
+    int reg = 0, msb = 0;
+    if (!(ccctl & 0x40) || type > 7) return -1;
+    if (cm == 1) { c = R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + 2u); msb = (c & 0x8000) != 0; }
+    else if (cm >= 5) msb = 1;
+    if (!(msb && mixed)) reg = (c >> ccs[type]) & ((1 << ccb[type]) - 1);
+    int cond = spccs == 0 ? prio <= spccn : spccs == 1 ? prio == spccn : spccs == 2 ? prio >= spccn : msb;
+    if (!cond) return -1;
+    return (R16(VDP2_SHADOW_ADDR + 0x1E + 2u * (uint32_t)(reg >> 1)) >> (8 * (reg & 1))) & 0x1F;
 }
 
 /* ---- VDP1 characters ---- */
@@ -153,7 +185,12 @@ int Vdp2_LayerPageAt(int nbg, int px, int py)
         unsigned ps = Ram_Ptr(c)[3] & 3;                  /* plate size: 0 1x1, 1 2x1, 3 2x2 pages */
         int pw = (ps & 1) ? 2 : 1, ph = (ps & 2) ? 2 : 1;
         int mx = wrapi(px, 2 * pw), my = wrapi(py, 2 * ph);
-        uint32_t a = R32(c + 12u + 4u * (uint32_t)((my / ph) * 2 + mx / pw)) + (uint32_t)(((my % ph) * pw + mx % pw) * 0x1000);
+        /* the VDP2 ignores the low bit(s) of a plane's map register when the plane is 2x1 / 2x2
+         * pages: the plane starts at the plate address aligned down to its size (1-1's NBG2
+         * plates A 0x25E68000, B-D 0x25E69000 with 2x1 planes all show 68000 + 69000; reading
+         * 6A000 for the right half was the "city lights band" divergence) */
+        uint32_t pl = R32(c + 12u + 4u * (uint32_t)((my / ph) * 2 + mx / pw)) & ~((uint32_t)(pw * ph) * 0x1000u - 1u);
+        uint32_t a = pl + (uint32_t)(((my % ph) * pw + mx % pw) * 0x1000);
         return VDP2_VRAM_PAGE0 + (int)(((a - VDP2_VRAM_BASE) & (VDP2_VRAM_SIZE - 1)) >> 12);
     }
     uint32_t lay = R32(desc_of(nbg) + 0x20);
@@ -182,7 +219,14 @@ uint32_t Vdp2_MapPageChecksum(int nbg, int pageId)
 /* A VDP2 name-table page (pageId >= VDP2_VRAM_PAGE0): 32x32 2-word pattern names as written by
  * Layer_PutTile 0x06046B14 (bit 31 V-flip, 30 H-flip, 22-20 256-colour palette, 14-0 character
  * in 0x20-byte units), 16x16 characters of 2x2 8bpp cells. */
-static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb)
+/* Per-pixel flags of the decoders below (NULL = not wanted): bit 0 special priority (SPR bit of the
+ * pattern name), bit 1 special colour calculation (SCC bit), bit 2 MSB of the dot's CRAM word. */
+#define PF_SP   1
+#define PF_SCC  2
+#define PF_CMSB 4
+static uint8_t cram_msb(unsigned idx) { return (R16(SHADOW_CRAM + 2u * (idx & 0x7FF)) & 0x8000) ? PF_CMSB : 0; }
+
+static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb, uint8_t *fl)
 {
     unsigned off = craof(nbg) << 8;
     for (int ty = 0; ty < 32; ty++)
@@ -191,6 +235,7 @@ static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb)
             uint32_t chr = VDP2_VRAM_BASE + (((pn & 0x7FFFu) * 0x20u) & (VDP2_VRAM_SIZE - 1));
             unsigned pal = off + (((pn >> 20) & 7) << 8);
             int hf = (pn & 0x40000000u) != 0, vf = (pn & 0x80000000u) != 0;
+            uint8_t f = (uint8_t)(((pn >> 29) & 1) * PF_SP | ((pn >> 28) & 1) * PF_SCC);
             for (int y = 0; y < 16; y++) {
                 int yy = vf ? 15 - y : y;
                 uint32_t *row = argb + (ty * 16 + y) * VDP2_PAGE_PX + tx * 16;
@@ -199,14 +244,15 @@ static void decode_vram_page(int nbg, uint32_t page, uint32_t *argb)
                     uint32_t cell = (uint32_t)((yy >> 3) * 2 + (xx >> 3));
                     uint8_t v = Ram_Ptr(chr + cell * 64 + (uint32_t)(yy & 7) * 8 + (uint32_t)(xx & 7))[0];
                     row[x] = v ? Vdp2_CramArgb(pal + v) : 0;
+                    if (fl) fl[(ty * 16 + y) * VDP2_PAGE_PX + tx * 16 + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
                 }
             }
         }
 }
 
-void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb)
+static void decode_map_page(int nbg, int pageId, uint32_t *argb, uint8_t *fl)
 {
-    if (pageId >= VDP2_VRAM_PAGE0) { decode_vram_page(nbg, vram_page_addr(pageId), argb); return; }
+    if (pageId >= VDP2_VRAM_PAGE0) { decode_vram_page(nbg, vram_page_addr(pageId), argb, fl); return; }
     uint32_t d = desc_of(nbg);
     uint32_t pages = R32(d + 0x1C) + (uint32_t)pageId * 0x800u;
     uint32_t base = R32(d + 0x2C);
@@ -217,6 +263,7 @@ void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb)
             uint32_t chr = VDP2_VRAM_BASE + (((base + (((uint32_t)pn & 0x0FFEu) << 2)) * 0x20u) & (VDP2_VRAM_SIZE - 1));
             unsigned pal = off + (((unsigned)pn >> 12 & 1) << 8);
             int hf = (pn & 0x8000) != 0, vf = (pn & 0x4000) != 0;
+            uint8_t f = (uint8_t)(((pn >> 13) & 1) * PF_SP | (pn & 1) * PF_SCC);
             for (int y = 0; y < 16; y++) {
                 int yy = vf ? 15 - y : y;
                 uint32_t *row = argb + (ty * 16 + y) * VDP2_PAGE_PX + tx * 16;
@@ -225,10 +272,13 @@ void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb)
                     uint32_t cell = (uint32_t)((yy >> 3) * 2 + (xx >> 3));
                     uint8_t v = Ram_Ptr(chr + cell * 64 + (uint32_t)(yy & 7) * 8 + (uint32_t)(xx & 7))[0];
                     row[x] = v ? Vdp2_CramArgb(pal + v) : 0;
+                    if (fl) fl[(ty * 16 + y) * VDP2_PAGE_PX + tx * 16 + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
                 }
             }
         }
 }
+
+void Vdp2_DecodeMapPage(int nbg, int pageId, uint32_t *argb) { decode_map_page(nbg, pageId, argb, NULL); }
 
 /* NBG3 (SHINOBI's VDP2 init 0x060400B0: 1x1 cells, 16 colours, 2-word pattern names, plane =
  * one page of 64x64 cells, all plates at 0x25E6C000; map written by 0x06047244): pattern name
@@ -243,7 +293,7 @@ uint32_t Vdp2_Nbg3Checksum(void)
     return h;
 }
 
-void Vdp2_DecodeNbg3(uint32_t *argb)
+static void decode_nbg3(uint32_t *argb, uint8_t *fl)
 {
     uint32_t page = nbg3_page();
     unsigned off = craof(3) << 8;
@@ -253,6 +303,7 @@ void Vdp2_DecodeNbg3(uint32_t *argb)
             uint32_t chr = VDP2_VRAM_BASE + (((pn & 0x7FFFu) * 0x20u) & (VDP2_VRAM_SIZE - 1));
             unsigned pal = off + ((pn >> 16) & 0x7F) * 16;
             int hf = (pn & 0x40000000u) != 0, vf = (pn & 0x80000000u) != 0;
+            uint8_t f = (uint8_t)(((pn >> 29) & 1) * PF_SP | ((pn >> 28) & 1) * PF_SCC);
             for (int y = 0; y < 8; y++) {
                 int yy = vf ? 7 - y : y;
                 uint32_t *row = argb + (cy * 8 + y) * VDP2_PAGE_PX + cx * 8;
@@ -261,9 +312,22 @@ void Vdp2_DecodeNbg3(uint32_t *argb)
                     uint8_t b = Ram_Ptr(chr + (uint32_t)yy * 4 + (uint32_t)(xx >> 1))[0];
                     unsigned v = (xx & 1) ? b & 15u : b >> 4;
                     row[x] = v ? Vdp2_CramArgb(pal + v) : 0;
+                    if (fl) fl[(cy * 8 + y) * VDP2_PAGE_PX + cx * 8 + x] = v ? (uint8_t)(f | cram_msb(pal + v)) : 0;
                 }
             }
         }
+}
+
+void Vdp2_DecodeNbg3(uint32_t *argb) { decode_nbg3(argb, NULL); }
+
+int Vdp2_SpecialPrioMode(int nbg) { return nbg >= 0 && nbg < 4 ? (R16(VDP2_SHADOW_ADDR + 0x0A) >> (2 * nbg)) & 3 : 0; }
+
+void Vdp2_DecodePageSp(int nbg, int pageId, uint32_t *argb, int sp)
+{
+    static uint8_t fl[VDP2_PAGE_PX * VDP2_PAGE_PX];
+    if (nbg == 3) decode_nbg3(argb, fl); else decode_map_page(nbg, pageId, argb, fl);
+    for (int i = 0; i < VDP2_PAGE_PX * VDP2_PAGE_PX; i++)
+        if (((fl[i] & PF_SP) != 0) != (sp != 0)) argb[i] = 0;
 }
 
 /* ---- line / cell scroll ---- */
@@ -288,20 +352,23 @@ void Vdp2_GetLineScroll(int nbg, Vdp2LineScroll *s)
     }
     if (nbg < 0 || nbg > 1) return;
     unsigned scr = (R16(SH_SCRCTL) >> (8 * nbg)) & 0xFF;
+    /* the VDP2 adds the 16.16 values before taking the integer pixel (checked against the real
+     * game: 9-1's NBG1 was 1 px off with integer parts added separately) */
+    int32_t fx = RS32(desc_of(nbg) + 0) - 0x04000000, fy = RS32(desc_of(nbg) + 4) - 0x04000000;
     if (scr & 2) {                                         /* LSCX */
         uint32_t base = (R32(nbg ? SH_LSTA1 : SH_LSTA0) << 1) & m;
         uint32_t size = 4u * (((scr >> 1) & 1) + ((scr >> 2) & 1) + ((scr >> 3) & 1));
         int iv = 1 << ((scr >> 4) & 3);
         for (int y = 0; y < SCREEN_H; y++)
-            s->sx[y] = sx + (RS32(VDP2_VRAM_BASE | ((base + (uint32_t)(y / iv) * size) & m)) >> 16);
+            s->sx[y] = (int)((int32_t)((uint32_t)fx + (uint32_t)RS32(VDP2_VRAM_BASE | ((base + (uint32_t)(y / iv) * size) & m))) >> 16);
         s->lines = 1;
     }
     if (scr & 1) {                                         /* VCSEN */
         uint32_t base = (R32(SH_VCSTA) << 1) & m;
         int both = (R16(SH_SCRCTL) & 0x101) == 0x101;
         uint32_t stride = both ? 8u : 4u, off = (both && nbg == 1) ? 4u : 0u;
-        for (int c = 0; c <= SCREEN_W / 8; c++)
-            s->dy[c] = RS32(VDP2_VRAM_BASE | ((base + (uint32_t)c * stride + off) & m)) >> 16;
+        for (int c = 0; c <= SCREEN_W / 8; c++)            /* dy = row offset from sy, same rule */
+            s->dy[c] = ((int32_t)((uint32_t)fy + (uint32_t)RS32(VDP2_VRAM_BASE | ((base + (uint32_t)c * stride + off) & m))) >> 16) - sy;
         s->cells = 1;
     }
 }
@@ -314,36 +381,37 @@ int Vdp2_LineColorOffset(int line, int *r, int *g, int *b)
     return 1;
 }
 
-/* ---- reference frame ---- */
+/* ---- reference frame ----
+ * Composed like the hardware (checked against the real game, docs/ground_truth.md):
+ *  1. each NBG is rendered into its own buffer (+ per-pixel special priority / colour-calc flags);
+ *  2. the sprites are drawn in VDP1 command order into a 16-bit framebuffer holding the raw
+ *     sprite data (colour bank | dot, LUT entry or RGB), so a later sprite overwrites an earlier
+ *     one whatever their VDP2 priorities;
+ *  3. per pixel the VDP2 picks the top and second screens by priority (special priority per
+ *     character, SFPRMD), applies colour calculation to the top one (CCCTL / SFCCMD / sprite
+ *     condition SPCTL, ratio registers: result = top * (31 - r) / 32 + second * (r + 1) / 32)
+ *     and finally the colour offset of the top screen. */
 
-static uint32_t s_page[VDP2_PAGE_PX * VDP2_PAGE_PX];
-
-static void blit_page(uint32_t *fb, int dx, int dy)
-{
-    for (int y = 0; y < VDP2_PAGE_PX; y++) {
-        int sy = dy + y;
-        if (sy < 0 || sy >= SCREEN_H) continue;
-        for (int x = 0; x < VDP2_PAGE_PX; x++) {
-            int sx = dx + x;
-            if (sx < 0 || sx >= SCREEN_W) continue;
-            uint32_t c = s_page[y * VDP2_PAGE_PX + x];
-            if (c) fb[sy * SCREEN_W + sx] = c;
-        }
-    }
-}
+#define SH_REG(o) (VDP2_SHADOW_ADDR + (o))
+static uint32_t s_lay[4][SCREEN_W * SCREEN_H];
+static uint8_t  s_lfl[4][SCREEN_W * SCREEN_H];
+static uint16_t s_fb1[SCREEN_W * SCREEN_H];      /* VDP1 framebuffer: raw sprite data, 0 = transparent */
+static uint8_t  s_fb1sh[SCREEN_W * SCREEN_H];    /* shadow dot (VDP1 colour calc 1) over nothing: prio reg + 1 */
 
 static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 
-/* NBG0-2 with line / cell scroll: per pixel, decoded pages cached */
-static void soft_layer_lines(uint32_t *fb, int nbg, const Vdp2LineScroll *ls)
+/* NBG0-2 (whole-layer or line / cell scroll): per pixel, decoded pages cached */
+static void soft_layer_nbg(int nbg, const Vdp2LineScroll *ls, uint32_t *out, uint8_t *ofl)
 {
     enum { NC = 6 };
     static uint32_t *cache[NC];
+    static uint8_t *cfl[NC];
     int cpid[NC], next = 0;
     for (int i = 0; i < NC; i++) {
         cpid[i] = -1;
         if (!cache[i]) cache[i] = (uint32_t *)malloc((size_t)VDP2_PAGE_PX * VDP2_PAGE_PX * sizeof(uint32_t));
-        if (!cache[i]) return;
+        if (!cfl[i]) cfl[i] = (uint8_t *)malloc((size_t)VDP2_PAGE_PX * VDP2_PAGE_PX);
+        if (!cache[i] || !cfl[i]) return;
     }
     for (int y = 0; y < SCREEN_H; y++)
         for (int x = 0; x < SCREEN_W; x++) {
@@ -354,52 +422,79 @@ static void soft_layer_lines(uint32_t *fb, int nbg, const Vdp2LineScroll *ls)
             for (k = 0; k < NC && cpid[k] != pid; k++) ;
             if (k == NC) {
                 k = next; next = (next + 1) % NC;
-                Vdp2_DecodeMapPage(nbg, pid, cache[k]);
+                decode_map_page(nbg, pid, cache[k], cfl[k]);
                 cpid[k] = pid;
             }
-            uint32_t c = cache[k][(wy - py * VDP2_PAGE_PX) * VDP2_PAGE_PX + (wx - px * VDP2_PAGE_PX)];
-            if (c) fb[y * SCREEN_W + x] = c;
+            int o = (wy - py * VDP2_PAGE_PX) * VDP2_PAGE_PX + (wx - px * VDP2_PAGE_PX);
+            out[y * SCREEN_W + x] = cache[k][o];
+            ofl[y * SCREEN_W + x] = cfl[k][o];
         }
 }
 
-static void soft_layer(uint32_t *fb, int nbg)
+static void soft_layer(int nbg, uint32_t *out, uint8_t *ofl)
 {
-    int sx, sy;
+    static uint32_t page[VDP2_PAGE_PX * VDP2_PAGE_PX];
+    static uint8_t pfl[VDP2_PAGE_PX * VDP2_PAGE_PX];
+    memset(out, 0, sizeof(uint32_t) * SCREEN_W * SCREEN_H);
+    memset(ofl, 0, SCREEN_W * SCREEN_H);
     if (!Vdp2_LayerEnabled(nbg)) return;
     if (nbg != 3) {
         static Vdp2LineScroll ls;
         Vdp2_GetLineScroll(nbg, &ls);
-        if (ls.lines || ls.cells) { soft_layer_lines(fb, nbg, &ls); return; }
-    }
-    Vdp2_LayerScroll(nbg, &sx, &sy);
-    if (nbg == 3) {
-        Vdp2_DecodeNbg3(s_page);
-        for (int py = floordiv(sy, VDP2_PAGE_PX); py * VDP2_PAGE_PX < sy + SCREEN_H; py++)
-            for (int px = floordiv(sx, VDP2_PAGE_PX); px * VDP2_PAGE_PX < sx + SCREEN_W; px++)
-                blit_page(fb, px * VDP2_PAGE_PX - sx, py * VDP2_PAGE_PX - sy);
+        soft_layer_nbg(nbg, &ls, out, ofl);
         return;
     }
-    for (int py = floordiv(sy, VDP2_PAGE_PX); py * VDP2_PAGE_PX < sy + SCREEN_H; py++)
-        for (int px = floordiv(sx, VDP2_PAGE_PX); px * VDP2_PAGE_PX < sx + SCREEN_W; px++) {
-            int pid = Vdp2_LayerPageAt(nbg, px, py);
-            if (pid < 0) continue;
-            Vdp2_DecodeMapPage(nbg, pid, s_page);
-            blit_page(fb, px * VDP2_PAGE_PX - sx, py * VDP2_PAGE_PX - sy);
+    int sx, sy;
+    Vdp2_LayerScroll(3, &sx, &sy);
+    decode_nbg3(page, pfl);                          /* one 512x512 page repeated over the plane */
+    for (int y = 0; y < SCREEN_H; y++)
+        for (int x = 0; x < SCREEN_W; x++) {
+            int o = wrapi(sy + y, VDP2_PAGE_PX) * VDP2_PAGE_PX + wrapi(sx + x, VDP2_PAGE_PX);
+            out[y * SCREEN_W + x] = page[o];
+            ofl[y * SCREEN_W + x] = pfl[o];
         }
 }
 
-static uint32_t blend_half(uint32_t a, uint32_t b)
+/* Raw VDP1 framebuffer data of a character's dots (0 = transparent dot). */
+static void vdp1_raw(const RenderSprite *s, uint16_t *raw)
 {
-    return 0xFF000000u | (((a & 0xFEFEFEu) >> 1) + ((b & 0xFEFEFEu) >> 1));
+    const uint8_t *v = Ram_Ptr(s->src);
+    int n = s->w * s->h, spd = (s->mode & 0x40) != 0;
+    for (int i = 0; i < n; i++) {
+        unsigned dot;
+        switch ((s->mode >> 3) & 7) {
+        case 0: dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4; raw[i] = (dot || spd) ? (uint16_t)((s->colr & 0xFFF0u) | dot) : 0; break;
+        case 1:
+            dot = (i & 1) ? v[i >> 1] & 15 : v[i >> 1] >> 4;
+            raw[i] = (dot || spd) ? R16(VDP1_VRAM_BASE + (uint32_t)s->colr * 8u + dot * 2u) : 0;
+            break;
+        case 2: dot = v[i] & 0x3F; raw[i] = (dot || spd) ? (uint16_t)((s->colr & 0xFFC0u) | dot) : 0; break;
+        case 3: dot = v[i] & 0x7F; raw[i] = (dot || spd) ? (uint16_t)((s->colr & 0xFF80u) | dot) : 0; break;
+        case 4: dot = v[i];        raw[i] = (dot || spd) ? (uint16_t)((s->colr & 0xFF00u) | dot) : 0; break;
+        default: {
+            uint16_t e = (uint16_t)(v[2 * i] << 8 | v[2 * i + 1]);
+            raw[i] = ((e & 0x8000) || (spd && e == 0)) ? (uint16_t)(e | 0x8000) : 0;
+            break; }
+        }
+    }
 }
 
-/* Affine mapping of the texture through vertices A (0,0), B (w-1,0), D (0,h-1). */
-static void soft_sprite(uint32_t *fb, const RenderSprite *s)
+static uint16_t rgb_half(uint16_t c) { return (uint16_t)(0x8000 | ((c >> 1) & 0x3DEF)); }
+static uint16_t rgb_avg(uint16_t a, uint16_t b)
+{
+    unsigned r = ((a & 31) + (b & 31)) >> 1, g = (((a >> 5) & 31) + ((b >> 5) & 31)) >> 1, bl = (((a >> 10) & 31) + ((b >> 10) & 31)) >> 1;
+    return (uint16_t)(0x8000 | bl << 10 | g << 5 | r);
+}
+
+/* Affine mapping of the texture through vertices A (0,0), B (w-1,0), D (0,h-1) into the VDP1
+ * framebuffer. VDP1 colour calculation (RGB data only): 1 shadow, 2 half luminance, 3 half
+ * transparency with the framebuffer dot (drawn as is over a non-RGB / empty dot). */
+static void soft_sprite(const RenderSprite *s, int type)
 {
     if (s->w <= 0 || s->h <= 0 || s->w * s->h > 512 * 512) return;
-    uint32_t *tex = (uint32_t *)malloc((size_t)s->w * (size_t)s->h * sizeof *tex);
+    uint16_t *tex = (uint16_t *)malloc((size_t)s->w * (size_t)s->h * sizeof *tex);
     if (!tex) return;
-    Vdp1_DecodeChar(s, tex);
+    vdp1_raw(s, tex);
     double ux = s->qx[1] - s->qx[0], uy = s->qy[1] - s->qy[0];
     double vx = s->qx[3] - s->qx[0], vy = s->qy[3] - s->qy[0];
     if (ux == 0 && uy == 0) ux = 1;
@@ -427,16 +522,23 @@ static void soft_sprite(uint32_t *fb, const RenderSprite *s)
             if (a < -0.5 / sw || b < -0.5 / sh || tx < 0 || ty < 0 || tx >= s->w || ty >= s->h) continue;
             if (s->flipH) tx = s->w - 1 - tx;
             if (s->flipV) ty = s->h - 1 - ty;
-            uint32_t c = tex[ty * s->w + tx];
+            uint16_t c = tex[ty * s->w + tx];
             if (!c) continue;
-            uint32_t *d = &fb[y * SCREEN_W + x];
+            int i = y * SCREEN_W + x;
+            uint16_t d = s_fb1[i];
             switch (cc) {
-            case 1: *d = blend_half(*d, 0xFF000000u); break;               /* shadow */
-            case 2: *d = blend_half(c, 0xFF000000u); break;                /* half luminance */
-            case 3: *d = blend_half(*d, c); break;                         /* half transparency */
-            default: *d = c; break;
+            case 1:                                  /* shadow: darkens the dot below */
+                if (d & 0x8000) s_fb1[i] = rgb_half(d);
+                else if (!d) s_fb1sh[i] = 1;         /* PC: over the VDP2 screens (as before) */
+                continue;
+            case 2: c = rgb_half(c); break;
+            case 3: if (d & 0x8000) c = rgb_avg(c, d); break;
+            default: break;
             }
+            s_fb1[i] = c;
+            s_fb1sh[i] = 0;
         }
+    (void)type;
     free(tex);
 }
 
@@ -460,40 +562,105 @@ static void soft_offset(uint32_t *fb, const uint8_t *src, int layer)
     }
 }
 
+static uint32_t cc_mix(uint32_t top, uint32_t sec, int r, int add)
+{
+    uint32_t o = 0xFF000000u;
+    for (int sh = 0; sh <= 16; sh += 8) {
+        int a = (int)(top >> sh & 255), b = (int)(sec >> sh & 255);
+        int v = add ? a + b : (a * (31 - r) + b * (r + 1)) / 32;
+        o |= (uint32_t)clamp8(v) << sh;
+    }
+    return o;
+}
+
+/* Sprite data type tables (SPCTL types 0-7, 16-bit dots): priority / colour-calc register fields
+ * and the colour code mask. */
+static const uint8_t k_prs[8] = { 14, 13, 14, 13, 13, 12, 12, 12 }, k_prb[8] = { 2, 3, 1, 2, 2, 3, 3, 3 };
+static const uint8_t k_ccs[8] = { 11, 11, 11, 11, 10, 11, 10, 9 }, k_ccb[8] = { 3, 2, 3, 2, 3, 1, 2, 3 };
+static const uint16_t k_ccode[8] = { 0x7FF, 0x7FF, 0x7FF, 0x7FF, 0x3FF, 0x7FF, 0x3FF, 0x1FF };
+
 void Soft_ComposeFrame(uint32_t *fb, const RenderSprite *spr, int n, uint32_t backArgb)
 {
-    static uint8_t src[SCREEN_W * SCREEN_H];     /* which screen produced each pixel (CLOFEN bit) */
-    static uint32_t tmp[SCREEN_W * SCREEN_H];
+    static uint8_t src[SCREEN_W * SCREEN_H];     /* which screen is on top at each pixel (CLOFEN bit) */
     Vdp2Prio pr;
     Vdp2_GetPriorities(&pr);
-    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) { fb[i] = backArgb; src[i] = 5; }
     if (!(R16(0x0603A570u) & 0x8000)) {          /* VDP2 TVMD shadow: DISP off = black screen */
         for (int i = 0; i < SCREEN_W * SCREEN_H; i++) fb[i] = 0xFF000000u;
         return;
     }
+    for (int l = 0; l < 4; l++) {
+        if (pr.nbg[l]) soft_layer(l, s_lay[l], s_lfl[l]);
+        else { memset(s_lay[l], 0, sizeof s_lay[l]); memset(s_lfl[l], 0, sizeof s_lfl[l]); }
+    }
+    /* VDP1 framebuffer, command order (SPR_2 draw priority ascending, FIFO on ties) */
+    memset(s_fb1, 0, sizeof s_fb1);
+    memset(s_fb1sh, 0, sizeof s_fb1sh);
     int *order = (int *)malloc((size_t)(n > 0 ? n : 1) * sizeof *order);
     if (!order) return;
-    for (int i = 0; i < n; i++) {                 /* stable sort by SPR_2 draw priority */
+    for (int i = 0; i < n; i++) {
         int j = i;
         while (j > 0 && spr[order[j - 1]].prio > spr[i].prio) { order[j] = order[j - 1]; j--; }
         order[j] = i;
     }
-    for (int p = 1; p < 8; p++) {
-        for (int l = 3; l >= 0; l--) {
-            if (pr.nbg[l] != p) continue;
-            memcpy(tmp, fb, sizeof tmp);
-            soft_layer(fb, l);
-            for (int i = 0; i < SCREEN_W * SCREEN_H; i++) if (fb[i] != tmp[i]) src[i] = (uint8_t)l;
-        }
-        for (int k = 0; k < n; k++) {
-            const RenderSprite *s = &spr[order[k]];
-            if (pr.spr[Vdp2_SpritePrioReg(s, pr.sptype)] != p) continue;
-            memcpy(tmp, fb, sizeof tmp);
-            soft_sprite(fb, s);
-            for (int i = 0; i < SCREEN_W * SCREEN_H; i++) if (fb[i] != tmp[i]) src[i] = 6;
-        }
-    }
+    for (int k = 0; k < n; k++) soft_sprite(&spr[order[k]], pr.sptype);
     free(order);
+
+    uint16_t spctl = R16(SH_REG(0x00)), ccctl = R16(SH_REG(0x0C)), sfprmd = R16(SH_REG(0x0A)), sfccmd = R16(SH_REG(0x0E));
+    int type = pr.sptype & 7, mixed = spctl ? (spctl >> 5) & 1 : 1;
+    int spccs = (spctl >> 12) & 3, spccn = (spctl >> 8) & 7, ccadd = (ccctl >> 8) & 1;
+    unsigned sprofs = ((R16(SH_REG(0x06)) >> 4) & 7) << 8;   /* CRAOFB: sprite colour RAM offset */
+    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
+        /* candidates: 0..3 NBG, 4 sprite */
+        uint32_t col[5];
+        int pri[5], ok[5], top = -1, sec = -1;
+        for (int l = 0; l < 4; l++) {
+            ok[l] = s_lay[l][i] != 0;
+            if (!ok[l]) continue;
+            col[l] = s_lay[l][i];
+            pri[l] = pr.nbg[l];
+            if (((sfprmd >> (2 * l)) & 3) == 1) pri[l] = (pri[l] & 6) | (s_lfl[l][i] & PF_SP);
+            if (!pri[l]) ok[l] = 0;
+        }
+        uint16_t d = s_fb1[i];
+        int sreg = 0, sccr = 0;
+        ok[4] = 0;
+        if (d) {
+            if ((d & 0x8000) && mixed) { col[4] = Vdp_Rgb555ToArgb(d); sreg = 0; sccr = 0; }
+            else {
+                col[4] = Vdp2_CramArgb(((unsigned)d & k_ccode[type]) + sprofs);
+                sreg = (d >> k_prs[type]) & ((1 << k_prb[type]) - 1);
+                sccr = (d >> k_ccs[type]) & ((1 << k_ccb[type]) - 1);
+            }
+            pri[4] = pr.spr[sreg];
+            ok[4] = pri[4] != 0;
+        }
+        static const int tie[5] = { 4, 0, 1, 2, 3 };    /* equal priority: sprite > NBG0 > ... > NBG3 */
+        for (int t = 0; t < 5; t++) {
+            int c = tie[t];
+            if (!ok[c]) continue;
+            if (top < 0 || pri[c] > pri[top]) { sec = top; top = c; }
+            else if (sec < 0 || pri[c] > pri[sec]) sec = c;
+        }
+        uint32_t topc = top < 0 ? backArgb : col[top], secc = sec < 0 ? backArgb : col[sec];
+        uint32_t out = topc;
+        if (top == 4) {
+            int cond = spccs == 0 ? pri[4] <= spccn : spccs == 1 ? pri[4] == spccn : spccs == 2 ? pri[4] >= spccn : (d & 0x8000) != 0;
+            if ((ccctl & 0x40) && cond) {
+                int r = (R16(SH_REG(0x1E) + 2u * (uint32_t)(sccr >> 1)) >> (8 * (sccr & 1))) & 0x1F;
+                out = cc_mix(topc, secc, r, ccadd);
+            }
+        } else if (top >= 0 && ((ccctl >> top) & 1)) {
+            int mode = (sfccmd >> (2 * top)) & 3;
+            int on = mode == 0 || (mode == 1 && (s_lfl[top][i] & PF_SCC)) || (mode == 3 && (s_lfl[top][i] & PF_CMSB));
+            if (on) {
+                int r = (R16(SH_REG(0x26) + 2u * (uint32_t)(top >> 1)) >> (8 * (top & 1))) & 0x1F;
+                out = cc_mix(topc, secc, r, ccadd);
+            }
+        }
+        if (s_fb1sh[i] && top != 4) out = (0xFF000000u | ((out & 0xFEFEFEu) >> 1));
+        fb[i] = out;
+        src[i] = (uint8_t)(top < 0 ? 5 : top == 4 ? 6 : top);
+    }
     for (int l = 0; l < 7; l++) soft_offset(fb, src, l);
 }
 

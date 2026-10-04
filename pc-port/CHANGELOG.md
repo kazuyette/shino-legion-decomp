@@ -3,6 +3,47 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.20.0 — 2026-10-04
+- Ground truth: the real game (BizHawk Saturn core, Lua file bridge tools/bizhawk/) is now the
+  reference. tests/snap_compare.c (not in the suite) transplants BizHawk dumps of HWRAM / LWRAM /
+  VDP1 / VDP2 / CRAM into the port and renders them (soft_render, or the SDL renderer with
+  -DSNAP_SDL) or steps the port next to the real game (lock-step RAM diffs); tools/bizhawk/
+  snap.sh, imgdiff.py, ramdiff.py, lockstep.py, ls_bisect.py, goto_stage.py, play.py.
+  Method and results: docs/ground_truth.md (17 screens, 14 lock-step runs of 450-1300 frames).
+- Logic fixes found against the real game:
+  - Checkpoints: 0x060487FC (stage tick) was not ported, so a death never restarted at the
+    checkpoint Sho had reached (shinobi.c Checkpoint_Update).
+  - Death after a fall started the death animation at frame 7: Player_OnActionChange kept four
+    special cases that are dead code in the original (it tests +0x22 after overwriting it).
+  - 7-2 boss Koryu: the "attacking" bit is in the flags word +2 (was +4); the breath
+    alternation 0x060F4D00 is a 32-bit variable (the port toggled the high half).
+  - HBlank line table: converted words at 0x0601BC58 (was 0x0601CC58: every frame with a
+    per-line effect the port wrote 0x840 bytes over character table entries 187-398).
+  - Effects' current pointer 0x060F3FD4 (was 0x060F33D0 = the projectile loop index); loop
+    indices 0x060F33D0 / 0x060F3FD8 / 0x060F4BE0 kept like the original.
+  - Scroll_Update writes the NBG0-2 scroll shadows and runs the zoom 0x0604455A (sprite / NBG
+    zoom around Sho; its factor is only set by SHINOBI's debug menu, so it stays 1.0).
+  - Boot_Frame: frame counter and VDP2 "shadow changed" bits at VBlank-IN, after the frame (the
+    phase the real game is in between frames).
+- Rendering fixes (both renderers unless noted):
+  - VDP2 colour calculation: sprites (CCCTL / SPCTL condition, ratio registers; result
+    top * (31 - r) / 32 + second * (r + 1) / 32) and NBGs (per character / CRAM MSB, SFCCMD):
+    6-1's translucent clouds, the cloud over 1-1's moon, the dim title-menu items, the 31/32
+    level of every sprite.
+  - Special priority per character (SFPRMD 0x15 set by the boot): 2-1's grass in front of Sho.
+  - Static layers on 2x1 / 2x2 planes: plate address aligned to the plane (the VDP2 ignores the
+    map register's low bits): 1-1's mountains / city-lights band showed a wrong page.
+  - Line scroll: 16.16 values added before taking the pixel (9-1's back wall was 1 px off).
+  - Back screen colour from the VDP2 (BKTA) instead of a fixed dark blue (SDL renderer).
+  - soft_render: real VDP1 framebuffer (later sprite overwrites, any priority) then per-pixel
+    VDP2 composition (top / second screen).
+  - SDL renderer: sprite layer targets premultiplied; negative colour offsets read back and
+    applied on the CPU when the renderer has no REV_SUBTRACT (7-2 / 8-1 tint was missing on
+    SDL's software and some OpenGL renderers).
+- Remaining (docs/ground_truth.md): VDP1 distorted-sprite rasterisation (1-px edges on rotated
+  / slanted sprites), CD load times (the real game spends 70-200 frames in a stage load, the
+  port one), the real pad being read one frame later (SMPC), sound driver RAM not modelled.
+
 ## 0.19.0 — 2026-10-04
 - Movies: video clock now follows the audio actually played (ENDING.CPK drifted
   seconds out of sync); main loop paced at exactly 60 Hz on the performance counter

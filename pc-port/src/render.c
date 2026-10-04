@@ -75,6 +75,11 @@ static SDL_Texture *s_pageTex[3][VDP2_PAGE_IDS];    /* MAP pages 0..255, VDP2 VR
 static uint32_t s_pageSum[3][VDP2_PAGE_IDS];   /* PC: checksum of the page's name table (map cells change at runtime) */
 static SDL_Texture *s_nbg3Tex;
 static uint32_t s_nbg3Sum;
+/* special priority per character (SFPRMD mode 1): each page split by the SPR bit, the halves
+ * drawn at priority (p & 6) and (p & 6) | 1 (e.g. 2-1's grass in front of Sho's feet; checked
+ * against the real game) */
+static SDL_Texture *s_halfTex[2][LAYERS][VDP2_PAGE_IDS];
+static uint32_t s_halfSum[2][LAYERS][VDP2_PAGE_IDS];
 
 void Render_InvalidatePalettes(void)
 {
@@ -86,6 +91,10 @@ void Render_InvalidatePalettes(void)
         for (int p = 0; p < VDP2_PAGE_IDS; p++)
             if (s_pageTex[l][p]) { SDL_DestroyTexture(s_pageTex[l][p]); s_pageTex[l][p] = NULL; }
     if (s_nbg3Tex) { SDL_DestroyTexture(s_nbg3Tex); s_nbg3Tex = NULL; }
+    for (int h = 0; h < 2; h++)
+        for (int l = 0; l < LAYERS; l++)
+            for (int p = 0; p < VDP2_PAGE_IDS; p++)
+                if (s_halfTex[h][l][p]) { SDL_DestroyTexture(s_halfTex[h][l][p]); s_halfTex[h][l][p] = NULL; }
 }
 
 static SDL_Texture *argb_texture(const uint32_t *argb)
@@ -120,7 +129,22 @@ static SDL_Texture *nbg3_texture(void)
     return s_nbg3Tex = argb_texture(argb);
 }
 
+static SDL_Texture *half_texture(int l, int pid, int half)
+{
+    static uint32_t argb[VDP2_PAGE_PX * VDP2_PAGE_PX];
+    if (l == 3) pid = 0;
+    uint32_t sum = l == 3 ? Vdp2_Nbg3Checksum() : Vdp2_MapPageChecksum(l, pid);
+    SDL_Texture **t = &s_halfTex[half][l][pid];
+    if (*t && s_halfSum[half][l][pid] != sum) { SDL_DestroyTexture(*t); *t = NULL; }
+    s_halfSum[half][l][pid] = sum;
+    if (*t) return *t;
+    Vdp2_DecodePageSp(l, pid, argb, half);
+    return *t = argb_texture(argb);
+}
+
 static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
+
+static int s_half = -1;                                 /* blit_region: -1 whole pages, 0/1 SPR halves */
 
 /* Screen rect [x0,x0+w) x [y0,y0+h) showing layer pixels (sx + x, sy + y). */
 static void blit_region(int l, int sx, int sy, int x0, int y0, int w, int h)
@@ -129,11 +153,11 @@ static void blit_region(int l, int sx, int sy, int x0, int y0, int w, int h)
     for (int py = floordiv(wy0, VDP2_PAGE_PX); py * VDP2_PAGE_PX < wy1; py++)
         for (int px = floordiv(wx0, VDP2_PAGE_PX); px * VDP2_PAGE_PX < wx1; px++) {
             SDL_Texture *t;
-            if (l == 3) t = nbg3_texture();                 /* one page, all plates the same */
+            if (l == 3) t = s_half >= 0 ? half_texture(3, 0, s_half) : nbg3_texture();   /* one page, all plates the same */
             else {
                 int pid = Vdp2_LayerPageAt(l, px, py);
                 if (pid < 0) continue;
-                t = page_texture(l, pid);
+                t = s_half >= 0 ? half_texture(l, pid, s_half) : page_texture(l, pid);
             }
             if (!t) continue;
             int ax = wx0 > px * VDP2_PAGE_PX ? wx0 : px * VDP2_PAGE_PX;
@@ -146,10 +170,11 @@ static void blit_region(int l, int sx, int sy, int x0, int y0, int w, int h)
         }
 }
 
-static void draw_layer(int l)
+static void draw_layer(int l, int half)
 {
     int sx, sy;
     if (!Vdp2_LayerEnabled(l)) return;
+    s_half = half;
     if (l != 3) {                                       /* line scroll / cell scroll: strips */
         static Vdp2LineScroll ls;
         Vdp2_GetLineScroll(l, &ls);
@@ -222,7 +247,10 @@ void Render_QueueSprite(const RenderSprite *s)
 void Render_Clear(void)
 {
     if (!s_renderer) return;
-    SDL_SetRenderDrawColor(s_renderer, 24, 32, 56, 255);
+    /* VDP2 back screen (was a fixed dark blue 24,32,56: the real game shows black, and colour-
+     * calculated sprites over it, e.g. the title menu, blend with it) */
+    uint32_t back = Vdp2_BackColor();
+    SDL_SetRenderDrawColor(s_renderer, (Uint8)(back >> 16), (Uint8)(back >> 8), (Uint8)back, 255);
     SDL_RenderClear(s_renderer);
 }
 
@@ -233,7 +261,7 @@ void Render_Clear(void)
  * one even when it ends up behind a background layer, like the real framebuffer. Needs render
  * targets + a custom blend mode; otherwise sprites are just grouped by priority. */
 static SDL_Texture *s_sprLayer[8];
-static SDL_BlendMode s_erase;
+static SDL_BlendMode s_erase, s_premulDraw, s_premulCopy;
 static int s_layersOk = -1;
 
 static int sprite_layers_ok(void)
@@ -244,16 +272,23 @@ static int sprite_layers_ok(void)
     s_erase = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
                                          SDL_BLENDOPERATION_ADD, SDL_BLENDFACTOR_ZERO,
                                          SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
+    /* the layer targets hold premultiplied colour, so a colour-calculated (translucent) sprite is
+     * blended once, at the copy: target = c * a + t * (1 - a), screen = target + screen * (1 - A) */
+    s_premulDraw = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                                              SDL_BLENDOPERATION_ADD, SDL_BLENDFACTOR_ONE,
+                                              SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
+    s_premulCopy = s_premulDraw;
     for (int p = 1; p < 8; p++) {
         s_sprLayer[p] = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
                                           SCREEN_W, SCREEN_H);
         if (!s_sprLayer[p] || SDL_SetTextureBlendMode(s_sprLayer[p], SDL_BLENDMODE_BLEND) < 0) return 0;
     }
-    if (SDL_SetTextureBlendMode(s_sprLayer[1], s_erase) < 0) {   /* custom blend unsupported (software) */
+    if (SDL_SetTextureBlendMode(s_sprLayer[1], s_erase) < 0 ||
+        SDL_SetTextureBlendMode(s_sprLayer[1], s_premulCopy) < 0) {   /* custom blend unsupported (software) */
         for (int p = 1; p < 8; p++) { SDL_DestroyTexture(s_sprLayer[p]); s_sprLayer[p] = NULL; }
         return 0;
     }
-    SDL_SetTextureBlendMode(s_sprLayer[1], SDL_BLENDMODE_BLEND);
+    for (int p = 1; p < 8; p++) SDL_SetTextureBlendMode(s_sprLayer[p], s_premulCopy);
     return s_layersOk = 1;
 }
 
@@ -269,7 +304,7 @@ static float fnorm(float *x, float *y, float dx, float dy)
  * vertices are inclusive pixel positions: each corner is moved half a pixel outwards along
  * its two edges so an untransformed w x h sprite covers exactly w x h pixels. erase = draw
  * the sprite's opaque texels as holes (framebuffer overwrite by another priority). */
-static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase)
+static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase, int cc, int premul)
 {
     static const int un[4] = { 1, 0, 3, 2 }, vn[4] = { 3, 2, 1, 0 };   /* u / v neighbour of A,B,C,D */
     static const float usg[4] = { -1, 1, 1, -1 }, vsg[4] = { -1, -1, 1, 1 };
@@ -283,11 +318,19 @@ static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase)
         case 3: col.a = 128; break;                               /* half transparency */
         default: break;
         }
-    } else if (!erase && ((s->mode >> 3) & 7) < 5 && Res_OverlayResident() == OVL_DIRECTOR) {
-        /* VDP2 sprite colour calculation (title menus dim unselected items) */
-        int reg = (s->colr >> 11) & 3;
-        int ratio = (R16(VDP2_SHADOW_ADDR + 0x1E + 2u * (unsigned)(reg >> 1)) >> (8 * (reg & 1))) & 0x1F;
-        col.r = col.g = col.b = (Uint8)(255 * (32 - ratio) / 32);
+    }
+    int ccmode = 0;
+    if (!erase && cc >= 0 && !(((s->mode >> 3) & 7) == 5 && (s->mode & 7))) {
+        /* VDP2 sprite colour calculation (title menu dimming, 6-1 clouds, 1-1 moon cloud...;
+         * checked against the real game): the sprite is blended with the screen below it at
+         * (31 - r) / 32. premul (sprite layer targets): the dot replaces what the target holds
+         * (a sprite overwrites the VDP1 framebuffer) as premultiplied c * a, alpha a, and the
+         * target copy blends it with the layers. Without targets: in DIRECTOR there is no NBG, so
+         * the screen below is the black back screen (colour scaled); else alpha over the scene. */
+        Uint8 a = (Uint8)(255 * (31 - cc) / 32);
+        if (premul) { draw_sprite(s, t, 1, -1, 1); col.r = col.g = col.b = a; col.a = a; ccmode = 1; }
+        else if (Res_OverlayResident() == OVL_DIRECTOR) col.r = col.g = col.b = a;
+        else col.a = a;
     }
     for (int i = 0; i < 4; i++) {
         float ux = (float)(s->qx[i] - s->qx[un[i]]), uy = (float)(s->qy[i] - s->qy[un[i]]);
@@ -306,8 +349,34 @@ static void draw_sprite(const RenderSprite *s, SDL_Texture *t, int erase)
         vx[i].tex_coord.y = (i >= 2) ? 1.0f : 0.0f;
     }
     if (erase) SDL_SetTextureBlendMode(t, s_erase);
+    else if (ccmode) SDL_SetTextureBlendMode(t, s_premulDraw);
     SDL_RenderGeometry(s_renderer, t, vx, 4, idx, 6);
-    if (erase) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+    if (erase || ccmode) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+}
+
+/* Colour offset with a negative component on renderers without the REV_SUBTRACT blend
+ * operation: read the band back from the frame target, clamp(c + offset) on the CPU, draw it
+ * back (exact, like the VDP2; e.g. the 7-2 / 8-1 per-line tint, checked against the real game).
+ * Needs the 320x224 frame target. Returns 0 when not possible. */
+static int offset_readback(int r, int g, int b, const SDL_Rect *band)
+{
+    static SDL_Texture *strip;
+    static uint32_t px[SCREEN_W * SCREEN_H];
+    if (!s_scene || band->w != SCREEN_W || band->h <= 0 || band->y < 0 || band->y + band->h > SCREEN_H) return 0;
+    if (!strip) {
+        strip = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
+        if (!strip) return 0;
+        SDL_SetTextureBlendMode(strip, SDL_BLENDMODE_NONE);
+    }
+    if (SDL_RenderReadPixels(s_renderer, band, SDL_PIXELFORMAT_ARGB8888, px, SCREEN_W * 4) != 0) return 0;
+    for (int i = 0; i < SCREEN_W * band->h; i++) {
+        int cr = (int)(px[i] >> 16 & 255) + r, cg = (int)(px[i] >> 8 & 255) + g, cb = (int)(px[i] & 255) + b;
+        cr = cr < 0 ? 0 : cr > 255 ? 255 : cr; cg = cg < 0 ? 0 : cg > 255 ? 255 : cg; cb = cb < 0 ? 0 : cb > 255 ? 255 : cb;
+        px[i] = 0xFF000000u | (uint32_t)cr << 16 | (uint32_t)cg << 8 | (uint32_t)cb;
+    }
+    SDL_Rect src = { 0, 0, SCREEN_W, band->h };
+    if (SDL_UpdateTexture(strip, &src, px, SCREEN_W * 4) != 0) return 0;
+    return SDL_RenderCopy(s_renderer, strip, &src, band) == 0;
 }
 
 static void apply_color_offset(int r, int g, int b, const SDL_Rect *all)
@@ -319,7 +388,9 @@ static void apply_color_offset(int r, int g, int b, const SDL_Rect *all)
         if (SDL_SetRenderDrawBlendMode(s_renderer, sub) == 0) {
             SDL_SetRenderDrawColor(s_renderer, (Uint8)(r < 0 ? (-r > 255 ? 255 : -r) : 0),
                                    (Uint8)(g < 0 ? (-g > 255 ? 255 : -g) : 0), (Uint8)(b < 0 ? (-b > 255 ? 255 : -b) : 0), 255);
-        } else {                                   /* no REV_SUBTRACT: darken with alpha */
+        } else if (offset_readback(r, g, b, all)) {
+            return;                                /* no REV_SUBTRACT (SDL software / some GL): done on the CPU */
+        } else {                                   /* last resort: darken with alpha */
             int d = -(r < g ? (r < b ? r : b) : (g < b ? g : b));
             SDL_SetRenderDrawBlendMode(s_renderer, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(s_renderer, 0, 0, 0, (Uint8)(d > 255 ? 255 : d));
@@ -364,7 +435,12 @@ void Render_DrawFrame(void)
         vp[k] = pr.spr[Vdp2_SpritePrioReg(s, pr.sptype)];
         if (tex[k]) used |= 1u << vp[k];
     }
-    int split = (used & (used - 1)) != 0 && sprite_layers_ok();
+    /* sprite layer targets when several priorities are used (framebuffer overwrite across
+     * priorities) or a sprite is colour-calculated against the layers below */
+    int anycc = 0;
+    for (int k = 0; k < n && !anycc; k++)
+        anycc = tex[k] && Vdp2_SpriteColorCalc(&s_queue[order[k]], vp[k]) >= 0 && Res_OverlayResident() != OVL_DIRECTOR;
+    int split = ((used & (used - 1)) != 0 || anycc) && sprite_layers_ok();
     if (split) {
         for (int p = 1; p < 8; p++) {
             if (!(used & (1u << p))) continue;
@@ -374,18 +450,23 @@ void Render_DrawFrame(void)
             for (int k = 0; k < n; k++) {
                 const RenderSprite *s = &s_queue[order[k]];
                 int shadow = ((s->mode >> 3) & 7) == 5 && (s->mode & 7) == 1;   /* darkens, no overwrite */
-                if (tex[k] && (vp[k] == p || !shadow)) draw_sprite(s, tex[k], vp[k] != p);
+                if (tex[k] && (vp[k] == p || !shadow)) draw_sprite(s, tex[k], vp[k] != p, Vdp2_SpriteColorCalc(s, vp[k]), 1);
             }
         }
         SDL_SetRenderTarget(s_renderer, s_scene);      /* back to the frame target (NULL = window) */
     }
     for (int p = 1; p < 8; p++) {
-        for (int l = LAYERS - 1; l >= 0; l--)
-            if (pr.nbg[l] == p) draw_layer(l);
+        for (int l = LAYERS - 1; l >= 0; l--) {
+            if (Vdp2_SpecialPrioMode(l) == 1) {         /* per character: LSB = SPR bit (0 = hidden) */
+                int b = pr.nbg[l] & 6;
+                if (b && p == b) draw_layer(l, 0);
+                if (pr.nbg[l] && p == (b | 1)) draw_layer(l, 1);
+            } else if (pr.nbg[l] == p) draw_layer(l, -1);
+        }
         if (!(used & (1u << p))) continue;
         if (split) { SDL_RenderCopy(s_renderer, s_sprLayer[p], NULL, NULL); continue; }
         for (int k = 0; k < n; k++)
-            if (tex[k] && vp[k] == p) draw_sprite(&s_queue[order[k]], tex[k], 0);
+            if (tex[k] && vp[k] == p) draw_sprite(&s_queue[order[k]], tex[k], 0, Vdp2_SpriteColorCalc(&s_queue[order[k]], vp[k]), 0);
     }
     /* VDP2 colour offset A (screen fades, A.BIN 0x06007084): result = clamp(c + off). In the
      * stage flow every layer (CLOFEN 0x7F) gets it, so full-width passes are exact; when the

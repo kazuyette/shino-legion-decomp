@@ -143,6 +143,7 @@ void Effects_Update(void)
 {
     for (uint32_t i = 0; i < 64; i++) {
         uint32_t e = EFFECTS + (uint32_t)(int16_t)(i * 0x30);
+        W16(FX_IDX, i);
         W32(FX_CUR, e);
         uint16_t t = R16(e);
         if (t == 0xFFFF) continue;
@@ -163,6 +164,7 @@ void Effects_Update(void)
                  once("effect type", t); W16(e, 0xFFFF); break;
         }
     }
+    W16(FX_IDX, 64);
 }
 
 /* -------------------------------------------------------------- projectiles */
@@ -441,6 +443,7 @@ void Projectiles_Update(void)
 {
     for (int i = 0; i < 64; i++) {
         uint32_t e = proj_addr(i);
+        W16(PROJ_IDX, (uint32_t)i);
         W32(PROJ_CUR, e);
         uint16_t t = R16(e);
         if (t == 0xFFFF) continue;
@@ -471,6 +474,7 @@ void Projectiles_Update(void)
         else if (BossB_Projectile(t, e)) { }                           /* 2, 3, 0x15-0x18, 0x1B, 0x1C (bosses 6 / 0x17 / 0x1F) */
         else { once("projectile type", t); W16(e, 0xFFFF); }
     }
+    W16(PROJ_IDX, 64);
 }
 
 /* -------------------------------------------------------------------- atan */
@@ -697,10 +701,12 @@ void Items_Update(void)
     Common_AnimateChars();
     for (uint32_t i = 0; i < 64; i++) {
         uint32_t it = ITEMS + (uint32_t)(int16_t)(i * 0x30);
+        W16(ITEM_IDX, i);
         W32(ITEM_CUR, it);
         if (R16(it) == 0xFFFF) continue;
         uint16_t k = R16(it) & 0xFF;
         if (k <= 7) Item_Update(it);
         else if (k == 8) Item_Mine(it);
     }
+    W16(ITEM_IDX, 64);
 }

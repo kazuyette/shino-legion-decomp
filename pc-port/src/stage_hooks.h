@@ -36,7 +36,7 @@
 
 #define LANIM       0x060F4D80u
 #define LINE_HBL    0x0601ABD8u   /* 0x108 x 16 bytes */
-#define LINE_HBL_W  0x0601CC58u   /* converted words, 0x108 x 8 bytes */
+#define LINE_HBL_W  0x0601BC58u   /* converted words, 0x108 x 8 bytes (LINE_HBL + 0x1080; DMA tables 0x0603E000 / 0x0603F000) */
 #define LINE_FLAGS  0x0601C498u
 
 void StageHooks_Init(void);          /* 0x0606C618 */
@@ -61,4 +61,6 @@ void Layer_FillPage(uint32_t desc);  /* 0x0606F8D8: write a layer's whole 32x32-
 void LineTable_VBlank(void);
 /* DMA tables live for the frame being displayed: 0, or 0x2000 (NBG2 X) | 0x4000 (COA). */
 int  LineTable_DmaActive(void);
+/* PC: set it for a RAM image transplanted from the real game (tests/snap_compare.c). */
+void LineTable_SetDmaActive(int flags);
 #endif

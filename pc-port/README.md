@@ -122,6 +122,12 @@ Default keys: arrows = D-pad, Z/X/C = A/B/C, A/S/D = X/Y/Z, Q/W = L/R, Enter = S
 The input chain is the real one (see `pad.*`): pressed buttons are logged to
 the console, and A+B+C+Start triggers the original soft reset.
 
+## Ground truth (real game)
+
+The port is checked against the real game running in BizHawk (tools/bizhawk/, Lua file bridge):
+`tests/snap_compare.c` loads memory dumps of the real game into the port (same RAM layout) and
+renders them or steps the port next to the real game; see `docs/ground_truth.md`.
+
 ## Layout
 
 - `src/input.*` — keyboard -> emulated SMPC report (active-low raw pad word per port),

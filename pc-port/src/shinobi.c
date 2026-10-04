@@ -162,6 +162,25 @@ static void Game_CheckDemoEnd(void)
     W16(G_STAGE_STATE, R16(G_STAGE_STATE) | 0x8000);
 }
 
+/* 0x060487FC (called by the stage tick 0x06040B44 after 0x060465B8): in stage frames, the first
+ * of the stage's 3 checkpoint boxes (table 0x060A8EB4, 24 bytes per stage: 3 x {x0, y0, x1, y1}
+ * s16, + 1024 px) that holds Sho sets the restart point G_CHECKPOINT to its index + 1.
+ * (Missing before v0.19.x: a death always restarted from the stage start; found by stepping
+ * the port next to the real game, docs/ground_truth.md.) */
+static void Checkpoint_Update(void)
+{
+    if (R16(G_GAME_MODE) != 6) return;
+    int32_t px = RS32(PLAYER + P_X), py = RS32(PLAYER + P_Y);
+    for (uint32_t i = 0; i < 3; i++) {
+        uint32_t b = 0x060A8EB4u + (uint32_t)(RS16(G_STAGE_INDEX) * 24) + i * 8u;
+        int32_t x0 = (int32_t)(((uint32_t)(int32_t)RS16(b) << 16) + 0x04000000u);
+        int32_t y0 = (int32_t)(((uint32_t)(int32_t)RS16(b + 2) << 16) + 0x04000000u);
+        int32_t x1 = (int32_t)(((uint32_t)(int32_t)RS16(b + 4) << 16) + 0x04000000u);
+        int32_t y1 = (int32_t)(((uint32_t)(int32_t)RS16(b + 6) << 16) + 0x04000000u);
+        if (px >= x0 && px <= x1 && py >= y0 && py <= y1) { W16(G_CHECKPOINT, i + 1u); return; }
+    }
+}
+
 /* 0x0606B8FA */
 static void Game_StageFrame(void)
 {
@@ -171,11 +190,12 @@ static void Game_StageFrame(void)
     W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);         /* PC: frame counter of 0x06066958 */
     Hud_Update();                                    /* 0x06061A10 (status bar) */
     /* 0x06040B44 stage tick: Scroll_Update, 0x06046E54, Game_LatchPad1, palette,
-     * Player_Tick, ..., Stage_UpdateState */
+     * Player_Tick, 0x060465B8, Checkpoint_Update 0x060487FC, Stage_UpdateState */
     Scroll_Update();                                 /* 0x060443D8 */
     Game_LatchPad1(P16(P_FLAGS4));                   /* 0x06040CAC */
     Player_Tick();                                   /* 0x06040B72 */
     PlayerFx_Update();                               /* 0x060465B8 (kind-4 sword flashes) */
+    Checkpoint_Update();                             /* 0x060487FC */
     Stage_UpdateState();                             /* 0x06046190 */
     /* PC approximation of 0x0606E440 (stage 1-1 hook) for the other stages entered first
      * with --stage: the drop-in ends when Sho lands */

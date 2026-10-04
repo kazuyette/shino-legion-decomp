@@ -22,6 +22,7 @@ void Res_SetAssetDir(const char *dir)
 }
 const char *Res_GetAssetDir(void) { return s_assetDir; }
 int Res_OverlayResident(void) { return s_overlay; }
+void Res_SetOverlayResident(int ovl) { s_overlay = ovl; }   /* PC: snapshot transplant (tests/snap_compare.c) */
 
 /* 0x06004418: GFS init (not needed on PC) + request state cleared. */
 void Res_Init(void)
