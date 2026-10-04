@@ -59,9 +59,22 @@ uint64_t Audio_MoviePlayedFrames(void);         /* frames played since the last
                                                    Audio_StopMovie (A/V clock) */
 
 /* ---- sound effects ---------------------------------------------------- */
-/* Snd_Play(id) A.BIN 0x06007CDE. SCSP / .SND playback is not emulated yet:
- * logs "[sfx] %03X". */
+/* SFX hook: the SCSP engine (sfx.c, .SND banks) registers these callbacks;
+ * they are always called with the device lock held (render from the mixer).
+ * Without hooks Audio_PlaySfx only logs "[sfx] %03X" (audio.c stays usable
+ * on its own, e.g. tests/test_audio.c). */
+typedef struct {
+    void (*play)(int id);
+    void (*stop)(void);
+    void (*render)(int32_t *acc, int frames);   /* adds 44.1 kHz stereo frames */
+} AudioSfxHooks;
+void Audio_SetSfxHooks(const AudioSfxHooks *hooks);  /* call with Audio_Lock held */
+void Audio_Lock(void);          /* SDL device lock (no-op without a device) */
+void Audio_Unlock(void);
+/* Snd_Play(id) A.BIN 0x06007CDE -> hooks.play(id) under the lock. */
 void Audio_PlaySfx(int id);
+/* Snd_StopAll A.BIN 0x06007E00 -> hooks.stop() under the lock. */
+void Audio_StopSfx(void);
 
 /* ---- misc -------------------------------------------------------------- */
 void Audio_SetMono(int mono);   /* options AUDIO = MONO (0x06025246): L = R = (L+R)/2 */

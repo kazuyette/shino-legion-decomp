@@ -17,6 +17,8 @@
 #include "sprite.h"
 #include "resource.h"
 #include "objhandlers_c.h"
+#include "hud.h"
+#include "player_ext.h"
 #include <stdio.h>
 
 int g_shinobiVerbose = 0;
@@ -114,7 +116,9 @@ static void Game_LoadStage(void)
     int16_t st = RS16(G_STAGE_INDEX);
     printf("[game] load stage index %d (checkpoint %d, respawn %d, lives %d)\n",
            st, R16(G_CHECKPOINT), R16(G_RESPAWN), RS16(LIVES));
-    /* 0x0606BB0C: stage .SND bank, then 0x06007E00 + Snd_Play(stage music) */
+    Res_LoadStageSoundBank(st);                                   /* 0x0606BB0C */
+    W16(0x060F4D32u, (uint32_t)(st == 17 ? 3 : (st & 1) + 3));    /* stage tune */
+    sub_06007E00(); sub_06007CDE(RS16(0x060F4D32u));              /* StopAll + Snd_Play */
     Shinobi_InitVdp2();                              /* 0x060400B0 */
     W32(0x06024058u, 0); W32(0x0602405Cu, 0); W32(0x06024060u, 0x10000); W32(0x06024064u, 0x10000);
     W32(SPR_ZOOM, 0x10000);
@@ -160,7 +164,7 @@ static void Game_StageFrame(void)
     Vdp2_DisplayOn();                                /* 0x06005BA0 */
     int16_t stage_before = RS16(G_STAGE_INDEX);
     W16(0x060F4CCCu, R16(0x060F4CCCu) + 1u);         /* PC: frame counter of 0x06066958 */
-    /* 0x06061A10 not ported */
+    Hud_Update();                                    /* 0x06061A10 (status bar) */
     /* 0x06040B44 stage tick: Scroll_Update, 0x06046E54, Game_LatchPad1, palette,
      * Player_Tick, ..., Stage_UpdateState */
     Scroll_Update();                                 /* 0x060443D8 */
@@ -183,7 +187,8 @@ static void Game_StageFrame(void)
     Projectiles_Update();                            /* 0x0606088C */
     Effects_Update();                                /* 0x06061FA0 */
     Items_Update();                                  /* 0x06062894 */
-    /* 0x0606BCD0 (HUD), 0x06063554 not ported */
+    /* 0x0606BCD0 (per-stage frame hook 0x060B10CC + tile/palette animation 0x0606F6AC /
+     * 0x0606EF9C, not the HUD) and 0x06063554 not ported */
     Game_CheckDemoEnd();                             /* 0x0606BB8A */
 }
 

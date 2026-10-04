@@ -3,6 +3,18 @@
 Version scheme: MAJOR.MINOR.PATCH. 0.x = work in progress (not playable).
 Bump `project(... VERSION x.y.z)` in CMakeLists.txt and add an entry here.
 
+## 0.15.0 — 2026-10-04
+- Sound: all 10 .SND banks parsed (area map + word-LZ blocks, A.BIN 0x06004C52); SBL
+  sequencer + TON voice mixer (32 voices, 8 sequence slots) in sfx.c. System and stage
+  sound effects play, plus sequenced tunes: stage music, stage start/clear, death.
+  No DSP reverb / LFO yet.
+- HUD: status bar values (life bar + HP ticks, shurikens, 1-up tokens, lives, ninjutsu
+  icon), SHINOBI 0x06061A10; boss bar routine ported.
+- Stage 4-2: ledges 0x1025 (scrolling floor), beams 0x1026, lightning halo 0x1027,
+  lanterns 0x1028; boss (enemy 0x20: teleport, homing orb to reflect, lightning, clone)
+  -> stage clear. Known gap: ledges drawn as black silhouettes (sprite colour banks 0-4
+  empty), stage hook 0x0606D99E not ported.
+
 ## 0.14.0 — 2026-10-04
 - All 18 per-stage inits ported (table 0x060A8B0C, Stage_InitLayers 0x060471D4,
   Layer_FillVram/PutTile, NBG3 status-bar map); every stage loads and the player lands

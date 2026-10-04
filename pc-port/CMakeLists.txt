@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 # Port version: bump here (MAJOR.MINOR.PATCH), see CHANGELOG.md.
-project(shinobi_legions_pc VERSION 0.14.0 LANGUAGES C)
+project(shinobi_legions_pc VERSION 0.15.0 LANGUAGES C)
 
 # Short git hash of the build, if git is available.
 set(SL_GIT_HASH "unknown")
@@ -49,6 +49,7 @@ add_executable(shinobi_legions_pc
     src/objhandlers_a.c
     src/objhandlers_b.c
     src/objhandlers_c.c
+    src/objhandlers_d.c
     src/enemy.c
     src/fx.c
     src/fade.c
@@ -58,6 +59,7 @@ add_executable(shinobi_legions_pc
     src/enemy_soldier_c.c
     src/enemy_t3.c
     src/enemy_t4.c
+    src/enemy_boss42.c
     src/shinobi.c
     src/director.c
     src/director_font.c
@@ -68,6 +70,8 @@ add_executable(shinobi_legions_pc
     src/movie_cpk.c
     src/cpk.c
     src/audio.c
+    src/sfx.c
+    src/hud.c
 )
 
 find_library(MATH_LIBRARY m)

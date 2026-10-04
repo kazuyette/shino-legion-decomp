@@ -70,6 +70,7 @@ void Enemy_LoadTypes(void)
         if (t == 1) Enemy1_Load();
         else if (t == 3) Enemy3_Load();
         else if (t == 4) Enemy4_Load();
+        else if (t == 0x20) Enemy20_Load();                    /* enemy_boss42.c */
         else Enemy_Once("loader for type", t);
     }
 }
@@ -610,6 +611,7 @@ void Obj_UpdateEnemies(void)
         if (t == 1) EnemyHandler_0001();
         else if (t == 3) EnemyHandler_0003();
         else if (t == 4) EnemyHandler_0004();
+        else if (t == 0x20) EnemyHandler_0020();               /* enemy_boss42.c */
         else Enemy_Once("enemy type", t);
         if (!FROZEN) AND16(o + 0x10, 0xDFFF);
     }

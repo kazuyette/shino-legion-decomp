@@ -2,13 +2,16 @@
  * Each logs once on first call so the console shows what the current
  * gameplay path still depends on. */
 #include "audio.h"
+#include "sfx.h"
+#include "resource.h"
 #include "player_ext.h"
 #include <stdio.h>
 
 #define ONCE(name) do { static int s_; if (!s_) { s_ = 1; printf("[stub] %s not ported\n", name); } } while (0)
 
-void     sub_06007CDE(int sfx)  { printf("[sfx] %03X\n", sfx); }
-void     sub_06007E00(void)     { ONCE("06007E00"); }
+/* Snd_Play 0x06007CDE -> sfx.c (SCSP .SND sequences) through audio.c's SFX hook */
+void     sub_06007CDE(int sfx)  { Res_EnsureSoundBank(); Audio_PlaySfx((int16_t)sfx); }
+void     sub_06007E00(void)     { Audio_StopSfx(); }   /* Snd_StopAll */
 int      sub_0600A604(void)     { ONCE("0600A604 (idle-anim gate, returns 1)"); return 1; }
 int      sub_0600CEF4(void)     { ONCE("0600CEF4"); return 0; }
 void     sub_06040F80(void)     { ONCE("06040F80 (debug free-move)"); }
@@ -24,7 +27,9 @@ void     sub_06044280(void)     { ONCE("06044280"); }
 void     sub_0604592E(void)     { ONCE("0604592E"); }
 void     sub_06046782(void)     { ONCE("06046782"); }
 
-void     sub_06007D60(int sfx, int bank) { printf("[sfx] bank %d %03X\n", bank, sfx); }
+/* 0x06007D60: Snd_Play(sfx) only while fewer than `bank` (max count) of the 8 sequence
+ * slots (0x06025138) already play this id; else returns -1 */
+void     sub_06007D60(int sfx, int bank) { if (Sfx_CountLocked(sfx) < bank) sub_06007CDE(sfx); }
 
 /* Sound calls of DIRECTOR (SCSP / CD-DA, work packages D8/D9), declared in director_int.h. */
 void Snd_SetAreaMap(uint32_t map)  { (void)map; ONCE("06007E96 Snd_SetAreaMap"); }

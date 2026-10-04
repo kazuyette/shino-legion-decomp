@@ -36,7 +36,7 @@
 #define V_CHEATS      0x0602529Cu
 #define V_STAGE_STATE 0x0602529Eu
 #define V_HP_MAX      0x060252B0u
-#define V_SHUR_PICK   0x060252B2u
+#define V_ONEUP_TOKENS   0x060252B2u
 #define V_SHUR_INIT   0x060252B4u
 #define V_SHURIKENS   0x060252B6u
 #define V_LIVES       0x060252B8u

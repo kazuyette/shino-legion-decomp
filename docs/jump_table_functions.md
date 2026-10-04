@@ -2044,3 +2044,48 @@ New semantics learned while porting:
 - Other SHINOBI users of VDP2 colour calculation (not per-stage): CCRNA 0x0603B492 at
   0x0605F900 / 0x060807BC / 0x0608214C, CCCTL 0x0603B478 at 0x0608246C / 0x060826B0, NBG3 config
   at 0x06088760 (object/boss code).
+
+## Stage 4-2: ledge objects 0x1025-0x1028 and the boss (enemy type 0x20) (2026-10-04, pc-port objhandlers_d.c / enemy_boss42.c)
+
+- 4-2 (index 7, STAGE4_2) has no map collision (C+0x32 = -1) and a fixed camera (bounds
+  1024..1345 x 1024..1249). The climb is faked by objects sliding DOWN and wrapping; their
+  sprites are drawn at world - 1024 and their visibility is tested against C+4/C+0xC (world
+  top/bottom), not the camera. Speed class = placement flags & 3 (0x1026: & 0xC): 1/8, 3/8,
+  1/4 px per frame. Sprite defs 0x060AA95C, scripts 0x060D26E8, chars 0x10+.
+- 0x06056408 ObjHandler_1025 ledge: Obj_PlayerContact(1) (one-way top, box x 0..96, y 16..47)
+  when |Sho.y - y| < 100 px; standing → PL+0x3C -= 2 px (keeps him pressed), +0x4E = 1. Wraps
+  by 1024 px past world bottom + 512. +0x4A landing band, +0x4C low, +0x50 glow state (1: spawn
+  0x1027 + fade palette 1 to 0x060D2620; 3: fade back to palette 0), +0x52 overlay slot + 1.
+  Placement flags & 4 = the boss's first ledge.
+- 0x06056260 ObjHandler_1026 background beam (anim 3 + (flags & 3), wraps by 512 px).
+- 0x0605678C ObjHandler_1027 glow overlay (anim 2, follows ledge +0x48, blinks; reads the
+  CURRENT PROJECTILE's anim flags for its colour-calc bits — original quirk kept).
+- 0x06056902 ObjHandler_1028 lantern (anim 7): Hitbox_Test(lantern 0, Sho 2) with attack kind
+  not 4/5/6 → spark, item +0x18 + explosion part 6, base (anim 8), lid (0x1028 flags 4, anim 9,
+  50 frames, v = (±1, 6) - 0x5000/frame, spins) and flame (flags 8, anim 10, scales to 1).
+  Wraps by 5120 px and is rebuilt (anim 7) on the way.
+- A.BIN 0x06006000 Pal_StepTowards(dst colour, n, src, step) (step helper 0x06006140; 1 when
+  all colours match); A.BIN 0x0600CEF4 = unsigned modulo (r1 % r0); A.BIN 0x0600A6CC = block
+  copy of r0 bytes from @r2 to @r1 (jump table, ≤ 64).
+- Boss type 0x20 (slot 0 on stage 7; handler 0x06084560, loader 0x06084420: chars 0x060E1AE4,
+  palettes 0x060E1E90 x16, banks +16/+17 = copy of +13 (hurt flash), +18 = 0x060E20B0):
+  subtype 0 boss, 1 clone, 2 death flash (0x06086E68: anim 0x13, then fade to black
+  0x06006F48/0x0600725C/0x0600727A(0x20000,1)/0x06006FDE and stage state |= 10 = clear).
+  State block 0x060F81D8.. (see enemy_boss42.c). Helpers: 0x0608587C Boss_Init (HP
+  0x060BD0B8[difficulty] = 36/44/52, Sho's input off until the intro ends), 0x06085AA6
+  Boss_FindLedge (n-th candidate from 0x060BD050), 0x06085C26 Boss_LedgeWithSho, 0x06085C8E
+  Boss_StandOn (ledge + (48, 16)), 0x06086C9C Boss_Queue (repeat counts 0x060BD01C / 0x060BD006
+  / 0x060BD03C), 0x06086D90 Boss_Choose (rand % 101: > 60 orb, > 30 lightning, else teleport).
+  Its guard box (kind 1) covers its body in the frames checked, so the sword mostly clangs
+  (Enemy_CheckPlayerHits(0xA000), no shurikens); the reliable damage is its own orb slashed back (4). Below 17 HP it splits (0x10/0x11: HP 16
+  → 8 + 8, clone spawned on a ledge); the last body to die stops the ledges (+0x48/+0x4A = 0),
+  0x0606DC5C (0x060F4D44 = 1, 0x060F4D4C = 80), PL+0x1C = 0x8000, PL+4 |= 0x400.
+- Projectile 0x20 (0x06085CD8) orb: grows in the hand (offsets 0x060BD068/0x060BD090 by anim
+  frame, scale +6 x 0x888), waits 15 frames, homes (±4/frame) on Sho's position at 3.75
+  px/frame with a drift (±0x3000/frame, max 3.75); hit tests via 0x06060F64 (object kind ko vs
+  projectile kind 2: first Sho's sword (2) → sent back at 7.5 px/frame towards the boss, then
+  guard (1), then body (0, 1 damage)). Sent back it hits object bodies (type 0x20: -4 HP).
+- Projectile 0x21 (0x06086A68) lightning on Sho's ledge: ledge glows 40 frames, strikes
+  30/8/8 frames (1 damage on touch), 8-frame fade, ledge +0x50 = 3.
+- Not ported: the 4-2 frame hook 0x0606D99E (0x060B10CC[7]: boss HP bar on NBG3, items sliding
+  with the ledges, line-scroll effect 0x0606F5C4 when the boss appears).

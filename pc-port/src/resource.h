@@ -14,8 +14,8 @@
  *
  * PC: files are read from the asset directory (Res_SetAssetDir, default "assets").
  * "X.PPB" requested with kind 1 is taken from "X.dec.bin" (already decompressed) when that
- * file exists, else "X.PPB" is decompressed. Kind 2 (.SND banks) and type 2 (CD-DA tracks
- * TITLE.PCM / ENDING.PCM) are only logged for now (work packages D8/D9).
+ * file exists, else "X.PPB" is decompressed. Kind 2 (.SND banks) is parsed by sfx.c
+ * (Sfx_LoadBankData); type 2 (CD-DA tracks TITLE.PCM / ENDING.PCM) starts the ripped WAV.
  *
  * Overlays: DIRECTOR.PPB and SHINOBI.PPB both load at 0x06040000 (Load_DirectorPPB /
  * Load_ShinobiPPB queue the request; it is executed on the next frame before the overlay
@@ -44,5 +44,9 @@ void Load_DirectorPPB(void);                                 /* 0x06004EAC */
 void Res_PendingDecompress(void);                            /* 0x06004E1C */
 
 int  Res_OverlayResident(void);                              /* OVL_* */
+
+/* Sound banks: kind-2 requests parse the .SND into sfx.c (resident bank). */
+void Res_LoadStageSoundBank(int stage);                      /* SHINOBI 0x0606BB0C */
+void Res_EnsureSoundBank(void);                              /* PC: default bank for early SE */
 
 #endif

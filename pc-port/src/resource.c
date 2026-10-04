@@ -1,6 +1,7 @@
 /* File loading of A.BIN (resource requests, queue, overlay loads), see resource.h. */
 #include "resource.h"
 #include "audio.h"
+#include "sfx.h"
 #include "ram.h"
 #include "lz.h"
 #include "render.h"
@@ -9,6 +10,8 @@
 #include <string.h>
 
 static char s_assetDir[512] = "assets";
+static int  s_sndLoaded;                              /* a .SND bank was loaded (sfx.c) */
+static char s_sndName[16];                            /* ... its name */
 static int  s_overlay = OVL_NONE;
 
 void Res_SetAssetDir(const char *dir)
@@ -103,9 +106,15 @@ static int execute(uint32_t e)
         return 1;
     }
     if (type != 1 && type != 3) return 0;
-    if (kind == 2) {                                  /* SCSP sound bank (.SND) */
-        printf("[res] sound bank %s not loaded (SCSP not emulated)\n", name);
-        return 1;
+    if (kind == 2) {                                  /* SCSP sound bank (.SND), 0x06004C52 -> sfx.c */
+        size_t sl = 0;
+        uint8_t *sb = read_file(name, &sl);
+        int ok = sb && Sfx_LoadBankData(sb, sl, name);
+        free(sb);
+        s_sndLoaded |= ok;
+        if (ok) snprintf(s_sndName, sizeof s_sndName, "%s", name);
+        printf("[res] sound bank %s %s\n", name, ok ? "loaded" : sb ? "bad" : "missing");
+        return ok;
     }
     size_t len = 0, n = 0;
     uint8_t *buf = NULL;
@@ -188,4 +197,38 @@ void Res_PendingDecompress(void)
         Lz_Decompress(Ram_Ptr(src), region_end(src) - src, Ram_Ptr(OVERLAY_BASE), HWRAM_BASE + HWRAM_SIZE - OVERLAY_BASE);
     }
     W16(0x0601ABC8u, 0);
+}
+
+/* ---- sound banks (sfx.c) --------------------------------------------------------------- */
+
+/* SHINOBI 0x0606BB0C (called by Game_LoadStage 0x0606B6EC at 0x0606B70A): bank index =
+ * s16 table 0x060DAFE4[stage] (0,0,1,1,...,8,9: 9-2 = KAZUMA.SND), loaded with
+ * Res_Request(1, 2, 0, -1, 0, name table 0x060DAFBC[bank]) unless it is already the
+ * loaded one (0x060F4D30); then the current stage tune 0x060F4D32 = -1. Needs SHINOBI
+ * resident (the tables are overlay data). */
+void Res_LoadStageSoundBank(int stage)
+{
+    int16_t bank;
+    uint32_t name;
+    if (Res_OverlayResident() != OVL_SHINOBI || stage < 0 || stage > 17) return;
+    bank = RS16(0x060DAFE4u + 2u * (uint32_t)stage);
+    if (bank < 0 || bank > 9) return;
+    name = R32(0x060DAFBCu + 4u * (uint32_t)bank);
+    /* PC: compare with the bank really resident (DIRECTOR loads banks too) */
+    if (s_sndLoaded && strncmp(s_sndName, (const char *)Ram_Ptr(name), 12) == 0) return;
+    W16(0x060F4D30u, (uint32_t)bank);
+    Res_Request(1, 2, 0, 0xFFFFFFFFu, 0, name);
+    W16(0x060F4D32u, 0xFFFFu);
+}
+
+/* PC only: SE requested before any .SND was loaded (title screen after power-on: the
+ * Saturn's sound RAM would be empty or hold a previous bank). Load STAGE7.SND (DIRECTOR's
+ * bank 0, also loaded by the options screen): seq/tone banks 0 and 1 (system SE) are
+ * identical in every .SND. */
+void Res_EnsureSoundBank(void)
+{
+    static int tried;
+    if (s_sndLoaded || tried) return;
+    tried = 1;
+    Res_RequestFile(1, 2, 0, "STAGE7.SND");
 }

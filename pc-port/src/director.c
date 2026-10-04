@@ -176,7 +176,7 @@ void Title_NewGameDefaults(void)
     W32(V_RESET_ACT, 1);
     W16(V_CHEATS, 0);
     W16(V_STAGE, 0);
-    W16(V_SHUR_PICK, 0);
+    W16(V_ONEUP_TOKENS, 0);
     uint32_t d = 2u * R16(V_DIFFICULTY);
     W16(V_HP_MAX, R16(T_HP_MAX + d));
     W16(V_LIVES, R16(T_LIVES + d));
@@ -229,7 +229,7 @@ void Continue_Restart(void)
     W16(V_SHURIKENS, R16(V_SHUR_INIT));
     W16(V_LIVES, R16(T_LIVES + 2u * R16(V_DIFFICULTY)));
     W16(V_MAGIC_AVAIL, 0);
-    W16(V_SHUR_PICK, 0);
+    W16(V_ONEUP_TOKENS, 0);
     W16(V_STAGE, R16(V_STAGE) & 0xFFFE);             /* back to act 1 */
     W16(V_STAGE_STATE, 0);
     Dir_SetScene(2);

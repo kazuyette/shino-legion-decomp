@@ -5,6 +5,7 @@
 #include "fixmath.h"
 #include "anim.h"
 #include "player.h"
+#include "objhandlers_d.h"
 #include <stdio.h>
 
 #define CUR      R32(OBJ_CUR)
@@ -222,6 +223,10 @@ void ObjHandler_Call(uint16_t type)
     case 0x1004: ObjHandler_1004(); break;
     case 0x1005: ObjHandler_1005(); break;
     case 0x1006: ObjHandler_1006(); break;
+    case 0x1025: ObjHandler_1025(); break;   /* objhandlers_d.c (stage 4-2) */
+    case 0x1026: ObjHandler_1026(); break;
+    case 0x1027: ObjHandler_1027(); break;
+    case 0x1028: ObjHandler_1028(); break;
     default:
         if (!warned[type & 0xFFF]) {
             warned[type & 0xFFF] = 1;

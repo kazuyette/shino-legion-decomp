@@ -402,6 +402,8 @@ static void Proj_EnemyShuriken(uint32_t e)                             /* 0x0606
     if (R16(e) != 0xFFFF) Anim_Tick(e + 0x20);
 }
 
+void Proj_Boss42Orb(uint32_t e);    /* enemy_boss42.c */
+void Proj_Boss42Bolt(uint32_t e);
 void Projectiles_Update(void)
 {
     for (int i = 0; i < 64; i++) {
@@ -411,6 +413,8 @@ void Projectiles_Update(void)
         if (t == 0xFFFF) continue;
         if (t == 0) Proj_ShoShuriken(e);
         else if (t == 1) Proj_EnemyShuriken(e);
+        else if (t == 0x20) Proj_Boss42Orb(e);                         /* enemy_boss42.c (4-2 boss) */
+        else if (t == 0x21) Proj_Boss42Bolt(e);
         else { once("projectile type", t); W16(e, 0xFFFF); }
     }
 }

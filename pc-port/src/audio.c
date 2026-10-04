@@ -224,11 +224,25 @@ int16_t *Audio_LoadPcmFile(const char *path, uint32_t *frames_out)
 
 /* --------------------------------------------------------------------- mixer */
 
+#define SFX_CHUNK 1024
+static AudioSfxHooks s_sfx;            /* SFX hook, see Audio_SetSfxHooks */
+
 void Audio_Render(int16_t *out, int frames)
 {
     int k, c;
+    static int32_t sfx[SFX_CHUNK * 2];  /* SFX hook: sfx.c voices for this chunk */
+    while (frames > SFX_CHUNK) {
+        Audio_Render(out, SFX_CHUNK);
+        out += SFX_CHUNK * 2;
+        frames -= SFX_CHUNK;
+    }
+    if (s_sfx.render) {
+        memset(sfx, 0, (size_t)frames * 2 * sizeof sfx[0]);
+        s_sfx.render(sfx, frames);
+    }
     for (k = 0; k < frames; k++) {
         int32_t s[2] = { 0, 0 };
+        if (s_sfx.render) { s[0] = sfx[k * 2]; s[1] = sfx[k * 2 + 1]; }   /* SFX hook */
         for (c = 0; c < 2; c++) {                         /* level ramp */
             float d = s_gain_tgt[c] - s_gain_cur[c];
             if (d > GAIN_RAMP) s_gain_cur[c] += GAIN_RAMP;
@@ -443,7 +457,28 @@ uint64_t Audio_MoviePlayedFrames(void)
 
 /* ---------------------------------------------------------------------- sfx */
 
+/* SFX hook (sfx.c registers itself when a .SND bank is loaded); s_sfx is above the mixer */
+
+void Audio_SetSfxHooks(const AudioSfxHooks *hooks)
+{
+    if (hooks) s_sfx = *hooks;
+    else memset(&s_sfx, 0, sizeof s_sfx);
+}
+
+void Audio_Lock(void)   { LOCK(); }
+void Audio_Unlock(void) { UNLOCK(); }
+
 void Audio_PlaySfx(int id)
 {
-    printf("[sfx] %03X\n", id & 0xFFFF);   /* SCSP / .SND not emulated yet */
+    LOCK();
+    if (s_sfx.play) s_sfx.play(id);
+    else printf("[sfx] %03X\n", id & 0xFFFF);   /* no .SND bank loaded */
+    UNLOCK();
+}
+
+void Audio_StopSfx(void)
+{
+    LOCK();
+    if (s_sfx.stop) s_sfx.stop();
+    UNLOCK();
 }

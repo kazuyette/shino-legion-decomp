@@ -1,6 +1,6 @@
 /* Loads every stage index 0..17 on the real data (per-stage init table 0x060A8B0C,
  * stage_inits.c), drops Sho in at checkpoint 0 and runs 120 stage frames; checks the layer
- * set-up, that Sho lands on the map and that objects were placed. With a second argument
+ * set-up, that Sho lands (on the map, or on the 0x1025 ledges in 4-2) and that objects were placed. With a second argument
  * (a directory) it also writes a software-rendered screenshot of each stage after the 120
  * frames (VDP2 layers + sprites, soft_render.c) as stageNN_<file>.png.
  *   gcc -std=c11 -Isrc -Itests tests/test_stages.c $(cat tests/SOURCES.txt) -lm
@@ -122,10 +122,10 @@ int main(int argc, char **argv)
         printf("\n");
         if (!ok) printf("    note: a layout names a page past the layer's MAP data (never on screen: outside the\n"
                         "          world bounds or on a fixed layer; the hardware would show the next layer's page)\n");
-        if (coll < 0) printf("    note: no map collision layer (C+0x32 = -1): the floor must come from the stage objects\n"
-                             "          (0x1025/0x1026/0x1028, handlers not ported): Sho falls out of the world here\n");
+        if (coll < 0) printf("    note: no map collision layer (C+0x32 = -1): Sho stands on the ledge objects 0x1025\n"
+                             "          (objhandlers_d.c)\n");
         if (nobj <= 0) { printf("    no objects placed\n"); failures++; }
-        if (coll >= 0 && !landed) { printf("    Sho did not land\n"); failures++; }
+        if (!landed) { printf("    Sho did not land\n"); failures++; }   /* 4-2 included: ledges 0x1025 */
         /* NBG3 status bar built from 0x060CE5B8 */
         if (R32(NBG3_PN_ADDR) != 0x00002C00u + (R16(HUD_MAP_BUF) & 0x3FF) + ((uint32_t)(R16(HUD_MAP_BUF) & 0xF000) << 4)) failures++;
         if (shots) {

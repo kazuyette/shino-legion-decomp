@@ -50,4 +50,8 @@ void Soldier_Subtype(uint16_t sub);
 /* other enemy types — enemy_t3.c / enemy_t4.c */
 void Enemy3_Load(void);    void EnemyHandler_0003(void);   /* 0x0609E12C / 0x0609E258 */
 void Enemy4_Load(void);    void EnemyHandler_0004(void);   /* 0x06067378 / 0x060673C6 */
+/* stage 4-2 boss (type 0x20) and its projectiles 0x20 (orb) / 0x21 (lightning) — enemy_boss42.c */
+void Enemy20_Load(void);   void EnemyHandler_0020(void);   /* 0x06084420 / 0x06084560 */
+void Proj_Boss42Orb(uint32_t e);                           /* 0x06085CD8 */
+void Proj_Boss42Bolt(uint32_t e);                          /* 0x06086A68 */
 #endif

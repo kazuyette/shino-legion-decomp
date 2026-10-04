@@ -165,7 +165,7 @@ static void enter_continue(int continues, int stage, uint32_t score)
     W16(V_LIVES, 0xFFFF);                             /* SHINOBI game over: lives < 0 */
     W16(V_CONTINUES, (uint32_t)continues);
     W16(V_STAGE, (uint32_t)stage);
-    W16(V_SHUR_INIT, 20); W16(V_SHURIKENS, 3); W16(V_SHUR_PICK, 7); W16(V_MAGIC_AVAIL, 1); W16(V_STAGE_STATE, 5);
+    W16(V_SHUR_INIT, 20); W16(V_SHURIKENS, 3); W16(V_ONEUP_TOKENS, 7); W16(V_MAGIC_AVAIL, 1); W16(V_STAGE_STATE, 5);
     W32(V_SCORE, score); W32(V_HISCORE, 76000);
     Dir_SetScene(5);
 }
@@ -199,7 +199,7 @@ static void test_continue(void)
     printf("  CONTINUE clip + SHOU.CHR reload, %d frames -> scene %u: stage %d, lives %d, shurikens %d, continues %d, score %u\n",
            n, (unsigned)R32(G_DIR_SCENE), RS16(V_STAGE), RS16(V_LIVES), RS16(V_SHURIKENS), RS16(V_CONTINUES), (unsigned)R32(V_SCORE));
     assert(R32(G_DIR_SCENE) == 2 && R32(D_STEP) == 0);
-    assert(RS16(V_STAGE) == 4 && RS16(V_LIVES) == 4 && RS16(V_SHURIKENS) == 20 && RS16(V_SHUR_PICK) == 0 &&
+    assert(RS16(V_STAGE) == 4 && RS16(V_LIVES) == 4 && RS16(V_SHURIKENS) == 20 && RS16(V_ONEUP_TOKENS) == 0 &&
            RS16(V_MAGIC_AVAIL) == 0 && RS16(V_STAGE_STATE) == 0 && R32(V_SCORE) == 12345);
     assert(lwram_matches("SHOU.CHR"));
 
