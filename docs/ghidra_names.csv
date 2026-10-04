@@ -15,7 +15,7 @@ A.BIN,0x060048D8,function,Res_CloseIfOpen,doc: docs/jump_table_functions.md -- p
 A.BIN,0x0600498A,function,copy_name,port: pc-port/src/resource.c copy_name() -- 0x0600498A: copy the file name (max 12 chars) into a request.,,pc-port/src/resource.c:47
 A.BIN,0x060049C4,function,Res_QueueRequest,"port: pc-port/src/resource.c Res_QueueRequest() -- 0x060049C4: returns the slot index, -1 when the 8 slots are used.",,pc-port/src/resource.c:166
 A.BIN,0x06004A1C,function,Res_Request,port: pc-port/src/resource.c Res_Request() -- 0x06004A1C,,pc-port/src/resource.c:152
-A.BIN,0x06004C52,function,SfxBank_Parse,"port: pc-port/src/sfx.c SfxBank_Parse() -- 0x06004C52: 0x80-byte area map (8-byte entries: id = type << 4 | bank, u24 sound RAM address, flags (bit 7 set by the loader = data present), u24 size; 0xFF ends), then blocks {u16 0x0T0B (type T, ",,pc-port/src/sfx.c:73
+A.BIN,0x06004C52,function,SfxBank_Parse,"port: pc-port/src/sfx.c SfxBank_Parse() -- 0x06004C52: 0x80-byte area map (8-byte entries: id = type << 4 | bank, u24 sound RAM address, flags (bit 7 set by the loader = data present), u24 size; 0xFF ends), then blocks {u16 0x0T0B (type T, ",,pc-port/src/sfx.c:74
 A.BIN,0x06004E1C,function,Res_PendingDecompress,"port: pc-port/src/resource.c Res_PendingDecompress() -- 0x06004E1C: decompress the LZ block posted by 0x06004E60 (flag 0x0601ABC8 = 1, source 0x0601ABCC) to 0x06040000.",,pc-port/src/resource.c:194
 A.BIN,0x06004E6A,function,Load_ShinobiPPB,"port: pc-port/src/resource.c Load_ShinobiPPB() -- 0x06004E6A / 0x06004EAC: queue the other overlay (retry until a slot is free). File names: A.BIN strings 0x0600EDCC ""SHINOBI.PPB"", 0x0600EDD8 ""DIRECTOR.PPB"".",,pc-port/src/resource.c:189
 A.BIN,0x06004EAC,function,Load_DirectorPPB,port: pc-port/src/boot.c calls Load_DirectorPPB() here -- 0x06004EAC,,pc-port/src/boot.c:49
@@ -65,15 +65,17 @@ A.BIN,0x06007A5E,function,Fade_StepToTarget,port: pc-port/src/fade.c Fade_StepTo
 A.BIN,0x06007B04,function,move_channel,"port: pc-port/src/fade.c move_channel() -- 0x06007B04: one channel towards `t` (16.16, 9-bit encoding) by `step`, crossing 0 through the 0x200 wrap when the sign changes.",,pc-port/src/fade.c:222
 A.BIN,0x06007BAC,function,Reset_ObjectAndChannelTables,doc: docs/jump_table_functions.md -- zero a 17×12-byte array and set an 8×8-byte array to 0xffff (matches 8 SCSP channels),,docs/jump_table_functions.md:359
 A.BIN,0x06007C14,function,Snd_RefreshChannelDefs,"doc: docs/jump_table_functions.md -- loops all 8 channels, refreshes each via `Snd_LookupSfxDef`, marks channel unused (`0xffff`) if its definition is empty",,docs/jump_table_functions.md:667
-A.BIN,0x06007C84,function,Snd_FindFreeOrEvictChannel,"doc: docs/jump_table_functions.md -- classic voice-allocator: scans for a free channel slot (marker `-1`); if none free, finds an insertion point by priority and returns it OR'd with an eviction flag",,docs/jump_table_functions.md:668
-A.BIN,0x06007CDE,function,Sfx_Lookup,port: pc-port/src/sfx.c Sfx_Lookup() -- 0x06007CDE: id < 0 rejected; < 0x100 table 0 (flag 1); 0x100.. table 1; 0x200.. table 2. (The Saturn does not bound-check the index; ids past the tables are refused here.),Snd_Play,pc-port/src/sfx.c:180
+A.BIN,0x06007C84,function,Snd_FindFreeOrEvictChannel,"doc: docs/jump_table_functions.md -- classic voice-allocator: scans for a free channel slot (marker `-1`); if none free, finds an insertion point by priority and returns it OR'd with an eviction flag",find_slot,docs/jump_table_functions.md:668
+A.BIN,0x06007CDE,function,Sfx_Lookup,port: pc-port/src/sfx.c Sfx_Lookup() -- 0x06007CDE: id < 0 rejected; < 0x100 table 0 (flag 1); 0x100.. table 1; 0x200.. table 2. (The Saturn does not bound-check the index; ids past the tables are refused here.),Snd_Play,pc-port/src/sfx.c:181
 A.BIN,0x06007D60,function,,port: pc-port/src/anim.c uses sub_06007D60,,pc-port/src/anim.c:54
-A.BIN,0x06007DBA,function,Snd_SetAllSeqVolume,port: pc-port/src/director_title.c Snd_SetAllSeqVolume() -- 0x06007DBA: 0x06008154 on the 8 slots,,pc-port/src/director_title.c:53
-A.BIN,0x06007E00,function,Snd_StopAll,doc: docs/director.md -- (movies: frees sound RAM for the CPK PCM buffer). `Snd_StopAll` 0x06007E00.,,docs/director.md:360
+A.BIN,0x06007DBA,function,Sfx_SetAllSeqVolume,port: pc-port/src/sfx.c Sfx_SetAllSeqVolume() -- 0x06007DBA,Snd_SetAllSeqVolume|Sfx_SetAllSeqVolumeLocked,pc-port/src/sfx.c:1010
+A.BIN,0x06007E00,function,Sfx_StopAll,port: pc-port/src/sfx.c Sfx_StopAll() -- 0x06007E00,Snd_StopAll,pc-port/src/sfx.c:1016
 A.BIN,0x06007E96,function,Snd_SetAreaMap,port: pc-port/src/director_int.h calls Snd_SetAreaMap() here -- 0x06007E96,,pc-port/src/director_int.h:94
-A.BIN,0x06008154,function,Snd_SeqSlotVolume,"port: pc-port/src/objhandlers_f4.c Snd_SeqSlotVolume() -- A.BIN 0x06008154(slot, volume, rate): sequence slot volume fade. The sequencer volume control is not ported (see director_title.c Snd_SetAllSeqVolume): logged once.",seq_volume,pc-port/src/objhandlers_f4.c:19
-A.BIN,0x060084BE,function,seq_stop_id,port: pc-port/src/ninjutsu.c calls seq_stop_id() here -- 0x060084BE(0): slot 0 = stage tune,,pc-port/src/ninjutsu.c:1180
-A.BIN,0x060089D4,function,Snd_QuickSortByPriority,"doc: docs/jump_table_functions.md -- recursive quicksort on the channel array, sorting by a 16-bit priority field at offset +2",,docs/jump_table_functions.md:665
+A.BIN,0x06007FA8,function,Sfx_PlaySong,port: pc-port/src/sfx.h calls Sfx_PlaySong() here -- 0x06007FA8,,pc-port/src/sfx.h:77
+A.BIN,0x06008154,function,Sfx_SetSeqVolume,port: pc-port/src/sfx.c Sfx_SetSeqVolume() -- 0x06008154,Snd_SeqSlotVolume|Sfx_SetSeqVolumeLocked|seq_volume,pc-port/src/sfx.c:986
+A.BIN,0x060084BE,function,Sfx_StopSlot,port: pc-port/src/sfx.c Sfx_StopSlot() -- 0x060084BE,Sfx_StopSlotLocked|seq_stop_id,pc-port/src/sfx.c:972
+A.BIN,0x0600863E,function,scheduler,port: pc-port/src/sfx.c scheduler() -- 0x0600863E,,pc-port/src/sfx.c:1045
+A.BIN,0x060089D4,function,Snd_QuickSortByPriority,"doc: docs/jump_table_functions.md -- recursive quicksort on the channel array, sorting by a 16-bit priority field at offset +2",req_cmp,docs/jump_table_functions.md:665
 A.BIN,0x06008AF0,function,Snd_QuickSortByField10,"doc: docs/jump_table_functions.md -- same quicksort shape, sorting by a byte field at offset +10 (different priority axis — possibly volume vs. age)",,docs/jump_table_functions.md:666
 A.BIN,0x06008CC4,function,Mode_EnterIdle,doc: docs/jump_table_functions.md -- *(corrected below — not sound-related)*,,docs/jump_table_functions.md:358
 A.BIN,0x06008CF4,function,Cpk_TaskFrame,"doc: docs/director.md -- | `Movie_Tick` | 0x06040BDC | `Cpk_TaskFrame` (A.BIN 0x06008CF4); playing → Start skips (unless flags bit 1) else `Movie_DrawFrame`; returns −1 end, −2 skipped |",,docs/director.md:325
@@ -162,6 +164,7 @@ A.BIN,0x0602512C,data,RUN_SPEED,port: pc-port/src/fade.c #define RUN_SPEED,,pc-p
 A.BIN,0x06025130,data,RUN_COUNT,port: pc-port/src/fade.c #define RUN_COUNT,,pc-port/src/fade.c:19
 A.BIN,0x06025132,data,NEXT_COUNT,port: pc-port/src/fade.c #define NEXT_COUNT,,pc-port/src/fade.c:20
 A.BIN,0x06025134,data,NEXT_SPEED,port: pc-port/src/fade.c #define NEXT_SPEED,,pc-port/src/fade.c:21
+A.BIN,0x06025138,function,Sfx_SlotId,port: pc-port/src/sfx.h calls Sfx_SlotId() here -- 0x06025138[slot] +0 (-1 = free),Sfx_SlotIdLocked,pc-port/src/sfx.h:83
 A.BIN,0x06025246,data,V_AUDIO_MONO,"port: pc-port/src/director_title.c #define V_AUDIO_MONO -- s16 AUDIO option: 0 stereo, 1 mono",,pc-port/src/director_title.c:27
 A.BIN,0x06025254,data,MOVIE_FRAME_W,port: pc-port/src/movie.h #define MOVIE_FRAME_W,,pc-port/src/movie.h:22
 A.BIN,0x06025258,data,MOVIE_FRAME_H,port: pc-port/src/movie.h #define MOVIE_FRAME_H,,pc-port/src/movie.h:23

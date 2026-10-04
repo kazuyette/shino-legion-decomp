@@ -68,11 +68,13 @@ SHINOBI.dec.bin	0x06007C14	function	Snd_RefreshChannelDefs	renamed	FUN_06007c14
 SHINOBI.dec.bin	0x06007C84	function	Snd_FindFreeOrEvictChannel	renamed	FUN_06007c84
 SHINOBI.dec.bin	0x06007CDE	function	Sfx_Lookup	renamed	FUN_06007cde
 SHINOBI.dec.bin	0x06007D60	function		commented	FUN_06007d60
-SHINOBI.dec.bin	0x06007DBA	function	Snd_SetAllSeqVolume	renamed	FUN_06007dba
-SHINOBI.dec.bin	0x06007E00	function	Snd_StopAll	renamed	FUN_06007e00
+SHINOBI.dec.bin	0x06007DBA	function	Sfx_SetAllSeqVolume	renamed	FUN_06007dba
+SHINOBI.dec.bin	0x06007E00	function	Sfx_StopAll	renamed	FUN_06007e00
 SHINOBI.dec.bin	0x06007E96	function	Snd_SetAreaMap	renamed	FUN_06007e96
-SHINOBI.dec.bin	0x06008154	function	Snd_SeqSlotVolume	renamed	FUN_06008154
-SHINOBI.dec.bin	0x060084BE	function	seq_stop_id	renamed	FUN_060084be
+SHINOBI.dec.bin	0x06007FA8	function	Sfx_PlaySong	renamed	FUN_06007fa8
+SHINOBI.dec.bin	0x06008154	function	Sfx_SetSeqVolume	renamed	FUN_06008154
+SHINOBI.dec.bin	0x060084BE	function	Sfx_StopSlot	renamed	FUN_060084be
+SHINOBI.dec.bin	0x0600863E	function	scheduler	renamed	FUN_0600863e
 SHINOBI.dec.bin	0x060089D4	function	Snd_QuickSortByPriority	renamed	FUN_060089d4
 SHINOBI.dec.bin	0x06008AF0	function	Snd_QuickSortByField10	renamed	FUN_06008af0
 SHINOBI.dec.bin	0x06008CC4	function	Mode_EnterIdle	renamed	FUN_06008cc4
@@ -162,6 +164,7 @@ SHINOBI.dec.bin	0x0602512C	data	RUN_SPEED	renamed	DAT_0602512c
 SHINOBI.dec.bin	0x06025130	data	RUN_COUNT	renamed	DAT_06025130
 SHINOBI.dec.bin	0x06025132	data	NEXT_COUNT	renamed	DAT_06025132
 SHINOBI.dec.bin	0x06025134	data	NEXT_SPEED	renamed	DAT_06025134
+SHINOBI.dec.bin	0x06025138	function	Sfx_SlotId	notcode:defined data undefined2	
 SHINOBI.dec.bin	0x06025246	data	V_AUDIO_MONO	renamed	DAT_06025246
 SHINOBI.dec.bin	0x06025254	data	MOVIE_FRAME_W	renamed	DAT_06025254
 SHINOBI.dec.bin	0x06025258	data	MOVIE_FRAME_H	renamed	DAT_06025258

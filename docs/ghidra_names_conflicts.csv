@@ -11,8 +11,13 @@ A.BIN,0x0600725C,function,Fade_SetEndLayerMask,pc-port/src/fade.c:79,100,Fade_St
 A.BIN,0x060077A4,function,Fade_SetLayerMask,pc-port/src/fade.c:68,100,Fx_SetFlagBits7 (docs/jump_table_functions.md; p80),0
 A.BIN,0x06007960,function,Fade_StepIn,pc-port/src/fade.c:204,100,Fx_StepInterpolate3Axis (docs/jump_table_functions.md; p80),0
 A.BIN,0x06007A5E,function,Fade_StepToTarget,pc-port/src/fade.c:245,100,Fx_VerifyFieldsMatch (docs/jump_table_functions.md; p80),0
-A.BIN,0x06007CDE,function,Sfx_Lookup,pc-port/src/sfx.c:180,100,"Snd_Play (docs/director.md,docs/sound.md; p60)",0
-A.BIN,0x06008154,function,Snd_SeqSlotVolume,pc-port/src/objhandlers_f4.c:19,100,seq_volume (pc-port/src/ninjutsu.c; p100),0
+A.BIN,0x06007C84,function,Snd_FindFreeOrEvictChannel,docs/jump_table_functions.md:668,80,find_slot (pc-port/src/sfx.c; p100),0
+A.BIN,0x06007CDE,function,Sfx_Lookup,pc-port/src/sfx.c:181,100,Snd_Play (docs/director.md; p60),0
+A.BIN,0x06007DBA,function,Sfx_SetAllSeqVolume,pc-port/src/sfx.c:1010,100,Snd_SetAllSeqVolume (pc-port/src/director_title.c; p100) | Sfx_SetAllSeqVolumeLocked (docs/sound.md; p60),1
+A.BIN,0x06007E00,function,Sfx_StopAll,pc-port/src/sfx.c:1016,100,Snd_StopAll (docs/director.md; p60),0
+A.BIN,0x06008154,function,Sfx_SetSeqVolume,pc-port/src/sfx.c:986,100,Snd_SeqSlotVolume (pc-port/src/objhandlers_f4.c; p100) | Sfx_SetSeqVolumeLocked (docs/sound.md; p60) | seq_volume (pc-port/src/ninjutsu.c; p100),1
+A.BIN,0x060084BE,function,Sfx_StopSlot,pc-port/src/sfx.c:972,100,Sfx_StopSlotLocked (docs/sound.md; p60) | seq_stop_id (pc-port/src/ninjutsu.c; p70),0
+A.BIN,0x060089D4,function,Snd_QuickSortByPriority,docs/jump_table_functions.md:665,80,req_cmp (pc-port/src/sfx.c; p100),0
 A.BIN,0x06009254,function,vdp2_dirty,pc-port/src/enemy_boss1f.c:96,100,shadow_mark (pc-port/src/fade.c; p100),1
 A.BIN,0x060092BC,function,EM_Sdiv,pc-port/src/enemy_boss09.c:414,70,"sdiv (docs/director.md,pc-port/src/fade.c,pc-port/src/hud.c,pc-port/src/objhandlers_a.c,pc-port/src/objhandlers_e2.c,pc-port/src/stage_hooks.c; p100) | __divsi3 (docs/hud.md; p60)",0
 A.BIN,0x0600A55C,function,rnd_div,pc-port/src/objhandlers_f4.c:26,100,rnd_div10 (pc-port/src/enemy_t3.c; p100) | udiv (docs/director.md; p60),1
@@ -25,6 +30,7 @@ A.BIN,0x060250AC,data,SPR_WORK,pc-port/src/sprite.h:22,50,"ANIM_SPRITE (pc-port/
 A.BIN,0x06025100,data,FADE_CUR,pc-port/src/ninjutsu.c:58,50,FADE_OFS (pc-port/src/director_int.h; p50) | CUR (pc-port/src/fade.c; p50),0
 A.BIN,0x0602510C,data,FADE_STATE,pc-port/src/fade.h:33,50,FX_BUSY (pc-port/src/objhandlers_c.c; p50),0
 A.BIN,0x06025114,data,FADE_QUEUED,pc-port/src/ninjutsu.c:59,50,QUEUED (pc-port/src/fade.c; p50),0
+A.BIN,0x06025138,function,Sfx_SlotId,pc-port/src/sfx.h:83,70,Sfx_SlotIdLocked (docs/sound.md; p60),0
 A.BIN,0x06025268,data,G_DIR_MODE,pc-port/src/boot.h:30,50,g_DirMode (docs/director.md; p45),0
 A.BIN,0x0602526A,data,G_STAGE,pc-port/src/player.c:15,50,A_STAGE_IDX (pc-port/src/debug_menu.c; p50) | G_STAGE_INDEX (pc-port/src/stage.h; p50) | V_STAGE (pc-port/src/director_int.h; p50) | STAGE_IDX (pc-port/src/objhandlers_c.c; p50) | g_StageIdx (docs/director.md; p45),0
 A.BIN,0x0602529C,data,G_CHEAT_FLAGS,pc-port/src/player.c:14,50,V_CHEATS (pc-port/src/director_int.h; p50),0
