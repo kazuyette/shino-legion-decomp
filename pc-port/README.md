@@ -1,21 +1,59 @@
-# PC port skeleton
+# Shinobi Legions — PC port
 
-C + SDL2 skeleton for porting Shinobi Legions to PC. This is **not** a
-matching decompilation — it's a hand-written reimplementation shell that
-compiles and runs (opens a window, loops at ~60fps) while the real per-cluster
-logic gets ported in from `docs/jump_table_functions.md` as we identify it in
-Ghidra. Most functions are currently stubs (see `TODO` comments in `src/`).
+Native PC port of Shinobi Legions (Sega Saturn, USA, T-2301H) in C11 + SDL2. The game's
+SH-2 code is rewritten in C function by function, keeping the original memory layout
+(every variable at the address the game gave it); it is not an emulator. The whole game
+runs: title, 18 stages, bosses, ending. No game data is in this repository: the port
+reads it from your own disc image (see "Getting the game files").
 
 ## Build
 
-Requires SDL2 dev headers and CMake.
+Requirements: GCC with C11 (tested; Clang should work, MSVC is not supported), CMake 3.16+,
+SDL2 2.0.18 or later (tested with 2.30.9), git (optional: puts the commit hash in the
+version string).
+
+### Windows (MSYS2)
+
+Install [MSYS2](https://www.msys2.org), open the **UCRT64** shell:
 
 ```
-sudo apt install cmake libsdl2-dev   # Linux
-# or vcpkg/MSYS2 on Windows
-cmake -S . -B build
+pacman -S --needed git mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake \
+                   mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-SDL2
+git clone https://github.com/kazuyette/shino-legion-decomp
+cd shino-legion-decomp/pc-port
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
+# copy the DLLs the executable needs next to it, so it also starts outside MSYS2:
+ldd build/shinobi_legions_pc.exe | grep -i ucrt64 | awk '{print $3}' | xargs -r -I{} cp {} build/
 ```
+
+### Linux
+
+```
+sudo apt install build-essential cmake libsdl2-dev     # Debian / Ubuntu
+cmake -S pc-port -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
+
+### Windows executable from Linux (cross-compile)
+
+With `gcc-mingw-w64-x86-64` installed and the official `SDL2-devel-2.30.x-mingw.tar.gz`
+unpacked (https://github.com/libsdl-org/SDL/releases):
+
+```
+cmake -S pc-port -B build-win -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_TOOLCHAIN_FILE=pc-port/cmake/mingw-w64-x86_64.cmake \
+      -DSDL2_DIR=$PWD/SDL2-2.30.9/x86_64-w64-mingw32/lib/cmake/SDL2
+cmake --build build-win -j
+cp SDL2-2.30.9/x86_64-w64-mingw32/bin/SDL2.dll build-win/
+```
+
+### First run
+
+Put the executable (and `SDL2.dll` on Windows) in a folder, then either drop your
+`.cue` onto the executable or run `shinobi_legions_pc --extract "Shinobi Legions (USA).cue"`.
+The 115 game files are extracted into `assets/` next to the executable and checked
+against a checksum list; the game then starts. See "Getting the game files".
 
 ## Version
 

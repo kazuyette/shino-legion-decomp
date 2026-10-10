@@ -18,3 +18,5 @@ shinolegions_backup_*/
 notes/ghidra_sync/headless_*.log
 notes/ghidra_sync/verify_*.log
 *.nfo
+pc-port/build*/
+build*/
